@@ -176,16 +176,6 @@ if (window.settingsAPI && typeof window.settingsAPI.onRemoteApprovalStatusChange
   });
 }
 
-if (window.settingsAPI && typeof window.settingsAPI.onUpdateCheckStatus === "function") {
-  window.settingsAPI.onUpdateCheckStatus((snapshot) => {
-    core.runtime.about.updateCheckSnapshot = snapshot || { state: "idle" };
-    const tab = core.tabs.about;
-    if (tab && typeof tab.applyUpdateCheckStatus === "function") {
-      tab.applyUpdateCheckStatus(core.runtime.about.updateCheckSnapshot);
-    }
-  });
-}
-
 if (window.settingsAPI && typeof window.settingsAPI.onOfficialThemeProgress === "function") {
   window.settingsAPI.onOfficialThemeProgress((progress) => core.ops.applyOfficialThemeProgress(progress));
 }

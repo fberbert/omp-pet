@@ -324,22 +324,6 @@ let pendingState = null;
 // as "working" until a quiet window confirms the turn really ended.
 const pendingCompletionDebounces = new Map();
 let eyeResendTimer = null;
-let updateVisualState = null;
-let updateVisualKind = null;
-let updateVisualSvgOverride = null;
-let updateVisualPriority = null;
-
-const UPDATE_VISUAL_STATE_MAP = {
-  checking: "thinking",
-  available: "notification",
-  downloading: "carrying",
-};
-
-const UPDATE_VISUAL_PRIORITY_MAP = {
-  checking: STATE_PRIORITY.notification,
-  available: STATE_PRIORITY.notification,
-  downloading: STATE_PRIORITY.carrying,
-};
 
 // ── Wake poll ──
 const WAKE_POLL_START_DELAY_MS = 500;
@@ -673,16 +657,9 @@ function refreshTheme() {
   SLEEPING_SVGS = hitboxRuntime.sleepingSvgs;
 
   currentHitBox = resolveHitBoxForSvg(currentSvg);
-  refreshUpdateVisualOverride();
 }
 
 refreshTheme();
-
-function refreshUpdateVisualOverride() {
-  updateVisualSvgOverride = (updateVisualKind === "checking" && theme && theme.updateVisuals && theme.updateVisuals.checking)
-    ? theme.updateVisuals.checking
-    : null;
-}
 
 function shouldDropForDnd() {
   return !!ctx.doNotDisturb;
@@ -4315,30 +4292,11 @@ function resolveDisplayState() {
     statePriority: STATE_PRIORITY,
     compacting: hasCodexCompactionVisual(),
     permissionLocked: hasPermissionAnimationLock(),
-    updateVisualState,
-    updateVisualPriority,
   });
-}
-
-function setUpdateVisualState(kind) {
-  if (!kind) {
-    updateVisualState = null;
-    updateVisualKind = null;
-    updateVisualSvgOverride = null;
-    updateVisualPriority = null;
-    return null;
-  }
-  updateVisualKind = kind;
-  updateVisualState = UPDATE_VISUAL_STATE_MAP[kind] || kind;
-  updateVisualPriority = UPDATE_VISUAL_PRIORITY_MAP[kind] || getStatePriority(updateVisualState, STATE_PRIORITY);
-  refreshUpdateVisualOverride();
-  return updateVisualState;
 }
 
 function getSvgOverride(state) {
   return getSvgOverrideWithDeps(state, {
-    updateVisualState,
-    updateVisualSvgOverride,
     idleFollowSvg: SVG_IDLE_FOLLOW,
     idleDefaultVisual: typeof ctx.getIdleVisualChoice === "function" ? ctx.getIdleVisualChoice() : null,
     sessions: getPetPresentationSessions(projectPendingAttention()),
@@ -4426,10 +4384,6 @@ function disableDoNotDisturb() {
     playWakeTransitionOrResolve();
   }
   ctx.resyncKiroDesktopReminderCards?.();
-  // #329: a deferred update bubble may be waiting on DND exit.
-  if (typeof ctx.notifyUpdaterSilentExit === "function") {
-    try { ctx.notifyUpdaterSilentExit(); } catch {}
-  }
   ctx.buildContextMenu();
   ctx.buildTrayMenu();
 }
@@ -4494,7 +4448,7 @@ return {
   updateCodexSubagentActivity,
   clearCodexSubagentActivities,
   hasActiveCodexSubagents: codexSubagentPresentation.hasAny,
-  setState, applyState, updateSession, observeClaudeToolPhase, recordRecapEventOnly, restoreSessionFromLease, resolveDisplayState, resolveVisualBinding, setUpdateVisualState,
+  setState, applyState, updateSession, observeClaudeToolPhase, recordRecapEventOnly, restoreSessionFromLease, resolveDisplayState, resolveVisualBinding,
   shouldDropForDnd,
   enableDoNotDisturb, disableDoNotDisturb,
   // Read-only, unmerged account windows for source-specific alert deduplication.

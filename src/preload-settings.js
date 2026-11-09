@@ -50,7 +50,6 @@ const textScaleContextListeners = new Set();
 const sizeContextListeners = new Set();
 const agentActivityListeners = new Set();
 const recapChangedListeners = new Set();
-const updateCheckStatusListeners = new Set();
 const requestedTabListeners = new Set();
 const officialThemeProgressListeners = new Set();
 let pendingRequestedTab = null;
@@ -105,11 +104,6 @@ ipcRenderer.on("settings:agent-activity", (_event, payload) => {
 ipcRenderer.on("settings:recap-changed", () => {
   for (const cb of recapChangedListeners) {
     try { cb(); } catch (err) { console.warn("recap changed listener threw:", err); }
-  }
-});
-ipcRenderer.on("settings:update-check-status", (_event, payload) => {
-  for (const cb of updateCheckStatusListeners) {
-    try { cb(payload); } catch (err) { console.warn("update check status listener threw:", err); }
   }
 });
 ipcRenderer.on("settings:select-tab", (_event, tab) => {
@@ -198,9 +192,6 @@ contextBridge.exposeInMainWorld("settingsAPI", {
   getDshNotices: () => ipcRenderer.invoke("settings:dsh-notices"),
   acknowledgeDshNotice: (profile, id) => ipcRenderer.invoke("settings:dsh-notice-ack", { profile, id }),
   getAboutInfo: () => ipcRenderer.invoke("settings:get-about-info"),
-  checkForUpdates: () => ipcRenderer.invoke("settings:check-for-updates"),
-  clearUpdateError: () => ipcRenderer.invoke("settings:clear-update-error"),
-  copyUpdateError: (copyText) => ipcRenderer.invoke("settings:copy-update-error", copyText),
   showTutorial: () => ipcRenderer.invoke("settings:show-tutorial"),
   getStartupRenderState: () => ipcRenderer.invoke("settings:get-startup-render-state"),
   openExternal: (url) => ipcRenderer.invoke("settings:open-external", url),
@@ -265,11 +256,6 @@ contextBridge.exposeInMainWorld("settingsAPI", {
     if (typeof cb !== "function") return () => {};
     remoteApprovalStatusListeners.add(cb);
     return () => remoteApprovalStatusListeners.delete(cb);
-  },
-  onUpdateCheckStatus: (cb) => {
-    if (typeof cb !== "function") return () => {};
-    updateCheckStatusListeners.add(cb);
-    return () => updateCheckStatusListeners.delete(cb);
   },
 });
 

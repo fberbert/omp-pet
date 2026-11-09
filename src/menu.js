@@ -326,12 +326,6 @@ module.exports = function initMenu(ctx) {
         click: () => ctx.openSettingsWindow(),
       },
     ];
-    // #329: surface the update item alongside the app actions. The label
-    // switches to "Update available · vX" / "Update Ready" when applicable.
-    if (typeof ctx.getUpdateMenuItem === "function") {
-      const updateItem = ctx.getUpdateMenuItem();
-      if (updateItem) appGroup.push(updateItem);
-    }
     // Intent is captured at build time: the fullscreen auto-hide sync can
     // restore or hide the pet from its background poll while this menu is
     // still on screen (the tray is the easy case — right-clicking the tray
@@ -618,12 +612,6 @@ module.exports = function initMenu(ctx) {
         click: () => ctx.openSettingsWindow(),
       },
     ];
-    // #329: surface the update item alongside the other app actions when one is
-    // available.
-    if (typeof ctx.getUpdateMenuItem === "function") {
-      const updateItem = ctx.getUpdateMenuItem();
-      if (updateItem) appGroup.push(updateItem);
-    }
     // Intent is captured at build time: the fullscreen auto-hide sync can
     // restore or hide the pet from its background poll while this menu is
     // still on screen (the tray is the easy case — right-clicking the tray

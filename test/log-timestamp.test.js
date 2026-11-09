@@ -35,15 +35,4 @@ describe("formatLocalTimestamp", () => {
     );
   });
 
-  it("changes only session-debug logging to local time", () => {
-    const main = fs.readFileSync(path.join(__dirname, "..", "src", "main.js"), "utf8");
-    assert.match(
-      main,
-      /function sessionLog\(msg\) \{[\s\S]*?\[\$\{formatLocalTimestamp\(\)\}\]/
-    );
-    assert.match(
-      main,
-      /function updateLog\(msg\) \{[\s\S]*?\[\$\{new Date\(\)\.toISOString\(\)\}\]/
-    );
-  });
 });

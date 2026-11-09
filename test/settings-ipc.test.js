@@ -249,16 +249,6 @@ function createHarness(overrides = {}) {
     platform: overrides.platform,
     refreshDshDesktopDiscovery: overrides.refreshDshDesktopDiscovery,
     refreshWslDetection: overrides.refreshWslDetection,
-    checkForUpdates: overrides.checkForUpdates || ((manual) => {
-      calls.push(["checkForUpdates", manual]);
-      return { state: "up-to-date", version: "1.2.3" };
-    }),
-    getUpdateCheckSnapshot: overrides.getUpdateCheckSnapshot || (() => ({ state: "idle" })),
-    clearUpdateError: overrides.clearUpdateError || (() => ({ state: "idle" })),
-    copyUpdateError: overrides.copyUpdateError || ((text) => {
-      calls.push(["copyUpdateError", text]);
-      return { status: "ok" };
-    }),
     showTutorial: overrides.showTutorial || (() => {
       calls.push(["showTutorial"]);
       return { status: "ok" };
@@ -342,7 +332,6 @@ test("settings IPC registers owned channels and leaves animation override channe
   assert.ok(ipcMain.handlers.has("settings:list-themes"));
   assert.ok(ipcMain.handlers.has("settings:detect-agent-installations"));
   assert.ok(ipcMain.handlers.has("settings:show-tutorial"));
-  assert.ok(ipcMain.handlers.has("settings:clear-update-error"));
   assert.ok(ipcMain.handlers.has("settings:open-user-themes-dir"));
   assert.ok(ipcMain.handlers.has("settings:import-user-theme-zip"));
   assert.ok(ipcMain.handlers.has("settings:refresh-codex-pets"));
@@ -1548,27 +1537,17 @@ test("settings IPC serves agent/about/update/external and remove-theme dialog he
     ]);
     assert.deepStrictEqual(await ipcMain.invoke("settings:get-about-info"), {
       version: "1.2.3",
-      repoUrl: "https://github.com/rullerzhou-afk/clawd-on-desk",
+      repoUrl: "https://github.com/fberbert/omp-pet",
       license: "AGPL-3.0",
-      copyright: "\u00a9 2026 Ruller_Lulu",
-      authorName: "Ruller_Lulu / \u9e7f\u9e7f",
-      authorUrl: "https://github.com/rullerzhou-afk",
+      authorName: "Fábio Berbert de Paula",
+      authorUrl: "https://github.com/fberbert",
       heroSvgContent: "<svg id=\"hero\"></svg>",
-      pendingUpdateVersion: "",
-      autoUpdateCheck: true,
-      updateCheckSnapshot: { state: "idle" },
     });
     assert.deepStrictEqual(await ipcMain.invoke("settings:confirm-remove-theme", "user-theme"), {
       confirmed: true,
     });
     assert.deepStrictEqual(messageBoxParent, { id: "parent", sender: settingsWindow.webContents });
     assert.strictEqual(messageBoxOptions.message, 'Delete theme "Theme user-theme"?');
-    assert.deepStrictEqual(await ipcMain.invoke("settings:check-for-updates"), {
-      state: "up-to-date",
-      version: "1.2.3",
-    });
-    assert.deepStrictEqual(await ipcMain.invoke("settings:clear-update-error"), { state: "idle" });
-    assert.deepStrictEqual(await ipcMain.invoke("settings:copy-update-error", "safe report"), { status: "ok" });
     assert.deepStrictEqual(await ipcMain.invoke("settings:open-external", "file:///tmp"), {
       status: "error",
       message: "Invalid URL",
@@ -1577,8 +1556,6 @@ test("settings IPC serves agent/about/update/external and remove-theme dialog he
       status: "ok",
     });
     assert.deepStrictEqual(calls, [
-      ["checkForUpdates", true],
-      ["copyUpdateError", "safe report"],
       ["openExternal", "https://example.test"],
     ]);
   } finally {

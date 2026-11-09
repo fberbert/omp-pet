@@ -140,15 +140,13 @@ describe("state-visual-resolver SVG overrides", () => {
     }), "reading.svg");
   });
 
-  it("resolves update, idle, working, juggling, thinking, and null overrides", () => {
+  it("resolves idle, working, juggling, and null overrides", () => {
     const sessions = new Map([
       ["w1", session("working", { updatedAt: 1000 })],
       ["w2", session("thinking", { updatedAt: 2000 })],
       ["j1", session("juggling", { updatedAt: 3000, displayHint: "conduct" })],
     ]);
     const options = {
-      updateVisualState: "thinking",
-      updateVisualSvgOverride: "update-thinking.svg",
       idleFollowSvg: "idle-follow.svg",
       sessions,
       displayHintMap: { conduct: "conducting.svg" },
@@ -166,7 +164,6 @@ describe("state-visual-resolver SVG overrides", () => {
       },
     };
 
-    assert.strictEqual(getSvgOverride("thinking", options), "update-thinking.svg");
     assert.strictEqual(getSvgOverride("idle", options), "idle-follow.svg");
     assert.strictEqual(getSvgOverride("working", options), "working-three.svg");
     assert.strictEqual(getSvgOverride("juggling", options), "conducting.svg");
@@ -184,15 +181,6 @@ describe("state-visual-resolver SVG overrides", () => {
     assert.strictEqual(getSvgOverride("idle", base), "idle-follow.svg");
   });
 
-  it("update visual override still wins over idleDefaultVisual for its state", () => {
-    const options = {
-      updateVisualState: "idle",
-      updateVisualSvgOverride: "update-idle.svg",
-      idleFollowSvg: "idle-follow.svg",
-      idleDefaultVisual: "idle-reading.svg",
-    };
-    assert.strictEqual(getSvgOverride("idle", options), "update-idle.svg");
-  });
 });
 
 describe("state-visual-resolver stable picks for long-running states", () => {

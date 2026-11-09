@@ -54,8 +54,8 @@ for (const code of ["EACCES", "EADDRINUSE"]) {
 }
 
 test("synchronous failures on initial and subsequent ports use the same retry path", async () => {
-  const h = setup({ errors: {23333:"EACCES",23334:"EADDRINUSE"}, throws:[23333,23334] });
-  assert.equal(await h.api.startHttpServer(), 23335);
+  const h = setup({ errors: {23533:"EACCES",23534:"EADDRINUSE"}, throws:[23533,23534] });
+  assert.equal(await h.api.startHttpServer(), 23535);
 });
 
 test("persistent hint survives runtime cleanup and falls back if occupied", async () => {
@@ -63,7 +63,7 @@ test("persistent hint survives runtime cleanup and falls back if occupied", asyn
   const first = setup({ errors, hint:45002, runtime:null });
   assert.equal(await first.api.startHttpServer(), 45002);
   first.api.cleanup();
-  assert.equal(first.api.getHookServerPort(), 23333);
+  assert.equal(first.api.getHookServerPort(), 23533);
   const next = setup({ errors:{...errors,45002:"EADDRINUSE"}, hint:first.hints[0], runtime:null });
   assert.equal(await next.api.startHttpServer(), 45000);
   assert.deepEqual(next.calls, [...config.SERVER_PORTS,45002,0]);
@@ -71,17 +71,17 @@ test("persistent hint survives runtime cleanup and falls back if occupied", asyn
 
 test("unpublished dynamic listener closes without syncing or exposing stale runtime", async () => {
   const h = setup({ candidates:[0], publish:false });
-  assert.equal(h.api.getHookServerPort(), 23333);
+  assert.equal(h.api.getHookServerPort(), 23533);
   assert.equal(await h.api.startHttpServer(), null);
   assert.equal(h.server.listening, false);
   assert.deepEqual(h.hints, []);
   assert.deepEqual(h.syncs, []);
-  assert.equal(h.api.getHookServerPort(), 23333);
+  assert.equal(h.api.getHookServerPort(), 23533);
   assert.equal(checkLocalServer(h.api).runtime.startupFailure.stage, "runtime");
 });
 
 test("terminal bind failure records bounded diagnostics and does not sync", async () => {
-  const h = setup({ candidates:[23333], errors:{23333:"EACCES",0:"EACCES"} });
+  const h = setup({ candidates:[23533], errors:{23533:"EACCES",0:"EACCES"} });
   assert.equal(await h.api.startHttpServer(), null);
   const result = checkLocalServer(h.api);
   assert.match(result.detail, /EACCES/);
@@ -98,5 +98,5 @@ test("dynamic URLs are owned only with the exact local marker; remote remains fi
     assert.equal(config.isManagedPermissionUrl(foreign), false, foreign);
   }
   assert.equal(config.buildPermissionUrl(45000, "a".repeat(32)),
-    "http://127.0.0.1:23333/permission/"+"a".repeat(32));
+    "http://127.0.0.1:23533/permission/"+"a".repeat(32));
 });

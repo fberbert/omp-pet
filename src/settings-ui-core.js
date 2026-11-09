@@ -174,7 +174,6 @@
     about: {
       infoCache: null,
       clickCount: 0,
-      updateCheckSnapshot: { state: "idle" },
     },
   };
 
@@ -2206,9 +2205,6 @@
     state.mountedControls.quotaAlertThresholds = null;
     state.mountedControls.permissionAutomationMode = null;
     state.mountedControls.roamArea = null;
-    state.mountedControls.aboutAutoUpdate = null;
-    state.mountedControls.aboutUpdateStatus = null;
-    state.mountedControls.aboutUpdateErrorDisclosure = null;
   }
 
   function syncMountedSizeControl({ fromBroadcast = false } = {}) {

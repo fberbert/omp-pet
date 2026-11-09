@@ -20,11 +20,11 @@ describe("doctor log opener", () => {
     assert.strictEqual(isAllowedLogBasename("nested/permission-debug.log"), false);
   });
 
-  it("resolves the newest allowed log across ~/.clawd and userData", () => {
+  it("resolves the newest allowed log across ~/.omp-pet and userData", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "clawd-doctor-logs-"));
     const homeDir = path.join(tmp, "home");
     const userDataDir = path.join(tmp, "userData");
-    const clawdDir = path.join(homeDir, ".clawd");
+    const clawdDir = path.join(homeDir, ".omp-pet");
     fs.mkdirSync(clawdDir, { recursive: true });
     fs.mkdirSync(userDataDir, { recursive: true });
     const oldLog = path.join(clawdDir, "gemini-debug.log");
@@ -66,7 +66,7 @@ describe("doctor log opener", () => {
     assert.deepStrictEqual(target, { status: "error", reason: "invalid-log-name" });
   });
 
-  it("opens the fallback ~/.clawd directory when no log exists", async () => {
+  it("opens the fallback ~/.omp-pet directory when no log exists", async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "clawd-doctor-log-open-"));
     const opened = [];
     const result = await openClawdLog({
@@ -81,7 +81,7 @@ describe("doctor log opener", () => {
 
     assert.strictEqual(result.status, "ok");
     assert.strictEqual(result.opened, "directory");
-    assert.strictEqual(opened[0], path.join(tmp, ".clawd"));
+    assert.strictEqual(opened[0], path.join(tmp, ".omp-pet"));
     assert.strictEqual(fs.existsSync(opened[0]), true);
     fs.rmSync(tmp, { recursive: true, force: true });
   });

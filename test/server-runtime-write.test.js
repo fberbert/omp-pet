@@ -3,7 +3,7 @@
 // src/server.js calls writeRuntimeConfig inside the 'listening' handler, and
 // settle() — the thing that resolves startHttpServer's promise with the bound
 // port — is BELOW that call. writeRuntimeConfig's mkdirSync used to sit outside
-// its own try, so an EACCES on ~/.clawd escaped as an exception, the handler
+// its own try, so an EACCES on ~/.omp-pet escaped as an exception, the handler
 // unwound before settle(), and the promise never resolved. Every caller that
 // awaits the bound port (remote-ssh connect-on-launch builds its reverse tunnel
 // off it) waits forever, for a failure that should have been a warning.
@@ -23,11 +23,11 @@ const { checkLocalServer } = require("../src/doctor-detectors/local-server");
 
 function makeServer({
   writeRuntimeConfig = () => true,
-  readRuntimePort = () => 23333,
-  identity = { ok: true, reason: null, port: 23333, ownerPid: process.pid },
+  readRuntimePort = () => 23533,
+  identity = { ok: true, reason: null, port: 23533, ownerPid: process.pid },
   readRuntimeIdentity = () => identity,
   isProcessAlive = () => true,
-  addressPort = 23333,
+  addressPort = 23533,
   runtimeConfigPath = undefined,
   isWinHost = true,
   windowsProcessChainModes = undefined,
@@ -114,14 +114,14 @@ describe("#681 — startHttpServer always settles, however the runtime write goe
   it("settles with the bound port on a successful write", async () => {
     const h = makeServer();
     try {
-      assert.strictEqual(await h.api.startHttpServer(), 23333);
+      assert.strictEqual(await h.api.startHttpServer(), 23533);
     } finally { h.restore(); }
   });
 
   it("settles with the bound port when writeRuntimeConfig returns false", async () => {
     const h = makeServer({ writeRuntimeConfig: () => false });
     try {
-      assert.strictEqual(await h.api.startHttpServer(), 23333,
+      assert.strictEqual(await h.api.startHttpServer(), 23533,
         "a failed runtime write must not deprive callers of the port they are awaiting");
     } finally { h.restore(); }
   });
@@ -141,7 +141,7 @@ describe("#681 — startHttpServer always settles, however the runtime write goe
         h.api.startHttpServer(),
         new Promise((r) => setTimeout(() => r("TIMED-OUT"), 2000)),
       ]);
-      assert.strictEqual(port, 23333,
+      assert.strictEqual(port, 23533,
         "a throwing writeRuntimeConfig must not strand startHttpServer's promise — settle() is below it");
     } finally { h.restore(); }
   });
@@ -201,7 +201,7 @@ describe("#681 — the warning branch must not reach the runtime file to log its
   it("the async listen mock settles normally with no seam throwing", async () => {
     const h = makeServer({ asyncListen: true, writeRuntimeConfig: () => false });
     try {
-      assert.strictEqual(await h.api.startHttpServer(), 23333);
+      assert.strictEqual(await h.api.startHttpServer(), 23533);
     } finally { h.restore(); }
   });
 
@@ -213,7 +213,7 @@ describe("#681 — the warning branch must not reach the runtime file to log its
           h.api.startHttpServer(),
           new Promise((r) => setTimeout(() => r("TIMED-OUT"), 2000)),
         ]);
-        assert.strictEqual(port, 23333,
+        assert.strictEqual(port, 23533,
           `logging a failed runtime write must not depend on ${name}: it sits above settle(), `
           + "and in Electron main a throw from this handler has no uncaughtException handler to catch it");
       } finally { h.restore(); }

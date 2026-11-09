@@ -221,7 +221,6 @@ describe("package build config", () => {
       assert.strictEqual(pkg.dependencies.koffi, "2.16.3");
       assert.strictEqual(pkg.build.afterPack, "scripts/after-pack-koffi.js");
       assert.strictEqual(pkg.scripts["audit:native-package"], "node scripts/audit-packaged-native.js");
-      assert.strictEqual(pkg.scripts["verify:updater-metadata"], "node scripts/verify-updater-metadata.js");
     });
 
     it("uses reproducible installs in release and five-target package CI", () => {

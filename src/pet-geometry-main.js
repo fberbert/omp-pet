@@ -156,29 +156,6 @@ function createPetGeometryMain(options = {}) {
     return outwardRound(hit) || getFullHitRect(bounds);
   }
 
-  function getUpdateBubbleAnchorRect(bounds) {
-    if (!bounds) return getHitRectScreen(bounds);
-    const theme = getActiveTheme();
-    if (!theme) return getHitRectScreen(bounds);
-
-    const stableAnchor = computeThemeAnchorRect(theme, bounds);
-    if (stableAnchor) return stableAnchor;
-
-    const box = getThemeMarginBox(theme);
-    const visual = getVisualTuple(theme);
-    const currentFile = visual.file;
-    if (box && currentFile) {
-      const currentAnchor = computeThemeAnchorRect(theme, bounds, {
-        box,
-        state: visual.state,
-        file: currentFile,
-      });
-      if (currentAnchor) return currentAnchor;
-    }
-
-    return getHitRectScreen(bounds);
-  }
-
   function getSessionHudAnchorRect(bounds) {
     if (!bounds) return null;
     const theme = getActiveTheme();
@@ -192,7 +169,6 @@ function createPetGeometryMain(options = {}) {
     getObjRect,
     getAssetPointerPayload,
     getHitRectScreen,
-    getUpdateBubbleAnchorRect,
     getSessionHudAnchorRect,
   };
 }

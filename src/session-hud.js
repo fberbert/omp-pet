@@ -399,18 +399,6 @@ module.exports = function initSessionHud(ctx) {
         if (Array.isArray(permissionBounds)) rects.push(...permissionBounds);
       } catch {}
     }
-
-    if (typeof ctx.getUpdateBubbleWindow === "function") {
-      try {
-        const updateWindow = ctx.getUpdateBubbleWindow();
-        if (updateWindow
-            && !updateWindow.isDestroyed()
-            && updateWindow.isVisible()
-            && typeof updateWindow.getBounds === "function") {
-          rects.push(updateWindow.getBounds());
-        }
-      } catch {}
-    }
     return rects;
   }
 

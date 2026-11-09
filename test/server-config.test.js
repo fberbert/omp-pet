@@ -21,7 +21,7 @@ afterEach(() => {
 
 describe("Codex auto-start gate", () => {
   function gatePath() {
-    return path.join(makeTempHome(), ".clawd", "codex-auto-start.json");
+    return path.join(makeTempHome(), ".omp-pet", "codex-auto-start.json");
   }
 
   it("round-trips explicit enabled and disabled values", () => {
@@ -40,8 +40,8 @@ describe("Codex auto-start gate", () => {
     for (const value of [
       "{not json",
       JSON.stringify({ app: "other", version: 1, enabled: true }),
-      JSON.stringify({ app: "clawd-on-desk", version: 2, enabled: true }),
-      JSON.stringify({ app: "clawd-on-desk", version: 1, enabled: "true" }),
+      JSON.stringify({ app: "omp-pet", version: 2, enabled: true }),
+      JSON.stringify({ app: "omp-pet", version: 1, enabled: "true" }),
     ]) {
       fs.writeFileSync(file, value, "utf8");
       assert.strictEqual(serverConfig.readCodexAutoStartGate({ gatePath: file }), false);
@@ -120,9 +120,9 @@ describe("runtime.json identity (#681)", () => {
 
   describe("readRuntimeIdentity — the strict resolver gate", () => {
     it("ok for a well-formed file with app + port + ownerPid", () => {
-      const file = writeRuntime({ app: "clawd-on-desk", port: 23334, ownerPid: 4242 });
+      const file = writeRuntime({ app: "omp-pet", port: 23534, ownerPid: 4242 });
       assert.deepStrictEqual(serverConfig.readRuntimeIdentity({ runtimeConfigPath: file }), {
-        ok: true, reason: null, port: 23334, ownerPid: 4242,
+        ok: true, reason: null, port: 23534, ownerPid: 4242,
       });
     });
 
@@ -140,15 +140,15 @@ describe("runtime.json identity (#681)", () => {
     });
 
     it("rejects a foreign app — another tool's runtime.json is not Clawd's", () => {
-      const file = writeRuntime({ app: "some-other-app", port: 23333, ownerPid: 4242 });
+      const file = writeRuntime({ app: "some-other-app", port: 23533, ownerPid: 4242 });
       const r = serverConfig.readRuntimeIdentity({ runtimeConfigPath: file });
       assert.strictEqual(r.ok, false);
       assert.strictEqual(r.reason, "runtime-app-mismatch");
     });
 
     it("rejects a port outside the bindable range", () => {
-      for (const port of [0, -1, 65536, 23333.5, null, undefined, "nope", {}, true, []]) {
-        const file = writeRuntime({ app: "clawd-on-desk", port, ownerPid: 4242 });
+      for (const port of [0, -1, 65536, 23533.5, null, undefined, "nope", {}, true, []]) {
+        const file = writeRuntime({ app: "omp-pet", port, ownerPid: 4242 });
         const r = serverConfig.readRuntimeIdentity({ runtimeConfigPath: file });
         assert.strictEqual(r.ok, false, `port ${JSON.stringify(port)} must be rejected`);
         assert.strictEqual(r.reason, "runtime-port-invalid");
@@ -156,23 +156,23 @@ describe("runtime.json identity (#681)", () => {
     });
 
     it("accepts a numeric-string port — normalizePort has always coerced, and the writer is ours", () => {
-      const file = writeRuntime({ app: "clawd-on-desk", port: "23333", ownerPid: 4242 });
+      const file = writeRuntime({ app: "omp-pet", port: "23533", ownerPid: 4242 });
       const r = serverConfig.readRuntimeIdentity({ runtimeConfigPath: file });
       assert.strictEqual(r.ok, true, "documenting existing normalizePort behavior, not endorsing new writers");
-      assert.strictEqual(r.port, 23333, "and it is normalized to a number");
+      assert.strictEqual(r.port, 23533, "and it is normalized to a number");
     });
 
     it("fail-closes on a legacy file with no ownerPid (pre-#681 shape)", () => {
-      const file = writeRuntime({ app: "clawd-on-desk", port: 23333 });
+      const file = writeRuntime({ app: "omp-pet", port: 23533 });
       const r = serverConfig.readRuntimeIdentity({ runtimeConfigPath: file });
       assert.strictEqual(r.ok, false);
       assert.strictEqual(r.reason, "runtime-owner-invalid");
-      assert.strictEqual(r.port, 23333, "the port is still reported — only the gate fails closed");
+      assert.strictEqual(r.port, 23533, "the port is still reported — only the gate fails closed");
     });
 
     it("rejects a non-positive / non-integer ownerPid", () => {
       for (const ownerPid of [0, -1, 1.5, "4242", null, {}]) {
-        const file = writeRuntime({ app: "clawd-on-desk", port: 23333, ownerPid });
+        const file = writeRuntime({ app: "omp-pet", port: 23533, ownerPid });
         const r = serverConfig.readRuntimeIdentity({ runtimeConfigPath: file });
         assert.strictEqual(r.ok, false, `ownerPid ${JSON.stringify(ownerPid)} must be rejected`);
         assert.strictEqual(r.reason, "runtime-owner-invalid");
@@ -181,8 +181,8 @@ describe("runtime.json identity (#681)", () => {
 
     it("parses a versioned per-agent Windows process-chain capability", () => {
       const file = writeRuntime({
-        app: "clawd-on-desk",
-        port: 23335,
+        app: "omp-pet",
+        port: 23535,
         ownerPid: 4242,
         windowsProcessChain: {
           version: 1,
@@ -208,7 +208,7 @@ describe("runtime.json identity (#681)", () => {
       assert.deepStrictEqual(serverConfig.readWindowsProcessChainObservation("cursor-agent", {
         runtimeConfigPath: file,
       }), {
-        port: 23335,
+        port: 23535,
         ownerPid: 4242,
         version: 1,
         instanceGeneration: "instance_abc-123",
@@ -224,7 +224,7 @@ describe("runtime.json identity (#681)", () => {
         { version: 1, instanceGeneration: "bad value", agents: { codex: "shadow" } },
       ]) {
         const file = writeRuntime({
-          app: "clawd-on-desk", port: 23333, ownerPid: 4242,
+          app: "omp-pet", port: 23533, ownerPid: 4242,
           ...(capability ? { windowsProcessChain: capability } : {}),
         });
         assert.strictEqual(
@@ -237,18 +237,18 @@ describe("runtime.json identity (#681)", () => {
 
   describe("readRuntimePort — stays permissive so POSTs keep routing", () => {
     it("returns the port for a legacy file with no ownerPid", () => {
-      const file = writeRuntime({ app: "clawd-on-desk", port: 23336 });
-      assert.strictEqual(serverConfig.readRuntimePort({ runtimeConfigPath: file }), 23336,
+      const file = writeRuntime({ app: "omp-pet", port: 23536 });
+      assert.strictEqual(serverConfig.readRuntimePort({ runtimeConfigPath: file }), 23536,
         "a legacy runtime must keep routing state/permission POSTs even though the gate fail-closes");
     });
 
     it("returns the port when ownerPid is present", () => {
-      const file = writeRuntime({ app: "clawd-on-desk", port: 23337, ownerPid: 999 });
-      assert.strictEqual(serverConfig.readRuntimePort({ runtimeConfigPath: file }), 23337);
+      const file = writeRuntime({ app: "omp-pet", port: 23537, ownerPid: 999 });
+      assert.strictEqual(serverConfig.readRuntimePort({ runtimeConfigPath: file }), 23537);
     });
 
     it("now requires a matching app (every Clawd that wrote this file stamped one)", () => {
-      const file = writeRuntime({ app: "not-clawd", port: 23333, ownerPid: 1 });
+      const file = writeRuntime({ app: "not-clawd", port: 23533, ownerPid: 1 });
       assert.strictEqual(serverConfig.readRuntimePort({ runtimeConfigPath: file }), null);
     });
 
@@ -260,31 +260,31 @@ describe("runtime.json identity (#681)", () => {
   describe("writeRuntimeConfig — boolean contract, never throws (#681)", () => {
     it("writes app + port + ownerPid and round-trips through readRuntimeIdentity", () => {
       const file = path.join(makeTempHome(), "nested", "runtime.json");
-      assert.strictEqual(serverConfig.writeRuntimeConfig(23335, { runtimeConfigPath: file, ownerPid: 777 }), true);
+      assert.strictEqual(serverConfig.writeRuntimeConfig(23535, { runtimeConfigPath: file, ownerPid: 777 }), true);
 
       assert.deepStrictEqual(JSON.parse(fs.readFileSync(file, "utf8")), {
-        app: "clawd-on-desk", port: 23335, ownerPid: 777,
+        app: "omp-pet", port: 23535, ownerPid: 777,
       });
       assert.deepStrictEqual(serverConfig.readRuntimeIdentity({ runtimeConfigPath: file }), {
-        ok: true, reason: null, port: 23335, ownerPid: 777,
+        ok: true, reason: null, port: 23535, ownerPid: 777,
       });
     });
 
     it("defaults ownerPid to the writing process", () => {
       const file = path.join(makeTempHome(), "runtime.json");
-      serverConfig.writeRuntimeConfig(23333, { runtimeConfigPath: file });
+      serverConfig.writeRuntimeConfig(23533, { runtimeConfigPath: file });
       assert.strictEqual(JSON.parse(fs.readFileSync(file, "utf8")).ownerPid, process.pid);
     });
 
     it("writes an owner-only runtime identity on POSIX", { skip: process.platform === "win32" }, () => {
       const file = path.join(makeTempHome(), "runtime.json");
-      assert.strictEqual(serverConfig.writeRuntimeConfig(23333, { runtimeConfigPath: file }), true);
+      assert.strictEqual(serverConfig.writeRuntimeConfig(23533, { runtimeConfigPath: file }), true);
       assert.strictEqual(fs.statSync(file).mode & 0o777, 0o600);
     });
 
     it("round-trips a valid Windows process-chain capability and drops an invalid one", () => {
       const validFile = path.join(makeTempHome(), "valid", "runtime.json");
-      assert.strictEqual(serverConfig.writeRuntimeConfig(23333, {
+      assert.strictEqual(serverConfig.writeRuntimeConfig(23533, {
         runtimeConfigPath: validFile,
         ownerPid: 777,
         windowsProcessChain: {
@@ -299,7 +299,7 @@ describe("runtime.json identity (#681)", () => {
       );
 
       const invalidFile = path.join(makeTempHome(), "invalid", "runtime.json");
-      assert.strictEqual(serverConfig.writeRuntimeConfig(23333, {
+      assert.strictEqual(serverConfig.writeRuntimeConfig(23533, {
         runtimeConfigPath: invalidFile,
         windowsProcessChain: { version: 1, instanceGeneration: "", agents: {} },
       }), true);
@@ -317,7 +317,7 @@ describe("runtime.json identity (#681)", () => {
       const eacces = Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" });
       let result;
       assert.doesNotThrow(() => {
-        result = serverConfig.writeRuntimeConfig(23333, {
+        result = serverConfig.writeRuntimeConfig(23533, {
           runtimeConfigPath: path.join(makeTempHome(), "runtime.json"),
           fs: {
             mkdirSync: () => { throw eacces; },
@@ -333,7 +333,7 @@ describe("runtime.json identity (#681)", () => {
     it("returns false and best-effort removes the temp file when the rename fails", () => {
       const unlinked = [];
       const written = [];
-      const result = serverConfig.writeRuntimeConfig(23333, {
+      const result = serverConfig.writeRuntimeConfig(23533, {
         runtimeConfigPath: path.join(makeTempHome(), "runtime.json"),
         fs: {
           mkdirSync: () => {},
@@ -350,7 +350,7 @@ describe("runtime.json identity (#681)", () => {
     it("does not throw even when the temp cleanup itself fails", () => {
       let result;
       assert.doesNotThrow(() => {
-        result = serverConfig.writeRuntimeConfig(23333, {
+        result = serverConfig.writeRuntimeConfig(23533, {
           runtimeConfigPath: path.join(makeTempHome(), "runtime.json"),
           fs: {
             mkdirSync: () => {},
@@ -376,7 +376,7 @@ describe("runtime.json identity (#681)", () => {
 describe("server-config helpers", () => {
   it("adds B1a headers only for an explicit local Windows observation port", () => {
     const observation = {
-      port: 23334,
+      port: 23534,
       ownerPid: 1,
       version: 1,
       instanceGeneration: "generation-1",
@@ -390,7 +390,7 @@ describe("server-config helpers", () => {
       runtimeObservation: observation,
       legacyCacheSource: "fresh",
     };
-    assert.deepStrictEqual(serverConfig.buildWindowsProcessChainHeaders(23334, {
+    assert.deepStrictEqual(serverConfig.buildWindowsProcessChainHeaders(23534, {
       platform: "win32",
       remote: false,
       windowsProcessChain: request,
@@ -400,9 +400,9 @@ describe("server-config helpers", () => {
       "X-Clawd-Legacy-Process-Cache": "fresh",
     });
     for (const options of [
-      { platform: "win32", remote: false, windowsProcessChain: request, port: 23335 },
-      { platform: "linux", remote: false, windowsProcessChain: request, port: 23334 },
-      { platform: "win32", remote: true, windowsProcessChain: request, port: 23334 },
+      { platform: "win32", remote: false, windowsProcessChain: request, port: 23535 },
+      { platform: "linux", remote: false, windowsProcessChain: request, port: 23534 },
+      { platform: "win32", remote: true, windowsProcessChain: request, port: 23534 },
       { platform: "win32", remote: false },
     ]) {
       assert.deepStrictEqual(
@@ -424,7 +424,7 @@ describe("server-config helpers", () => {
       runtimeKey: "account-default",
       profileId: "profile-a",
       installId: "a".repeat(64),
-      remotePort: 23335,
+      remotePort: 23535,
       routingNonce: "b".repeat(32),
       deployedAt: 12345,
     };
@@ -466,7 +466,7 @@ describe("server-config helpers", () => {
           secureMarkerPath: markerPath,
           remoteLastLogPath: lastLogPath,
           readFileSync,
-          runtimePort: 23333,
+          runtimePort: 23533,
         });
         assert.deepStrictEqual(
           ports,
@@ -491,15 +491,15 @@ describe("server-config helpers", () => {
       runtimeKey: "account-default",
       profileId: "profile-a",
       installId: "a".repeat(64),
-      remotePort: 23336,
+      remotePort: 23536,
       routingNonce: "b".repeat(32),
       deployedAt: 12345,
     };
     assert.deepStrictEqual(serverConfig.getPortCandidates(undefined, {
       sshSecure: true,
       remoteIdentity: identity,
-      runtimePort: 23333,
-    }), [23336]);
+      runtimePort: 23533,
+    }), [23536]);
   });
 
   it("writes a bounded 0600 secure transport diagnostic without secret-shaped input", () => {
@@ -539,20 +539,20 @@ describe("server-config helpers", () => {
 
   it("clearRuntimeConfig removes runtime.json when present", () => {
     const tmpHome = makeTempHome();
-    const runtimeDir = path.join(tmpHome, ".clawd");
+    const runtimeDir = path.join(tmpHome, ".omp-pet");
     fs.mkdirSync(runtimeDir, { recursive: true });
     const runtimePath = path.join(runtimeDir, "runtime.json");
-    fs.writeFileSync(runtimePath, JSON.stringify({ app: "clawd-on-desk", port: 23333 }));
+    fs.writeFileSync(runtimePath, JSON.stringify({ app: "omp-pet", port: 23533 }));
 
     assert.strictEqual(serverConfig.clearRuntimeConfig(runtimePath), true);
     assert.strictEqual(fs.existsSync(runtimePath), false);
   });
 
   it("clearRuntimeConfig removes a file this process owns", () => {
-    const runtimeDir = path.join(makeTempHome(), ".clawd");
+    const runtimeDir = path.join(makeTempHome(), ".omp-pet");
     fs.mkdirSync(runtimeDir, { recursive: true });
     const runtimePath = path.join(runtimeDir, "runtime.json");
-    fs.writeFileSync(runtimePath, JSON.stringify({ app: "clawd-on-desk", port: 23333, ownerPid: process.pid }));
+    fs.writeFileSync(runtimePath, JSON.stringify({ app: "omp-pet", port: 23533, ownerPid: process.pid }));
 
     assert.strictEqual(serverConfig.clearRuntimeConfig(runtimePath), true);
     assert.strictEqual(fs.existsSync(runtimePath), false);
@@ -565,17 +565,17 @@ describe("server-config helpers", () => {
     // deleting them would blind every Windows hook until the survivor restarts.
     // The guard keys on pid inequality alone (no liveness check), so any
     // foreign pid must be refused, dead or alive.
-    const runtimeDir = path.join(makeTempHome(), ".clawd");
+    const runtimeDir = path.join(makeTempHome(), ".omp-pet");
     fs.mkdirSync(runtimeDir, { recursive: true });
     const runtimePath = path.join(runtimeDir, "runtime.json");
-    fs.writeFileSync(runtimePath, JSON.stringify({ app: "clawd-on-desk", port: 23334, ownerPid: process.pid + 1 }));
+    fs.writeFileSync(runtimePath, JSON.stringify({ app: "omp-pet", port: 23534, ownerPid: process.pid + 1 }));
 
     assert.strictEqual(serverConfig.clearRuntimeConfig(runtimePath), false);
     assert.strictEqual(fs.existsSync(runtimePath), true, "the survivor's identity must stay on disk");
   });
 
   it("clearRuntimeConfig still removes a corrupt runtime.json (residue, not identity)", () => {
-    const runtimeDir = path.join(makeTempHome(), ".clawd");
+    const runtimeDir = path.join(makeTempHome(), ".omp-pet");
     fs.mkdirSync(runtimeDir, { recursive: true });
     const runtimePath = path.join(runtimeDir, "runtime.json");
     fs.writeFileSync(runtimePath, "not-json{");
@@ -585,11 +585,11 @@ describe("server-config helpers", () => {
   });
 
   it("splitPortCandidates prioritizes preferred and runtime ports", () => {
-    const result = serverConfig.splitPortCandidates(23335, { runtimePort: 23334 });
-    assert.deepStrictEqual(result.direct, [23335, 23334]);
-    assert.ok(result.fallback.includes(23333));
-    assert.ok(!result.fallback.includes(23334));
-    assert.ok(!result.fallback.includes(23335));
+    const result = serverConfig.splitPortCandidates(23535, { runtimePort: 23534 });
+    assert.deepStrictEqual(result.direct, [23535, 23534]);
+    assert.ok(result.fallback.includes(23533));
+    assert.ok(!result.fallback.includes(23534));
+    assert.ok(!result.fallback.includes(23535));
   });
 
   it("probePort recognizes signed Clawd responses", async () => {
@@ -601,7 +601,7 @@ describe("server-config helpers", () => {
         destroy() {},
       };
 
-      serverConfig.probePort(23337, 100, (ok) => {
+      serverConfig.probePort(23537, 100, (ok) => {
         try {
           assert.strictEqual(ok, true);
           resolve();
@@ -611,7 +611,7 @@ describe("server-config helpers", () => {
       }, {
         httpGet(_options, onResponse) {
           const res = {
-            headers: { "x-clawd-server": "clawd-on-desk" },
+            headers: { "x-omp-pet-server": "omp-pet" },
             setEncoding() {},
             on(event, handler) {
               if (event === "data") handler("");
@@ -1123,23 +1123,23 @@ describe("server-config helpers", () => {
         JSON.stringify({ state: "idle" }),
         {
           timeoutMs: 50,
-          preferredPort: 23335,
-          runtimePort: 23334,
+          preferredPort: 23535,
+          runtimePort: 23534,
           probePort(port, _timeoutMs, cb) {
             probes.push(port);
-            cb(port === 23336);
+            cb(port === 23536);
           },
           postStateToPort(port, _payload, _timeoutMs, cb) {
             posts.push(port);
-            cb(port === 23336, port);
+            cb(port === 23536, port);
           },
         },
         (ok, port) => {
           try {
             assert.strictEqual(ok, true);
-            assert.strictEqual(port, 23336);
-            assert.deepStrictEqual(posts, [23335, 23334, 23336]);
-            assert.deepStrictEqual(probes, [23333, 23336]);
+            assert.strictEqual(port, 23536);
+            assert.deepStrictEqual(posts, [23535, 23534, 23536]);
+            assert.deepStrictEqual(probes, [23533, 23536]);
             resolve();
           } catch (err) {
             reject(err);
@@ -1157,7 +1157,7 @@ describe("server-config helpers", () => {
         JSON.stringify({ state: "thinking" }),
         {
           timeoutMs: 100,
-          preferredPort: 23333,
+          preferredPort: 23533,
           env: { CLAWD_REMOTE: "1" },
           postStateToPort(port, _payload, timeoutMs, cb) {
             timeouts.push(timeoutMs);
@@ -1167,7 +1167,7 @@ describe("server-config helpers", () => {
         (ok, port) => {
           try {
             assert.strictEqual(ok, true);
-            assert.strictEqual(port, 23333);
+            assert.strictEqual(port, 23533);
             assert.deepStrictEqual(timeouts, [serverConfig.REMOTE_HOOK_HTTP_TIMEOUT_MS]);
             resolve();
           } catch (err) {
@@ -1186,7 +1186,7 @@ describe("server-config helpers", () => {
         JSON.stringify({ state: "working" }),
         {
           timeoutMs: 100,
-          preferredPort: 23333,
+          preferredPort: 23533,
           remote: true,
           postStateToPort(port, _payload, timeoutMs, cb) {
             timeouts.push(timeoutMs);
@@ -1196,7 +1196,7 @@ describe("server-config helpers", () => {
         (ok, port) => {
           try {
             assert.strictEqual(ok, true);
-            assert.strictEqual(port, 23333);
+            assert.strictEqual(port, 23533);
             assert.deepStrictEqual(timeouts, [serverConfig.REMOTE_HOOK_HTTP_TIMEOUT_MS]);
             resolve();
           } catch (err) {
@@ -1215,7 +1215,7 @@ describe("server-config helpers", () => {
         JSON.stringify({ state: "working" }),
         {
           timeoutMs: 100,
-          preferredPort: 23333,
+          preferredPort: 23533,
           remote: false,
           env: { CLAWD_REMOTE: "1" },
           postStateToPort(port, _payload, timeoutMs, cb) {
@@ -1226,7 +1226,7 @@ describe("server-config helpers", () => {
         (ok, port) => {
           try {
             assert.strictEqual(ok, true);
-            assert.strictEqual(port, 23333);
+            assert.strictEqual(port, 23533);
             assert.deepStrictEqual(timeouts, [100]);
             resolve();
           } catch (err) {
@@ -1274,12 +1274,12 @@ describe("server-config helpers", () => {
         JSON.stringify({ tool_name: "bash" }),
         {
           probeTimeoutMs: 100,
-          preferredPort: 23335,
+          preferredPort: 23535,
           remote: true,
           discoverClawdPort(options, cb) {
             capturedTimeout = options.timeoutMs;
             capturedPreferredPort = options.preferredPort;
-            cb(23335);
+            cb(23535);
           },
           postPermissionToPort(port, _payload, _timeoutMs, cb) {
             cb(true, port, "{}", 200);
@@ -1288,8 +1288,8 @@ describe("server-config helpers", () => {
         (ok, port) => {
           try {
             assert.strictEqual(ok, true);
-            assert.strictEqual(port, 23335);
-            assert.strictEqual(capturedPreferredPort, 23335);
+            assert.strictEqual(port, 23535);
+            assert.strictEqual(capturedPreferredPort, 23535);
             assert.strictEqual(capturedTimeout, serverConfig.REMOTE_HOOK_HTTP_TIMEOUT_MS);
             resolve();
           } catch (err) {
@@ -1334,8 +1334,8 @@ it("issue #1316: remote flag overwrites inherited paths and derives the log from
     CLAWD_REMOTE_IDENTITY_PATH: path.join(scriptDir, "clawd-remote.json"),
     CLAWD_SSH_SECURE_MARKER_PATH: path.join(scriptDir, "clawd-ssh-secure-v1"),
     CLAWD_HOST_PREFIX_PATH: path.join(scriptDir, "clawd-host-prefix"),
-    CLAWD_REMOTE_LAST_LOG_PATH: path.join(dir, ".clawd", "remote-last-error.log"), OTHER: "preserved",
+    CLAWD_REMOTE_LAST_LOG_PATH: path.join(dir, ".omp-pet", "remote-last-error.log"), OTHER: "preserved",
   });
   assert.strictEqual(serverConfig.isSshSecureMode({ env }), true);
-  assert.deepStrictEqual(serverConfig.getPortCandidates(23333, { env }), []);
+  assert.deepStrictEqual(serverConfig.getPortCandidates(23533, { env }), []);
 });

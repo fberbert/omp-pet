@@ -80,14 +80,6 @@ function resolveDisplayStateFromSessions(sessions, options = {}) {
     best = "notification";
   }
 
-  const updateVisualState = options.updateVisualState || null;
-  if (updateVisualState) {
-    const updateVisualPriority = options.updateVisualPriority || getStatePriority(updateVisualState, statePriority);
-    if (updateVisualPriority > getStatePriority(best, statePriority)) {
-      return updateVisualState;
-    }
-  }
-
   return best;
 }
 

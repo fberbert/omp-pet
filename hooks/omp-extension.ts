@@ -1,11 +1,11 @@
-// Clawd on Desk <-> OMP (oh-my-pi) bridge.
+// omp-pet <-> OMP (oh-my-pi) bridge.
 //
 // OMP is a fork of the same coding agent Pi is built on, so this file is kept
 // deliberately close to hooks/pi-extension.ts: the process-tree walk, terminal
 // detection and loopback POST are identical problems and should not drift
 // apart. Everything OMP-specific lives in hooks/omp-extension-core.js.
 //
-// Installed by hooks/omp-install.js into ~/.omp/agent/extensions/clawd-on-desk/.
+// Installed by hooks/omp-install.js into ~/.omp/agent/extensions/omp-pet/.
 
 import type { ExtensionAPI, ExtensionContext, ExtensionEvent } from "@oh-my-pi/pi-coding-agent";
 import * as childProcess from "node:child_process";
@@ -17,12 +17,12 @@ import coreModule from "./omp-extension-core.js";
 
 const core = ((coreModule as any).default || coreModule) as any;
 
-const CLAWD_SERVER_ID = "clawd-on-desk";
-const CLAWD_SERVER_HEADER = "x-clawd-server";
+const CLAWD_SERVER_ID = "omp-pet";
+const CLAWD_SERVER_HEADER = "x-omp-pet-server";
 const STATE_PATH = "/state";
-const DEFAULT_SERVER_PORT = 23333;
-const SERVER_PORTS = [23333, 23334, 23335, 23336, 23337];
-const RUNTIME_CONFIG_PATH = path.join(os.homedir(), ".clawd", "runtime.json");
+const DEFAULT_SERVER_PORT = 23533;
+const SERVER_PORTS = [23533, 23534, 23535, 23536, 23537];
+const RUNTIME_CONFIG_PATH = path.join(os.homedir(), ".omp-pet", "runtime.json");
 const HTTP_TIMEOUT_MS = 150;
 const PROCESS_METADATA_TTL_MS = 2000;
 

@@ -2,12 +2,8 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
 
 const createFloatingWindowRuntime = require("../src/floating-window-runtime");
-
-const SRC_DIR = path.join(__dirname, "..", "src");
 
 function makeWindow(label, calls, destroyed = false) {
   return {
@@ -18,20 +14,12 @@ function makeWindow(label, calls, destroyed = false) {
 }
 
 describe("floating-window-runtime", () => {
-  it("keeps floating bubble coordination out of main", () => {
-    const mainSource = fs.readFileSync(path.join(SRC_DIR, "main.js"), "utf8");
-
-    assert.match(mainSource, /createFloatingWindowRuntime/);
-    assert.ok(!mainSource.includes("if (pendingPermissions.length) repositionBubbles();"));
-  });
-
-  it("repositions permission bubbles only when pending entries exist and always repositions update bubble", () => {
+  it("repositions permission bubbles only when pending entries exist", () => {
     const calls = [];
     const pending = [];
     const runtime = createFloatingWindowRuntime({
       getPendingPermissions: () => pending,
       repositionPermissionBubbles: () => calls.push("permission"),
-      repositionUpdateBubble: () => calls.push("update"),
       repositionQuotaRing: () => calls.push("ring"),
     });
 
@@ -39,22 +27,21 @@ describe("floating-window-runtime", () => {
     pending.push({ bubble: {} });
     runtime.repositionFloatingBubbles();
 
-    assert.deepStrictEqual(calls, ["update", "ring", "permission", "update", "ring"]);
+    assert.deepStrictEqual(calls, ["ring", "permission", "ring"]);
   });
 
-  it("keeps anchored surface ordering as HUD first, then permission/update bubbles", () => {
+  it("keeps anchored surface ordering as HUD first, then dependent bubbles", () => {
     const calls = [];
     const runtime = createFloatingWindowRuntime({
       getPendingPermissions: () => [{ bubble: {} }],
       repositionSessionHud: () => calls.push("hud"),
       repositionPermissionBubbles: () => calls.push("permission"),
-      repositionUpdateBubble: () => calls.push("update"),
       repositionQuotaRing: () => calls.push("ring"),
     });
 
     runtime.repositionAnchoredSurfaces();
 
-    assert.deepStrictEqual(calls, ["hud", "permission", "update", "ring"]);
+    assert.deepStrictEqual(calls, ["hud", "permission", "ring"]);
   });
 
   it("syncs Session HUD visibility before repositioning dependent bubbles", () => {
@@ -63,116 +50,41 @@ describe("floating-window-runtime", () => {
       getPendingPermissions: () => [{ bubble: {} }],
       syncSessionHudVisibility: () => calls.push("syncHud"),
       repositionPermissionBubbles: () => calls.push("permission"),
-      repositionUpdateBubble: () => calls.push("update"),
       repositionQuotaRing: () => calls.push("ring"),
     });
 
     runtime.syncSessionHudVisibilityAndBubbles();
 
-    assert.deepStrictEqual(calls, ["syncHud", "permission", "update", "ring"]);
+    assert.deepStrictEqual(calls, ["syncHud", "permission", "ring"]);
   });
 
-  it("restores live permission bubbles and update bubble visibility when the pet is shown", () => {
+  it("shows and hides only live permission bubbles with the pet", () => {
     const calls = [];
     const live = makeWindow("live", calls);
     const destroyed = makeWindow("destroyed", calls, true);
     const runtime = createFloatingWindowRuntime({
       getPendingPermissions: () => [{ bubble: live }, { bubble: destroyed }, { bubble: null }],
       keepOutOfTaskbar: (win) => calls.push(["taskbar", win === live ? "live" : "other"]),
-      syncUpdateBubbleVisibility: (hidden) => calls.push(["syncUpdate", hidden]),
     });
 
     runtime.showFloatingSurfacesForPet();
+    runtime.hideFloatingSurfacesForPet();
 
     assert.deepStrictEqual(calls, [
       ["show", "live"],
       ["taskbar", "live"],
-      ["syncUpdate", false],
-    ]);
-  });
-
-  it("hides live permission bubbles and suspends the update bubble when the pet is hidden", () => {
-    const calls = [];
-    const live = makeWindow("live", calls);
-    const destroyed = makeWindow("destroyed", calls, true);
-    const runtime = createFloatingWindowRuntime({
-      getPendingPermissions: () => [{ bubble: live }, { bubble: destroyed }, { bubble: null }],
-      suspendUpdateBubbleForPet: () => calls.push(["suspendUpdate"]),
-    });
-
-    runtime.hideFloatingSurfacesForPet();
-
-    assert.deepStrictEqual(calls, [
       ["hide", "live"],
-      ["suspendUpdate"],
     ]);
   });
 
-  it("delegates pet hide/show to the permission presentation owner when provided", () => {
-    const calls = [];
-    const live = makeWindow("legacy", calls);
-    const runtime = createFloatingWindowRuntime({
-      getPendingPermissions: () => [{ bubble: live }],
-      showPermissionSurfacesForPet: () => calls.push(["permission", "show"]),
-      hidePermissionSurfacesForPet: () => calls.push(["permission", "hide"]),
-      syncUpdateBubbleVisibility: (hidden) => calls.push(["syncUpdate", hidden]),
-      suspendUpdateBubbleForPet: () => calls.push(["suspendUpdate"]),
-    });
-
-    runtime.hideFloatingSurfacesForPet();
-    runtime.showFloatingSurfacesForPet();
-
-    assert.deepStrictEqual(calls, [
-      ["permission", "hide"],
-      ["suspendUpdate"],
-      ["permission", "show"],
-      ["syncUpdate", false],
-    ]);
-  });
-
-  it("coordinates fullscreen suppression without dismissing floating content", () => {
+  it("exit clears fullscreen suppression even when the new scope excludes approvals", () => {
     const calls = [];
     const runtime = createFloatingWindowRuntime({
       setPermissionSurfacesFullscreenSuppressed: (value) => calls.push(["permission", value]),
-      suspendUpdateBubbleForFullscreen: () => calls.push(["update", "suspend"]),
-      resumeUpdateBubbleFromFullscreen: () => calls.push(["update", "resume"]),
-      hideUpdateBubble: () => calls.push(["update", "dismiss"]),
-    });
-
-    runtime.setFullscreenSuppressedForPet(true);
-    runtime.setFullscreenSuppressedForPet(false);
-
-    assert.deepStrictEqual(calls, [
-      ["permission", true],
-      ["update", "suspend"],
-      ["permission", false],
-      ["update", "resume"],
-    ]);
-  });
-});
-
-describe("#1275: fullscreen suppression scope", () => {
-  it("#1275: pet-only entry keeps approvals visible while suspending the update bubble", () => {
-    const calls = [];
-    const runtime = createFloatingWindowRuntime({
-      setPermissionSurfacesFullscreenSuppressed: (value) => calls.push(["permission", value]),
-      suspendUpdateBubbleForFullscreen: () => calls.push(["update", "suspend"]),
     });
     runtime.setFullscreenSuppressedForPet(true, { includePermissionSurfaces: false });
-    assert.deepStrictEqual(calls, [["update", "suspend"]]);
-  });
-
-  it("#1275: exit clears approvals even when the new scope excludes them", () => {
-    const calls = [];
-    const runtime = createFloatingWindowRuntime({
-      setPermissionSurfacesFullscreenSuppressed: (value) => calls.push(["permission", value]),
-      suspendUpdateBubbleForFullscreen: () => calls.push(["update", "suspend"]),
-      resumeUpdateBubbleFromFullscreen: () => calls.push(["update", "resume"]),
-    });
-    runtime.setFullscreenSuppressedForPet(true);
-    assert.deepStrictEqual(calls, [["permission", true], ["update", "suspend"]]);
-    calls.length = 0;
+    assert.deepStrictEqual(calls, []);
     runtime.setFullscreenSuppressedForPet(false, { includePermissionSurfaces: false });
-    assert.deepStrictEqual(calls, [["permission", false], ["update", "resume"]]);
+    assert.deepStrictEqual(calls, [["permission", false]]);
   });
 });

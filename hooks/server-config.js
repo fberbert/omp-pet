@@ -3,9 +3,13 @@ const http = require("http");
 const os = require("os");
 const path = require("path");
 
-const CLAWD_SERVER_ID = "clawd-on-desk";
-const CLAWD_SERVER_HEADER = "x-clawd-server";
-const DEFAULT_SERVER_PORT = 23333;
+const CLAWD_SERVER_ID = "omp-pet";
+const CLAWD_SERVER_HEADER = "x-omp-pet-server";
+// Own range, disjoint from upstream Clawd on Desk (23333-23337), so both apps
+// can run side by side without answering each other's hooks.
+const DEFAULT_SERVER_PORT = 23533;
+// Per-user data directory under $HOME (runtime.json, roam area, port hint).
+const APP_DATA_DIR_NAME = ".omp-pet";
 const SERVER_PORT_COUNT = 5;
 const SERVER_PORTS = Array.from({ length: SERVER_PORT_COUNT }, (_, i) => DEFAULT_SERVER_PORT + i);
 const STATE_PATH = "/state";
@@ -49,12 +53,12 @@ function normalizeRemotePort(value) {
 
 function defaultRuntimeConfigPath(options = {}) {
   const homeDir = typeof options.homeDir === "string" ? options.homeDir : os.homedir();
-  return path.join(homeDir, ".clawd", "runtime.json");
+  return path.join(homeDir, APP_DATA_DIR_NAME, "runtime.json");
 }
 
 function defaultCodexAutoStartGatePath(options = {}) {
   const homeDir = typeof options.homeDir === "string" ? options.homeDir : os.homedir();
-  return path.join(homeDir, ".clawd", CODEX_AUTO_START_GATE_FILENAME);
+  return path.join(homeDir, APP_DATA_DIR_NAME, CODEX_AUTO_START_GATE_FILENAME);
 }
 
 function readCodexAutoStartGate(options = {}) {
@@ -185,7 +189,7 @@ function applySshRemoteFlag({ argv = process.argv, env = process.env, scriptDir 
   env.CLAWD_REMOTE_IDENTITY_PATH = path.join(scriptDir, REMOTE_IDENTITY_FILENAME);
   env.CLAWD_SSH_SECURE_MARKER_PATH = path.join(scriptDir, SSH_SECURE_MARKER_FILENAME);
   env.CLAWD_HOST_PREFIX_PATH = path.join(scriptDir, HOST_PREFIX_FILENAME);
-  env.CLAWD_REMOTE_LAST_LOG_PATH = path.join(homedir, ".clawd", "remote-last-error.log");
+  env.CLAWD_REMOTE_LAST_LOG_PATH = path.join(homedir, APP_DATA_DIR_NAME, "remote-last-error.log");
 }
 
 function isSshSecureMode(options = {}) {
@@ -1416,6 +1420,7 @@ async function resolveNodeBinAsync(options = {}) {
 }
 
 module.exports = {
+  APP_DATA_DIR_NAME,
   LOCAL_PERMISSION_PATH,
   normalizeLocalPort: normalizePort,
   resolveInstallServerPort,

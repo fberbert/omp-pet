@@ -1,4 +1,7 @@
 const { app, BrowserWindow, Notification, screen, ipcMain, globalShortcut, nativeTheme, dialog, shell, nativeImage, powerSaveBlocker, powerMonitor, clipboard, safeStorage, net } = require("electron");
+// Pin the per-user data directory (prefs, logs, single-instance lock) to one
+// name for both `npm start` and packaged builds, independent of productName.
+app.setPath("userData", require("path").join(app.getPath("appData"), "omp-pet"));
 const { maybeRunPackageKoffiSmoke } = require("./package-koffi-smoke");
 if (maybeRunPackageKoffiSmoke({ app, BrowserWindow })) {
   return;
@@ -157,8 +160,6 @@ const { createTelegramMigrationController } = require("./telegram-migration-cont
 const { createTelegramMigrationNudge } = require("./telegram-migration-nudge");
 const { createFeishuApprovalMigrationNudge } = require("./feishu-approval-migration-nudge");
 const { createTrayBalloonOwner } = require("./tray-balloon-owner");
-const initUpdateBubble = require("./update-bubble");
-const { registerUpdateBubbleIpc } = initUpdateBubble;
 const createSettingsAnimationOverridesMain = require("./settings-animation-overrides-main");
 const { registerSettingsAnimationOverridesIpc } = createSettingsAnimationOverridesMain;
 const createShortcutRuntime = require("./shortcut-runtime");
@@ -361,7 +362,7 @@ const loginItemHelpers = require("./login-item");
 const { writeCodexAutoStartGate } = require("../hooks/server-config");
 const { effectiveClaudeConfigDirs, claudeConfigDirKey } = require("../hooks/claude-config-dirs");
 const { createCodexAutoStartGateEvaluator } = require("./agent-gate");
-const PREFS_PATH = path.join(app.getPath("userData"), "clawd-prefs.json");
+const PREFS_PATH = path.join(app.getPath("userData"), "omp-pet-prefs.json");
 const _initialPrefsLoad = prefsModule.load(PREFS_PATH);
 // Recovery from readable invalid contents is writable only after the original
 // bytes are safely kept in .bak. That fallback is not user intent for this
@@ -892,7 +893,7 @@ function safeConsoleError(...args) {
   } catch (err) {
     try {
       const line = `${new Date().toISOString()} ${args.map((x) => String(x)).join(" ")}\n`;
-      fs.appendFileSync(path.join(app.getPath("userData"), "clawd-main.log"), line);
+      fs.appendFileSync(path.join(app.getPath("userData"), "omp-pet-main.log"), line);
     } catch {}
   }
 }
@@ -1887,10 +1888,6 @@ function playSound(name) {
   sendToRenderer("play-sound", { url, volume: soundVolume });
 }
 
-function resetSoundCooldown() {
-  lastSoundTime = 0;
-}
-
 function stopTrayFlash() {
   if (trayFlashTimer) {
     clearInterval(trayFlashTimer);
@@ -2106,7 +2103,6 @@ const topmostRuntime = createTopmostRuntime({
       ? permissionPresentationRuntime.getPermissionPresentationWindows()
       : pendingPermissions.map((entry) => entry && entry.bubble).filter(Boolean)
   ),
-  getUpdateBubbleWindow: () => _updateBubble.getBubbleWindow(),
   getSessionHudWindow: () => getSessionHudWindow(),
   getQuotaRingWindow: () => getQuotaRingWindow(),
   getContextMenuOwner: () => contextMenuOwner,
@@ -2263,9 +2259,6 @@ const _permCtx = {
   reportShortcutFailure: (actionId, reason) => shortcutRuntime.reportFailure(actionId, reason),
   clearShortcutFailure: (actionId) => shortcutRuntime.clearFailure(actionId),
   repositionFloatingBubbles: () => repositionFloatingBubbles(),
-  repositionUpdateBubble: () => repositionUpdateBubble(),
-  // permission.js still calls this legacy-shaped callback after the update
-  // bubble has moved; only Orbit needs the second geometry pass here.
   repositionSessionHud: () => repositionQuotaRing(),
   getTelegramApprovalClient: () => getTelegramApprovalClient(),
   getRemoteApprovalClients: () => {
@@ -2318,7 +2311,6 @@ _codexRemoteFallbackNotice = createCodexRemoteFallbackNotice({
 });
 const pendingPermissions = _perm.pendingPermissions;
 let permDebugLog = null; // set after app.whenReady()
-let updateDebugLog = null; // set after app.whenReady()
 let sessionDebugLog = null; // set after app.whenReady()
 let focusDebugLog = null; // set after app.whenReady()
 let recordWindowsProcessChainShadow = () => false;
@@ -2361,45 +2353,12 @@ function getPendingPermissionFocusEntry(sessionId) {
   return focusEntry;
 }
 
-const _updateBubbleCtx = {
-  get win() { return win; },
-  get bubbleFollowPet() { return bubbleFollowPet; },
-  get bubbleFollowPreference() { return bubbleFollowPreference; },
-  get bubbleFixedCorner() { return bubbleFixedCorner; },
-  get petHidden() { return petWindowRuntime.isPetEffectivelyHidden(); },
-  getBubblePolicy: getRuntimeBubblePolicy,
-  getPetWindowBounds,
-  getNearestWorkArea,
-  getBubbleWorkArea,
-  getUpdateBubbleAnchorRect,
-  getHitRectScreen,
-  getPermissionBubbleBounds: () => _perm.getVisibleBubbleBounds(),
-  getSessionHudBounds: () => getVisibleSessionHudBounds(),
-  getTextScale: (workArea) => getTextScaleForBubbleWorkArea(workArea),
-  guardAlwaysOnTop,
-  reapplyMacVisibility,
-  repositionQuotaRing: () => repositionQuotaRing(),
-  clipboard,
-};
-const _updateBubble = initUpdateBubble(_updateBubbleCtx);
-const {
-  showUpdateBubble,
-  hideUpdateBubble,
-  repositionUpdateBubble,
-  syncVisibility: syncUpdateBubbleVisibility,
-} = _updateBubble;
-
 floatingWindowRuntime = createFloatingWindowRuntime({
   getPendingPermissions: () => pendingPermissions,
   repositionPermissionBubbles: () => repositionBubbles(),
-  repositionUpdateBubble: () => repositionUpdateBubble(),
   repositionSessionHud: () => repositionSessionHud(),
   repositionQuotaRing: () => repositionQuotaRing(),
   syncSessionHudVisibility: () => syncSessionHudVisibility(),
-  syncUpdateBubbleVisibility: (hiddenOverride) => syncUpdateBubbleVisibility(hiddenOverride),
-  suspendUpdateBubbleForPet: () => _updateBubble.suspendForPetHidden(),
-  suspendUpdateBubbleForFullscreen: () => _updateBubble.suspendForFullscreen(),
-  resumeUpdateBubbleFromFullscreen: () => _updateBubble.resumeFromFullscreen(),
   keepOutOfTaskbar,
   showPermissionSurfacesForPet: () => _perm.showPermissionSurfacesForPet(),
   hidePermissionSurfacesForPet: () => _perm.hidePermissionSurfacesForPet(),
@@ -2430,11 +2389,6 @@ let showDashboard = () => {};
 let showQuickSelect = () => {};
 let broadcastDashboardSessionSnapshot = () => {};
 let sendDashboardI18n = () => {};
-
-// Forward hook for the #329 updater scheduler. State/mini ctxs reference
-// this via notifyUpdaterSilentExit; the actual implementation is wired
-// after the updater module is constructed below.
-let notifyUpdaterSilentExit = () => {};
 
 // #509: user-selected default idle visual, resolved against the live active
 // theme so reads never go stale across theme switches. Returns null when
@@ -2525,7 +2479,6 @@ const _stateCtx = {
   set forceEyeResend(v) { setForceEyeResend(v); },
   get mouseStillSince() { return _tick ? _tick._mouseStillSince : Date.now(); },
   get pendingPermissions() { return pendingPermissions; },
-  notifyUpdaterSilentExit: () => notifyUpdaterSilentExit(),
   sendToRenderer,
   sendToHitWin,
   syncHitWin,
@@ -2793,7 +2746,6 @@ function releasePowerSaveBlocker() {
 
 // ── Hit-test: SVG bounding box → screen coordinates ──
 function getHitRectScreen(bounds) { return petWindowRuntime.getHitRectScreen(bounds); }
-function getUpdateBubbleAnchorRect(bounds) { return petWindowRuntime.getUpdateBubbleAnchorRect(bounds); }
 function getSessionHudAnchorRect(bounds) { return petWindowRuntime.getSessionHudAnchorRect(bounds); }
 
 // ── Main tick — delegated to src/tick.js ──
@@ -3135,7 +3087,6 @@ const _sessionHud = require("./session-hud")({
   getNearestWorkArea,
   getTextScale: () => getTextScaleForPetWindows(),
   getPermissionBubbleBounds: () => _perm.getVisibleBubbleBounds(),
-  getUpdateBubbleWindow: () => _updateBubble.getBubbleWindow(),
   guardAlwaysOnTop,
   reapplyMacVisibility,
   onReservedOffsetChange: () => repositionFloatingBubbles(),
@@ -3370,12 +3321,6 @@ function enqueueMobilePreviewReconcile(snapshot = _settingsController.getSnapsho
   // Synchronous facade: settings-effect-router must never receive a rejecting
   // Promise because safeCall only contains synchronous throws.
   return undefined;
-}
-
-function updateLog(msg) {
-  if (!updateDebugLog) return;
-  const { rotatedAppend } = require("./log-rotate");
-  rotatedAppend(updateDebugLog, `[${new Date().toISOString()}] ${msg}\n`);
 }
 
 function sessionLog(msg) {
@@ -4831,8 +4776,6 @@ const _menuCtx = {
   getMiniMode: () => _mini.getMiniMode(),
   getMiniTransitioning: () => _mini.getMiniTransitioning(),
   miniHandleResize: (sizeKey) => _mini.handleResize(sizeKey),
-  checkForUpdates: (...args) => checkForUpdates(...args),
-  getUpdateMenuItem: () => getUpdateMenuItem(),
   openDashboard: () => showDashboard(),
   launchClaudeSession: (mode, cwd, sessionId) => launchClaudeSession(mode, cwd, sessionId),
   newSessionWithFolder: async (t) => {
@@ -5041,8 +4984,6 @@ const settingsEffectRouter = createSettingsEffectRouter({
   resyncKiroDesktopReminderCards: () => agentRuntime?.resyncKiroDesktopReminderCards(),
   refreshPassiveNotifyAutoClose: () => callRuntimeMethod(_perm, "refreshPassiveNotifyAutoClose"),
   refreshPermissionAutoCloseForPolicy: () => callRuntimeMethod(_perm, "refreshPermissionAutoCloseForPolicy"),
-  hideUpdateBubbleForPolicy: () => callRuntimeMethod(_updateBubble, "hideForPolicy"),
-  refreshUpdateBubbleAutoClose: () => callRuntimeMethod(_updateBubble, "refreshAutoCloseForPolicy"),
   repositionFloatingBubbles,
   applyTextScale: () => applyTextScaleNow(),
   syncSessionHudVisibility: () => syncSessionHudVisibility(),
@@ -5171,63 +5112,6 @@ registerSettingsAnimationOverridesIpc({
   ipcMain,
   animationOverridesMain,
 });
-// ── Auto-updater — delegated to src/updater.js ──
-const _updaterCtx = {
-  get doNotDisturb() { return doNotDisturb; },
-  get miniMode() { return _mini.getMiniMode(); },
-  get lang() { return lang; },
-  t, rebuildAllMenus, updateLog,
-  showUpdateBubble: (payload) => showUpdateBubble(payload),
-  hideUpdateBubble: () => hideUpdateBubble(),
-  setUpdateVisualState: (kind) => _state.setUpdateVisualState(kind),
-  applyState: (state, svgOverride) => applyState(state, svgOverride),
-  resolveDisplayState: () => resolveDisplayState(),
-  getSvgOverride: (state) => getSvgOverride(state),
-  resetSoundCooldown: () => resetSoundCooldown(),
-  onUpdateCheckStatusChanged: (snapshot) => {
-    broadcastSettingsWindow("settings:update-check-status", snapshot);
-  },
-  // #329 scheduler / pending-state prefs IO. Reads go straight to the
-  // settingsController snapshot; writes go through applyUpdate so the
-  // single-writer architecture (settings-controller.js) is honored.
-  getUpdatePref: (key) => {
-    try { return _settingsController.get(key); } catch { return undefined; }
-  },
-  setUpdatePref: (key, value) => {
-    try { _settingsController.applyUpdate(key, value); } catch {}
-  },
-};
-const _updater = require("./updater")(_updaterCtx);
-const {
-  setupAutoUpdater,
-  checkForUpdates,
-  getUpdateCheckSnapshot,
-  clearUpdateError,
-  getUpdateMenuItem,
-  getUpdateMenuLabel,
-  reconcilePendingOnStartup,
-  onSilentModeExit: updaterOnSilentModeExit,
-  startUpdateScheduler,
-  stopUpdateScheduler,
-} = _updater;
-// Now that updater is constructed, point the forward hook at it.
-notifyUpdaterSilentExit = () => { try { updaterOnSilentModeExit(); } catch {} };
-
-// #329: react to the autoUpdateCheck toggle in real time so users see
-// the scheduler start/stop without restarting Clawd.
-try {
-  _settingsController.subscribeKey("autoUpdateCheck", (value) => {
-    try {
-      if (value === false) stopUpdateScheduler();
-      else startUpdateScheduler();
-    } catch (err) {
-      updateLog(`scheduler toggle failed: ${err && err.message}`);
-    }
-  });
-} catch (err) {
-  updateLog(`scheduler subscribeKey failed: ${err && err.message}`);
-}
-
 // ── Doctor tab IPC ──
 const { registerDoctorIpc } = require("./doctor-ipc");
 let _remoteSshRuntime = null;
@@ -5395,13 +5279,6 @@ const settingsIpcRuntime = registerSettingsIpc({
   getHookServerPort: () => getHookServerPort(),
   getRecentHookEvents: (options) => _server.getRecentHookEvents(options),
   kimiQuotaRuntime: _kimiQuotaRuntime,
-  checkForUpdates,
-  getUpdateCheckSnapshot,
-  clearUpdateError,
-  copyUpdateError: (copyText) => {
-    clipboard.writeText(copyText);
-    return { status: "ok" };
-  },
   showTutorial: () => {
     _tutorial.open();
     return { status: "ok" };
@@ -5669,11 +5546,6 @@ function createWindow() {
     permission: _perm,
   });
 
-  registerUpdateBubbleIpc({
-    ipcMain,
-    updateBubble: _updateBubble,
-  });
-
   initFocusHelper();
   startMainTick();
   // Silently connect any remote SSH profile flagged "connect on launch" once
@@ -5864,7 +5736,6 @@ const _miniCtx = {
   get mouseOverPet() { return mouseOverPet; },
   get dragLocked() { return petWindowRuntime.isDragLocked(); },
   get menuOpen() { return menuOpen; },
-  notifyUpdaterSilentExit: () => notifyUpdaterSilentExit(),
   SIZES,
   getCurrentPixelSize,
   getEffectiveCurrentPixelSize,
@@ -5975,7 +5846,7 @@ const _roamCtx = {
   ),
   hasVisiblePermissionBubbles: () => _perm.hasVisiblePermissionBubbles(),
   // #810: optional roam fence — validated async loader for
-  // ~/.clawd/roam-area.json; roam reads its in-memory cache at target pick
+  // ~/.omp-pet/roam-area.json; roam reads its in-memory cache at target pick
   // time and kicks refresh() when scheduling walks (see src/roam-fence.js).
   roamFence: roamFenceLoader,
 };
@@ -6294,7 +6165,6 @@ if (!gotTheLock) {
     // Explicit Remote SSH status/actions and connect-on-launch profiles load it
     // through the single-flight provider injected into remote-ssh-ipc above.
     permDebugLog = path.join(app.getPath("userData"), "permission-debug.log");
-    updateDebugLog = path.join(app.getPath("userData"), "update-debug.log");
     sessionDebugLog = path.join(app.getPath("userData"), "session-debug.log");
     focusDebugLog = path.join(app.getPath("userData"), "focus-debug.log");
     const { createWindowsProcessChainShadowLogger } = require("./windows-process-chain-shadow-log");
@@ -6420,15 +6290,6 @@ if (!gotTheLock) {
       console.warn("Clawd: failed to auto-install terminal-focus extension:", err.message);
     }
 
-    // Auto-updater: setup event handlers (user triggers check via tray menu)
-    setupAutoUpdater();
-    // #329: reconcile any stale pending-update entry (e.g. user installed
-    // out-of-band on macOS) and start the background scheduler. Both are
-    // safe in dev mode — reconcile is a no-op when nothing is pending,
-    // and startUpdateScheduler() short-circuits on !app.isPackaged.
-    try { reconcilePendingOnStartup(); } catch (err) { updateLog(`reconcile failed: ${err && err.message}`); }
-    try { startUpdateScheduler(); } catch (err) { updateLog(`scheduler start failed: ${err && err.message}`); }
-
     // Deferred so any startup Codex hook sync has settled before we read the
     // on-disk hook state; unref'd so it never blocks a fast quit.
     const codexHookNudgeTimer = setTimeout(maybeNudgeCodexHookHealth, 4000);
@@ -6481,7 +6342,6 @@ if (!gotTheLock) {
     _perm.cleanup();
     _server.cleanup();
     if (_lanWss) _lanWss.cleanup();
-    _updateBubble.cleanup();
     if (displayedVisualProjection) displayedVisualProjection.dispose();
     try { recapRuntime.dispose(); } catch {}
     _state.cleanup();

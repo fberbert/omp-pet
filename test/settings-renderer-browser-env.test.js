@@ -41,44 +41,6 @@ const TAB_MODULES = [
   path.join(SRC_DIR, "settings-tab-recap.js"),
   path.join(SRC_DIR, "settings-tab-about.js"),
 ];
-const VERIFIED_GITHUB_CONTRIBUTORS = [
-  "Bynlk",
-  "zxypro1",
-  "NeroAyase",
-  "divergentD",
-  "Ne9roni",
-  "jiaxuan1101",
-  "kkirito16",
-  "200780381",
-  "Dxy2326",
-  "lurui1997",
-  "JesmonX",
-  "chen86860",
-  "LinYsssss",
-  "He-wei-gui",
-  "liugou27",
-  "YOOGOMJA",
-  "anupamme",
-  "anthonyonazure",
-  "weed33834",
-  "arismarioneves",
-  "Zamaniego",
-  "CheeseAgent",
-  "RS-Nocsi",
-  "Cobb04",
-  "TalexDreamSoul",
-  "FuZoe",
-  "undefined-moe",
-  "pu-1205",
-  "Free-LZJ",
-  "easyhak",
-  "jlimcode",
-  "xfurqan0",
-  "brantshin",
-  "mantertius",
-  "VonSdite",
-  "sunnyswag",
-];
 
 function createDeferred() {
   const deferred = {};
@@ -4686,51 +4648,6 @@ describe("settings renderer browser environment", () => {
     assert.equal(addCall.payload.connectOnLaunch, true);
   });
 
-  it("keeps About contributors visible and includes verified GitHub contributors", () => {
-    const aboutSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-about.js"), "utf8");
-    const coreSource = fs.readFileSync(SETTINGS_UI_CORE, "utf8");
-    const css = fs.readFileSync(SETTINGS_CSS, "utf8");
-    const i18nBundle = loadSettingsI18nBundleForTest();
-
-    assert.ok(!aboutSource.includes("about-contributors-toggle"));
-    assert.ok(!aboutSource.includes("contributorsExpanded"));
-    assert.ok(!coreSource.includes("contributorsExpanded"));
-    assert.ok(!css.includes(".about-contributors-list.collapsed"));
-
-    for (const login of VERIFIED_GITHUB_CONTRIBUTORS) {
-      assert.ok(i18nBundle.CONTRIBUTORS.includes(login), `About contributors should include ${login}`);
-    }
-  });
-
-  it("updates the About auto-update switch in place and blocks rapid duplicate saves", async () => {
-    const save = createDeferred();
-    const harness = loadAboutTabForTest({
-      snapshot: { autoUpdateCheck: true },
-      update: () => save.promise,
-    });
-    await new Promise((resolve) => setImmediate(resolve));
-
-    const autoUpdateSwitch = harness.content.querySelector(".about-auto-update-switch");
-    assert.ok(autoUpdateSwitch);
-    autoUpdateSwitch.dispatchEvent({ type: "click" });
-    autoUpdateSwitch.dispatchEvent({ type: "click" });
-    assert.deepStrictEqual(harness.updateCalls, [{ key: "autoUpdateCheck", value: false }]);
-    assert.equal(autoUpdateSwitch.classList.contains("pending"), true);
-    assert.equal(autoUpdateSwitch.getAttribute("aria-busy"), "true");
-    assert.equal(autoUpdateSwitch.getAttribute("aria-disabled"), "false");
-    assert.equal(autoUpdateSwitch.tabIndex, 0);
-
-    save.resolve({ status: "ok" });
-    await new Promise((resolve) => setImmediate(resolve));
-    assert.equal(autoUpdateSwitch.classList.contains("pending"), false);
-    assert.equal(autoUpdateSwitch.getAttribute("aria-checked"), "false");
-
-    harness.core.state.snapshot.autoUpdateCheck = true;
-    assert.equal(harness.core.tabs.about.patchInPlace({ autoUpdateCheck: true }), true);
-    assert.strictEqual(harness.content.querySelector(".about-auto-update-switch"), autoUpdateSwitch);
-    assert.equal(autoUpdateSwitch.getAttribute("aria-checked"), "true");
-  });
-
   it("rolls a cancelled consent switch back without a failure toast", async () => {
     const body = new FakeElement("body");
     const core = loadSettingsCoreForTest({}, { document: {
@@ -4753,79 +4670,6 @@ describe("settings renderer browser environment", () => {
     assert.equal(sw.getAttribute("aria-checked"), "false");
     assert.equal(sw.classList.contains("pending"), false);
     assert.equal(transient, null);
-  });
-
-  it("rolls the About auto-update switch back when persistence fails", async () => {
-    const harness = loadAboutTabForTest({
-      snapshot: { autoUpdateCheck: true },
-      update: () => Promise.resolve({ status: "error", message: "disk full" }),
-    });
-    await new Promise((resolve) => setImmediate(resolve));
-    const autoUpdateSwitch = harness.content.querySelector(".about-auto-update-switch");
-    autoUpdateSwitch.dispatchEvent({ type: "click" });
-    await new Promise((resolve) => setImmediate(resolve));
-
-    assert.equal(autoUpdateSwitch.getAttribute("aria-checked"), "true");
-    assert.equal(autoUpdateSwitch.classList.contains("pending"), false);
-    assert.equal(harness.toasts.length, 1);
-    assert.equal(harness.toasts[0].options.error, true);
-  });
-
-  it("shows, copies, patches, and dismisses structured update errors in About", async () => {
-    const copied = [];
-    let clearCalls = 0;
-    const report = {
-      code: "DNS_FAILED",
-      phase: "release-lookup",
-      title: "Update Error",
-      message: "The update service address could not be resolved.",
-      nextStep: "Check DNS and proxy settings.",
-      detail: "getaddrinfo ENOTFOUND api.github.com",
-      copyText: "DNS_FAILED\ngetaddrinfo ENOTFOUND api.github.com",
-    };
-    const harness = loadAboutTabForTest({
-      aboutInfo: { updateCheckSnapshot: { state: "error", error: report } },
-      writeClipboard: async (value) => copied.push(value),
-      clearUpdateError: async () => {
-        clearCalls++;
-        return { state: "idle" };
-      },
-    });
-    await new Promise((resolve) => setImmediate(resolve));
-
-    const card = harness.content.querySelector(".about-update-error-card");
-    assert.ok(card);
-    assert.equal(card.getAttribute("role"), "alert");
-    assert.match(collectText(card), /DNS_FAILED/);
-    assert.match(collectText(card), /Check DNS and proxy settings/);
-    const detailsTrigger = card.querySelector(".about-update-error-details-trigger");
-    const detailsBody = card.querySelector(".about-update-error-details-body");
-    assert.equal(detailsTrigger.tagName, "BUTTON");
-    assert.equal(detailsTrigger.getAttribute("aria-expanded"), "false");
-    assert.equal(detailsBody.getAttribute("aria-hidden"), "true");
-    detailsTrigger.click();
-    assert.equal(detailsTrigger.getAttribute("aria-expanded"), "true");
-    assert.equal(detailsBody.getAttribute("aria-hidden"), "false");
-
-    const copyButton = card.querySelector(".about-update-error-copy");
-    copyButton.dispatchEvent({ type: "click" });
-    await new Promise((resolve) => setImmediate(resolve));
-    assert.deepStrictEqual(copied, [report.copyText]);
-    assert.equal(copyButton.textContent, "aboutUpdateErrorCopied");
-
-    assert.equal(harness.core.tabs.about.applyUpdateCheckStatus({ state: "checking" }), true);
-    detailsTrigger.click();
-    assert.equal(
-      detailsTrigger.getAttribute("aria-expanded"),
-      "true",
-      "replacing the error card must dispose the detached disclosure trigger",
-    );
-    assert.equal(harness.content.querySelector(".about-check-update-btn").disabled, true);
-    harness.core.tabs.about.applyUpdateCheckStatus({ state: "error", error: report });
-    harness.content.querySelector(".about-update-error-close").dispatchEvent({ type: "click" });
-    await new Promise((resolve) => setImmediate(resolve));
-    assert.equal(clearCalls, 1);
-    assert.strictEqual(harness.content.querySelector(".about-update-error-card"), null);
   });
 
   it("keeps every Telegram retirement gate string in all supported languages", () => {
@@ -15403,11 +15247,9 @@ describe("settings renderer browser environment", () => {
     const coreSource = fs.readFileSync(SETTINGS_UI_CORE, "utf8");
     const doctorSource = fs.readFileSync(SETTINGS_DOCTOR_MODAL, "utf8");
     const animSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-anim-overrides.js"), "utf8");
-    const aboutSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-about.js"), "utf8");
     assert.ok(coreSource.includes("const controller = attachSettingsDisclosure({"));
     assert.ok(doctorSource.includes("core.helpers.attachSettingsDisclosure({"));
     assert.ok(animSource.includes("helpers.attachSettingsDisclosure({"));
-    assert.ok(aboutSource.includes("helpers.attachSettingsDisclosure({"));
     const rendererSources = fs.readdirSync(SRC_DIR)
       .filter((name) => /^settings(?:-.+)?\.js$/.test(name) || name === "settings.html")
       .map((name) => ({ name, source: fs.readFileSync(path.join(SRC_DIR, name), "utf8") }));

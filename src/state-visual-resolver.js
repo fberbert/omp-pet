@@ -212,9 +212,6 @@ function getWinningSessionDisplayHint(sessions, targetState, displayHintMap = {}
 }
 
 function getSvgOverride(state, options = {}) {
-  if (options.updateVisualState && state === options.updateVisualState && options.updateVisualSvgOverride) {
-    return options.updateVisualSvgOverride;
-  }
   // #509: a user-selected default idle visual wins over the follow sprite.
   if (state === "idle") return options.idleDefaultVisual || options.idleFollowSvg;
   if (state === "working") {

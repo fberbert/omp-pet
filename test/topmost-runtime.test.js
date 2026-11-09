@@ -108,7 +108,7 @@ describe("issue #1282: stand down for foreground screen capture", () => {
     const state = { fullscreen: "4242", captureOverlay: true, overlay: true, alwaysOnTop: true, autoHide: false, ...overrides };
     const timers = makeTimers();
     const windows = Object.fromEntries(
-      ["pet", "hit", "permission", "update", "hud", "quota"].map((name) => [name, new FakeWindow()])
+      ["pet", "hit", "permission", "hud", "quota"].map((name) => [name, new FakeWindow()])
     );
     const focusable = [];
     const hidden = [];
@@ -121,7 +121,6 @@ describe("issue #1282: stand down for foreground screen capture", () => {
       getWin: () => windows.pet,
       getHitWin: () => windows.hit,
       getPendingPermissions: () => [{ bubble: windows.permission }],
-      getUpdateBubbleWindow: () => windows.update,
       getSessionHudWindow: () => windows.hud,
       getQuotaRingWindow: () => windows.quota,
       isForegroundFullscreen: () => state.fullscreen,
@@ -154,7 +153,7 @@ describe("issue #1282: stand down for foreground screen capture", () => {
     fixture.runtime.startFocusablePoll();
     fixture.watchdogTick();
 
-    for (const name of ["pet", "hit", "update", "hud", "quota"]) {
+    for (const name of ["pet", "hit", "hud", "quota"]) {
       assert.deepStrictEqual(fixture.windows[name].calls, [["setSkipTaskbar", true]], name);
     }
     assert.deepStrictEqual(fixture.windows.permission.calls, [
@@ -198,7 +197,7 @@ describe("issue #1282: stand down for foreground screen capture", () => {
     for (const win of [windows.pet, windows.hit]) {
       assert.deepStrictEqual(win.calls, [["setAlwaysOnTop", false], ["setSkipTaskbar", true]]);
     }
-    for (const name of ["update", "hud", "quota"]) {
+    for (const name of ["hud", "quota"]) {
       assert.deepStrictEqual(windows[name].calls, [["setSkipTaskbar", true]], name);
     }
   });
@@ -206,7 +205,7 @@ describe("issue #1282: stand down for foreground screen capture", () => {
   it("issue #1282: floating surfaces skip capture even with fullscreen overlay disabled", () => {
     const { windows, watchdogTick } = makeCaptureRuntime({ overlay: false });
     watchdogTick();
-    for (const name of ["pet", "hit", "update", "hud", "quota"]) {
+    for (const name of ["pet", "hit", "hud", "quota"]) {
       assert.deepStrictEqual(windows[name].calls, [["setSkipTaskbar", true]], name);
     }
   });
@@ -593,7 +592,6 @@ describe("topmost runtime Windows recovery", () => {
     const hitWin = new FakeWindow();
     const permissionBubble = new FakeWindow();
     const hiddenPermissionBubble = new FakeWindow({ visible: false });
-    const updateBubble = new FakeWindow();
     const sessionHud = new FakeWindow();
     const quotaRing = new FakeWindow();
     const contextMenuOwner = new FakeWindow();
@@ -606,7 +604,6 @@ describe("topmost runtime Windows recovery", () => {
         { bubble: permissionBubble },
         { bubble: hiddenPermissionBubble },
       ],
-      getUpdateBubbleWindow: () => updateBubble,
       getSessionHudWindow: () => sessionHud,
       getQuotaRingWindow: () => quotaRing,
       getContextMenuOwner: () => contextMenuOwner,
@@ -622,12 +619,12 @@ describe("topmost runtime Windows recovery", () => {
     assert.strictEqual(timers.intervals[0].ms, createTopmostRuntime.TOPMOST_WATCHDOG_MS);
     timers.intervals[0].fn();
 
-    for (const window of [win, hitWin, permissionBubble, updateBubble, sessionHud, quotaRing]) {
+    for (const window of [win, hitWin, permissionBubble, sessionHud, quotaRing]) {
       assert.deepStrictEqual(window.calls, [["setAlwaysOnTop", true, createTopmostRuntime.WIN_TOPMOST_LEVEL]]);
     }
     assert.deepStrictEqual(hiddenPermissionBubble.calls, []);
     assert.deepStrictEqual(contextMenuOwner.calls, []);
-    assert.deepStrictEqual(kept, [win, hitWin, permissionBubble, updateBubble, sessionHud, quotaRing, contextMenuOwner]);
+    assert.deepStrictEqual(kept, [win, hitWin, permissionBubble, sessionHud, quotaRing, contextMenuOwner]);
 
     runtime.stopTopmostWatchdog();
     assert.strictEqual(timers.intervals[0].cleared, true);
@@ -1131,45 +1128,6 @@ describe("topmost runtime macOS visibility", () => {
       ["setAlwaysOnTop", true, createTopmostRuntime.MAC_TOPMOST_LEVEL],
     ]);
     assert.deepStrictEqual(stationaryCalls, [win]);
-  });
-
-  it("reapplies native visibility first and falls back to Electron cross-space visibility", () => {
-    const win = new FakeWindow();
-    const hitWin = new FakeWindow();
-    const permissionBubble = new FakeWindow();
-    const updateBubble = new FakeWindow();
-    const sessionHud = new FakeWindow();
-    const quotaRing = new FakeWindow();
-    const contextMenuOwner = new FakeWindow();
-    const stationaryCalls = [];
-    const runtime = createTopmostRuntime({
-      isMac: true,
-      getWin: () => win,
-      getHitWin: () => hitWin,
-      getPendingPermissions: () => [{ bubble: permissionBubble }],
-      getUpdateBubbleWindow: () => updateBubble,
-      getSessionHudWindow: () => sessionHud,
-      getQuotaRingWindow: () => quotaRing,
-      getContextMenuOwner: () => contextMenuOwner,
-      getShowDock: () => false,
-      applyStationaryCollectionBehavior: (window) => {
-        stationaryCalls.push(window);
-        return false;
-      },
-    });
-
-    runtime.reapplyMacVisibility();
-
-    for (const window of [win, hitWin, permissionBubble, updateBubble, sessionHud, quotaRing, contextMenuOwner]) {
-      assert.deepStrictEqual(window.calls, [
-        ["setAlwaysOnTop", true, createTopmostRuntime.MAC_TOPMOST_LEVEL],
-        ["setVisibleOnAllWorkspaces", true, {
-          visibleOnFullScreen: true,
-          skipTransformProcessType: true,
-        }],
-      ]);
-    }
-    assert.strictEqual(stationaryCalls.length, 14);
   });
 
   it("reasserts only presentation-visible permission windows", () => {

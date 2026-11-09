@@ -355,10 +355,6 @@ function registerSettingsIpc(options = {}) {
     : require("./agent-installation-detector").refreshWslDetection;
   const getHookServerPort = options.getHookServerPort || (() => null);
   const getRecentHookEvents = options.getRecentHookEvents || (() => []);
-  const checkForUpdates = options.checkForUpdates || (() => {});
-  const getUpdateCheckSnapshot = options.getUpdateCheckSnapshot || (() => ({ state: "idle" }));
-  const clearUpdateError = options.clearUpdateError || (() => ({ state: "idle" }));
-  const copyUpdateError = options.copyUpdateError || (() => ({ status: "error", message: "clipboard unavailable" }));
   const getHardwareAccelerationDisabledAtStartup =
     options.getHardwareAccelerationDisabledAtStartup || (() => false);
   const getPetAlwaysOnTopAtStartup = options.getPetAlwaysOnTopAtStartup || (() => true);
@@ -1156,41 +1152,14 @@ function registerSettingsIpc(options = {}) {
     } catch (err) {
       console.warn("Clawd: failed to read about hero SVG:", err && err.message);
     }
-    let pendingUpdateVersion = "";
-    let autoUpdateCheck = true;
-    try {
-      pendingUpdateVersion = String(settingsController.get("pendingUpdateVersion") || "");
-      autoUpdateCheck = settingsController.get("autoUpdateCheck") !== false;
-    } catch {}
     return {
       version: app.getVersion(),
-      repoUrl: "https://github.com/rullerzhou-afk/clawd-on-desk",
+      repoUrl: "https://github.com/fberbert/omp-pet",
       license: "AGPL-3.0",
-      copyright: "\u00a9 2026 Ruller_Lulu",
-      authorName: "Ruller_Lulu / \u9e7f\u9e7f",
-      authorUrl: "https://github.com/rullerzhou-afk",
+      authorName: "Fábio Berbert de Paula",
+      authorUrl: "https://github.com/fberbert",
       heroSvgContent,
-      pendingUpdateVersion,
-      autoUpdateCheck,
-      updateCheckSnapshot: getUpdateCheckSnapshot(),
     };
-  });
-
-  handle("settings:check-for-updates", async () => {
-    try {
-      const snapshot = await checkForUpdates(true);
-      return snapshot || getUpdateCheckSnapshot();
-    } catch (err) {
-      return { status: "error", message: (err && err.message) || String(err) };
-    }
-  });
-
-  handle("settings:clear-update-error", () => clearUpdateError());
-
-  handle("settings:copy-update-error", (_event, copyText) => {
-    const boundedText = String(copyText == null ? "" : copyText).slice(0, 8 * 1024);
-    if (!boundedText) return { status: "error", message: "empty update error report" };
-    return copyUpdateError(boundedText);
   });
 
   // #1183/#1275: Settings compares launch values with saved preferences to

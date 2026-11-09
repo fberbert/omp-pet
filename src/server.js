@@ -94,7 +94,7 @@ const writeRuntimeConfigFn = ctx.writeRuntimeConfig || writeRuntimeConfig;
 // Opt-in production IO: tests never read or overwrite the user's restart hint.
 const readPortHint = ctx.readLocalServerPortHint || (() => null);
 const writePortHint = ctx.writeLocalServerPortHint || (() => true);
-// #681. Injectable so tests never read the developer's real ~/.clawd/runtime.json
+// #681. Injectable so tests never read the developer's real ~/.omp-pet/runtime.json
 // (whose contents depend on whether Clawd happens to be running right now).
 const readRuntimeIdentityFn = ctx.readRuntimeIdentity
   || (() => readRuntimeIdentity({ runtimeConfigPath: ctx.runtimeConfigPath }));

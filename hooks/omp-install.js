@@ -12,7 +12,7 @@ const childProcess = require("child_process");
 const { asarUnpackedPath, writeJsonAtomic } = require("./json-utils");
 const { resolveNodeBin } = require("./server-config");
 
-const EXTENSION_DIR_NAME = "clawd-on-desk";
+const EXTENSION_DIR_NAME = "omp-pet";
 const EXTENSION_FILE = "index.ts";
 const CORE_FILE = "omp-extension-core.js";
 const MARKER_FILE = ".clawd-managed.json";
@@ -75,7 +75,7 @@ function readJsonIfPresent(filePath, fsImpl = fs) {
 function isManagedMarker(value) {
   return !!(
     value
-    && value.app === "clawd-on-desk"
+    && value.app === "omp-pet"
     && value.integration === "omp"
     && value.managed === true
   );
@@ -83,7 +83,7 @@ function isManagedMarker(value) {
 
 function buildMarker() {
   return {
-    app: "clawd-on-desk",
+    app: "omp-pet",
     integration: "omp",
     managed: true,
     version: 1,

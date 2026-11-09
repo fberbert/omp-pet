@@ -17,7 +17,7 @@ describe("omp-install", () => {
   beforeEach(() => {
     parentDir = fs.mkdtempSync(path.join(os.tmpdir(), "clawd-omp-install-"));
     extensionsDir = path.join(parentDir, "extensions");
-    extensionDir = path.join(extensionsDir, "clawd-on-desk");
+    extensionDir = path.join(extensionsDir, "omp-pet");
     fs.mkdirSync(extensionsDir, { recursive: true });
   });
 
@@ -221,7 +221,7 @@ describe("omp-install", () => {
       assert.strictEqual(resolve({}), path.join(homeDir, ".omp", "agent"));
       assert.strictEqual(
         extensionDirFor({}),
-        path.join(homeDir, ".omp", "agent", "extensions", "clawd-on-desk")
+        path.join(homeDir, ".omp", "agent", "extensions", "omp-pet")
       );
     });
 
@@ -229,7 +229,7 @@ describe("omp-install", () => {
       const elsewhere = path.join(homeDir, "custom-agent-dir");
       assert.strictEqual(resolve({ PI_CODING_AGENT_DIR: elsewhere }), elsewhere);
       assert.strictEqual(extensionDirFor({ PI_CODING_AGENT_DIR: elsewhere }),
-        path.join(elsewhere, "extensions", "clawd-on-desk"));
+        path.join(elsewhere, "extensions", "omp-pet"));
 
       const spaced = `${elsewhere} `;
       assert.strictEqual(resolve({ PI_CODING_AGENT_DIR: spaced }), spaced,
@@ -329,7 +329,7 @@ describe("omp-install", () => {
 
       assert.strictEqual(result.installed, true);
       const profileExtensionDir = path.join(
-        homeDir, ".omp", "profiles", "work", "agent", "extensions", "clawd-on-desk"
+        homeDir, ".omp", "profiles", "work", "agent", "extensions", "omp-pet"
       );
       assert.strictEqual(result.extensionDir, profileExtensionDir);
       assert.ok(fs.existsSync(path.join(profileExtensionDir, ompInstall.EXTENSION_FILE)));
@@ -345,7 +345,7 @@ describe("omp-install", () => {
         ompCommandAvailable: true,
       });
 
-      const expected = path.join(homeDir, ".omp", "agent", "extensions", "clawd-on-desk");
+      const expected = path.join(homeDir, ".omp", "agent", "extensions", "omp-pet");
       assert.strictEqual(result.extensionDir, expected);
       assert.ok(fs.existsSync(path.join(expected, ompInstall.EXTENSION_FILE)));
       assert.ok(!fs.existsSync(path.join(homeDir, ".omp", "profiles", "default")));

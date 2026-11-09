@@ -1,7 +1,7 @@
 {
-  "name": "clawd-on-desk",
-  "version": "1.6.0",
-  "description": "A desktop pet that reacts to your Claude Code sessions in real-time.",
+  "name": "omp-pet",
+  "version": "0.1.0",
+  "description": "A Linux desktop pet that reacts to your OMP (oh-my-pi) coding agent sessions in real time.",
   "main": "src/main.js",
   "scripts": {
     "start": "node launch.js",
@@ -22,11 +22,8 @@
     "audit:pr-history-assets": "node scripts/audit-pr-history-assets.js",
     "audit:native-package": "node scripts/audit-packaged-native.js",
     "update:official-theme-snapshot": "node scripts/update-official-theme-catalog-snapshot.js",
-    "verify:updater-metadata": "node scripts/verify-updater-metadata.js",
     "verify:winget-arch": "node scripts/verify-winget-arch-contract.js",
     "verify:winget-manifest": "node scripts/verify-winget-generated-manifest.js",
-    "verify:release": "node scripts/verify-release-version.js && node scripts/verify-release-contributors.js",
-    "generate:readme-contributors": "node scripts/generate-readme-contributors.js",
     "create-theme": "node scripts/create-theme.js",
     "export-agent-icons": "node scripts/export-agent-icons.js",
     "install:claude-hooks": "node hooks/install.js",
@@ -81,17 +78,18 @@
     "register-protocol:dev": "node launch.js --register-protocol"
   },
   "keywords": [
-    "clawd",
+    "omp",
+    "oh-my-pi",
     "desktop-pet",
     "electron",
-    "claude-code"
+    "linux"
   ],
-  "author": "rullerzhou-afk",
+  "author": "Fábio Berbert de Paula <fberbert@gmail.com>",
   "license": "AGPL-3.0-only",
   "type": "commonjs",
   "build": {
-    "appId": "com.clawd.on-desk",
-    "productName": "Clawd on Desk",
+    "appId": "com.fberbert.omp-pet",
+    "productName": "OMP Pet",
     "afterPack": "scripts/after-pack-koffi.js",
     "protocols": [
       {
@@ -140,10 +138,10 @@
       ]
     },
     "linux": {
-      "maintainer": "rullerzhou-afk <rullerzhou-afk@users.noreply.github.com>",
+      "maintainer": "Fábio Berbert de Paula <fberbert@gmail.com>",
       "icon": "assets/icons",
       "category": "Utility",
-      "artifactName": "Clawd-on-Desk-${version}-${arch}.${ext}",
+      "artifactName": "OMP-Pet-${version}-${arch}.${ext}",
       "target": [
         {
           "target": "AppImage",
@@ -157,7 +155,8 @@
             "x64"
           ]
         }
-      ]
+      ],
+      "executableName": "omp-pet"
     },
     "nsis": {
       "oneClick": false,
@@ -199,13 +198,6 @@
         "from": "assets/icon.ico",
         "to": "icon.ico"
       }
-    ],
-    "publish": [
-      {
-        "provider": "github",
-        "owner": "rullerzhou-afk",
-        "repo": "clawd-on-desk"
-      }
     ]
   },
   "engines": {
@@ -219,7 +211,6 @@
   },
   "dependencies": {
     "@larksuiteoapi/node-sdk": "^1.71.1",
-    "electron-updater": "^6.8.3",
     "htmlparser2": "^12.0.0",
     "jsonc-parser": "^3.3.1",
     "koffi": "2.16.3",
@@ -227,5 +218,9 @@
     "qrcode-generator": "^2.0.4",
     "ws": "^8.21.0",
     "yauzl": "^2.10.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fberbert/omp-pet.git"
   }
 }

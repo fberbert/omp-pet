@@ -659,24 +659,6 @@ const SCHEMA = {
       };
     },
   },
-  // Background update-check toggle. When true, the scheduler in updater.js
-  // runs a quiet GitHub discovery on a 12-hour cycle (packaged builds only).
-  // Default on per #329.
-  autoUpdateCheck: { type: "boolean", default: true },
-  // Last version the scheduler discovered that is newer than the running
-  // app. Empty string = none pending. Surfaced in the tray label and the
-  // About version-row hint. Cleared on install or by
-  // reconcilePendingOnStartup() when app.getVersion() catches up.
-  pendingUpdateVersion: { type: "string", default: "" },
-  // Versions the user explicitly dismissed (clicked Later on the scheduler
-  // bubble after actually seeing it). Object map of `{ "v0.9.0": true }`
-  // Keep this as a true-only object map so membership remains explicit and
-  // older prefs readers do not need array-specific dismissal semantics.
-  dismissedUpdateVersions: {
-    type: "object",
-    defaultFactory: () => ({}),
-    normalize: normalizeDismissedUpdateVersions,
-  },
   // First-run tutorial gate: false until the user has seen (completed OR skipped)
   // the onboarding tutorial once, then true forever. Persisted (NOT ephemeral),
   // and intentionally NOT backfilled by any migration. Existing users' files have
@@ -1150,15 +1132,6 @@ function normalizeOptionalHttpUrl(value) {
   } catch {
     return "";
   }
-}
-
-function normalizeDismissedUpdateVersions(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-  const out = {};
-  for (const key of Object.keys(value)) {
-    if (typeof key === "string" && key && value[key] === true) out[key] = true;
-  }
-  return out;
 }
 
 function normalizeDismissedAgentHintMap(value) {
