@@ -44,7 +44,7 @@ On every launch the pet syncs its extension into the active OMP agent directory:
 
 ```text
 ~/.omp/agent/extensions/omp-pet/
-  omp-extension.ts
+  index.ts                  (copy of hooks/omp-extension.ts)
   omp-extension-core.js
   .omp-pet-managed.json
 ```
