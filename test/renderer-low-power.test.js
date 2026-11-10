@@ -718,7 +718,7 @@ describe("renderer directional drag reactions (#620)", () => {
     harness.api.swapToFile("codex-pet-review-loop.svg", "thinking", true);
 
     assert.deepStrictEqual(harness.warnings, [
-      "Clawd: Codex Pet visual bridge unavailable (v1 marker missing); using a normal media swap.",
+      "omp-pet: Codex Pet visual bridge unavailable (v1 marker missing); using a normal media swap.",
     ]);
     assert.strictEqual(harness.api.pendingSvgFile, "codex-pet-review-loop.svg");
   });
@@ -782,7 +782,7 @@ describe("renderer directional drag reactions (#620)", () => {
     assert.strictEqual(harness.api.clawdEl, pending);
     assert.strictEqual(harness.api.activeSwapToken, token);
     assert.deepStrictEqual(harness.warnings, [
-      "Clawd: directional drag bridge unavailable (v1 marker missing); keeping the fallback direction.",
+      "omp-pet: directional drag bridge unavailable (v1 marker missing); keeping the fallback direction.",
     ]);
 
     // The same failure category is logged once per renderer lifecycle.
@@ -812,7 +812,7 @@ describe("renderer directional drag reactions (#620)", () => {
     harness.electronHandlers.onStartDragReaction("right");
 
     assert.deepStrictEqual(harness.warnings, [
-      "Clawd: directional drag bridge unavailable (non-object media channel); keeping the fallback direction.",
+      "omp-pet: directional drag bridge unavailable (non-object media channel); keeping the fallback direction.",
     ]);
   });
 
@@ -2388,74 +2388,6 @@ describe("renderer displayed-visual settlement", () => {
       });
     } finally {
       loader.restore();
-    }
-  });
-});
-
-describe("renderer test-result reactions", () => {
-  it("replaces pass bursts instead of accumulating confetti nodes", () => {
-    const harness = createRendererHarness();
-
-    harness.electronHandlers.onPlayTestReaction("pass");
-    assert.strictEqual(harness.particleLayer.children.length, 18);
-    assert.ok(harness.particleLayer.children.every((node) => node.className === "clawd-test-confetti"));
-    const firstBurst = [...harness.particleLayer.children];
-
-    harness.electronHandlers.onPlayTestReaction("pass");
-    assert.strictEqual(harness.particleLayer.children.length, 18);
-    assert.ok(firstBurst.every((node) => node.isConnected === false));
-    assert.strictEqual(
-      harness.activeTimers().filter((timer) => timer.ms >= 1500 && timer.ms <= 1700).length,
-      18
-    );
-  });
-
-  it("clears confetti, shakes only the facing layer, and cleans up after 650ms", () => {
-    const harness = createRendererHarness();
-    harness.electronHandlers.onPlayTestReaction("pass");
-
-    harness.electronHandlers.onPlayTestReaction("fail");
-    assert.strictEqual(harness.particleLayer.children.length, 0);
-    assert.strictEqual(harness.facingStage.classList.contains("clawd-test-shake"), true);
-    assert.strictEqual(harness.container.classList.contains("clawd-test-shake"), false);
-
-    const shakeTimer = harness.activeTimers().find((timer) => timer.ms === 650);
-    assert.ok(shakeTimer);
-    shakeTimer.cleared = true;
-    shakeTimer.callback();
-    assert.strictEqual(harness.facingStage.classList.contains("clawd-test-shake"), false);
-  });
-
-  it("suppresses new reactions and clears an active one when DND turns on", () => {
-    const harness = createRendererHarness();
-    harness.electronHandlers.onPlayTestReaction("pass");
-    assert.strictEqual(harness.particleLayer.children.length, 18);
-
-    harness.electronHandlers.onDndChange(true);
-    assert.strictEqual(harness.particleLayer.children.length, 0);
-    harness.electronHandlers.onPlayTestReaction("fail");
-    assert.strictEqual(harness.facingStage.classList.contains("clawd-test-shake"), false);
-  });
-
-  it("keeps mini mirroring and viewport translation independent from failure shake", () => {
-    const css = readNormalized(path.join(__dirname, "..", "src", "styles.css"));
-    assert.match(css, /#pet-facing-stage\.clawd-test-shake\s*\{[^}]*animation:/);
-    assert.match(css, /@keyframes clawd-test-shake\s*\{[\s\S]*translate:[\s\S]*rotate:/);
-    assert.ok(!/#pet-container\.clawd-test-shake/.test(css));
-    assert.match(css, /#pet-container\.mini-left #pet-facing-stage\s*\{[^}]*scale:\s*-1 1;/);
-  });
-
-  it("preload forwards only pass/fail wire values", () => {
-    const harness = loadPreloadWithElectron();
-    try {
-      const seen = [];
-      harness.electronAPI.onPlayTestReaction((result) => seen.push(result));
-      harness.emitFromMain("play-test-reaction", "pass");
-      harness.emitFromMain("play-test-reaction", "unexpected");
-      harness.emitFromMain("play-test-reaction", "fail");
-      assert.deepStrictEqual(seen, ["pass", "fail"]);
-    } finally {
-      harness.restore();
     }
   });
 });

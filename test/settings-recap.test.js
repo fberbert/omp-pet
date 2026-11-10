@@ -41,16 +41,13 @@ test("every supported Settings locale has the complete recap key set", () => {
     "recapMetricSessions", "recapMetricPartial",
   ];
   assert.ok(englishKeys.length > 30);
-  for (const lang of ["en", "zh", "zh-TW", "ko", "ja", "pt-BR", "es"]) {
+  for (const lang of ["en", "pt-BR"]) {
     for (const key of englishKeys) {
       assert.equal(typeof i18n.STRINGS[lang][key], "string", `${lang}.${key}`);
       assert.notEqual(i18n.STRINGS[lang][key], "", `${lang}.${key}`);
     }
     for (const key of removedKeys) assert.equal(Object.hasOwn(i18n.STRINGS[lang], key), false, `${lang}.${key}`);
   }
-  assert.equal(i18n.STRINGS.zh.sidebarRecap, "足迹");
-  assert.equal(i18n.STRINGS.zh.recapTitle, "足迹");
-  assert.equal(i18n.STRINGS.zh.recapSubtitle, "回顾你的工作足迹。");
 });
 
 test("recap tab stays browser-only and aggregates scope rows without turning null into zero", () => {

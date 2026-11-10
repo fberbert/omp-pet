@@ -1,8 +1,9 @@
 #!/bin/bash
-# 极简模式 SVG 动画测试脚本
-# 用法: bash test-mini.sh [每个动画秒数，默认6]
-# 注意: 先 npm start 启动应用，再运行此脚本
+# Plays every Clawd mini-mode animation in turn.
+# Usage: bash test-mini.sh [seconds per animation, default 6]
+# Start the app first (npm start).
 
+source "$(dirname "$0")/scripts/dev-port.sh"
 DELAY=${1:-6}
 
 SVGS=(
@@ -23,12 +24,12 @@ STATES=(
   "mini-crabwalk"
 )
 
-echo "=== Mini Mode Demo: ${#SVGS[@]} animations, ${DELAY}s each ==="
+echo "=== Mini mode demo: ${#SVGS[@]} animations, ${DELAY}s each ==="
 for i in "${!SVGS[@]}"; do
   svg="${SVGS[$i]}"
   state="${STATES[$i]}"
-  echo "[$((i+1))/${#SVGS[@]}] $state → $svg"
-  curl -s -X POST http://127.0.0.1:23333/state \
+  echo "[$((i+1))/${#SVGS[@]}] $state -> $svg"
+  curl -s -X POST "$OMP_PET_STATE_URL" \
     -H "Content-Type: application/json" \
     -d "{\"state\":\"$state\",\"svg\":\"$svg\"}"
   sleep "$DELAY"
@@ -36,7 +37,7 @@ done
 
 echo ""
 echo "Returning to idle..."
-curl -s -X POST http://127.0.0.1:23333/state \
+curl -s -X POST "$OMP_PET_STATE_URL" \
   -H "Content-Type: application/json" \
   -d '{"state":"idle","svg":"clawd-idle-follow.svg"}'
 echo ""

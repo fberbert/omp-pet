@@ -195,7 +195,7 @@ function createRecapCoverage(options = {}) {
       try { store.quarantine(filePath, "invalid-open"); } catch (err) {
         if (!err || err.code !== "ENOENT") throw err;
       }
-      warn("Clawd: discarded invalid recap coverage heartbeat");
+      warn("omp-pet: discarded invalid recap coverage heartbeat");
       return null;
     }
     const duration = saved.lastHeartbeatAt - saved.startedAt;
@@ -206,7 +206,7 @@ function createRecapCoverage(options = {}) {
       || duration > HEARTBEAT_MS
       || saved.lastHeartbeatAt > now() + MAX_OPEN_FUTURE_SKEW_MS
     ) {
-      warn("Clawd: discarded invalid recap coverage heartbeat");
+      warn("omp-pet: discarded invalid recap coverage heartbeat");
       try { fs.unlinkSync(filePath); } catch {}
       return null;
     }
@@ -239,7 +239,7 @@ function createRecapCoverage(options = {}) {
         || !hasSafeCoverageFanout(parsed)
       ) {
         store.quarantine(filePath, "invalid-coverage");
-        warn("Clawd: quarantined invalid recap coverage file");
+        warn("omp-pet: quarantined invalid recap coverage file");
         continue;
       }
       const month = { schemaVersion: COVERAGE_SCHEMA_VERSION, month: match[1], days: {} };
@@ -258,7 +258,7 @@ function createRecapCoverage(options = {}) {
     if (!open || heartbeatTimer) return;
     heartbeatTimer = setTimer(() => {
       heartbeatTimer = null;
-      try { tick(now()); } catch (err) { warn("Clawd: recap coverage heartbeat failed", err); }
+      try { tick(now()); } catch (err) { warn("omp-pet: recap coverage heartbeat failed", err); }
       scheduleHeartbeat();
     }, heartbeatMs);
     if (heartbeatTimer && typeof heartbeatTimer.unref === "function") heartbeatTimer.unref();

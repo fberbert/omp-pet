@@ -5,10 +5,11 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { freezeLocalTime, getSystemTimeZone, isValidTimeZone, parseLocalDate } = require("./recap-time");
+const { APP_DATA_DIR_NAME } = require("../hooks/server-config");
 const RECAP_ATOMIC_TEMP_PATTERN = /^\.(?:meta\.json|daily-\d{4}-\d{2}\.json|coverage-(?:\d{4}-\d{2}|open)\.json)\.\d+\.[a-f0-9]{12}\.tmp$/;
 
 const SCHEMA_VERSION = 1;
-const DEFAULT_ROOT = path.join(os.homedir(), ".clawd", "recap-v1");
+const DEFAULT_ROOT = path.join(os.homedir(), APP_DATA_DIR_NAME, "recap-v1");
 const EVENT_RETENTION_DAYS = 14;
 const DAILY_RETENTION_DAYS = 400;
 const TEMP_FILE_TTL_MS = 24 * 60 * 60 * 1000;

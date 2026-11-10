@@ -65,7 +65,7 @@ module.exports = function initTutorial(ctx = {}) {
         agents = ctx.getAgentOnboardingState() || agents;
       }
     } catch (err) {
-      console.warn("Clawd: tutorial getAgentOnboardingState failed:", err && err.message);
+      console.warn("omp-pet: tutorial getAgentOnboardingState failed:", err && err.message);
     }
     return {
       i18n: typeof ctx.getI18n === "function" ? ctx.getI18n() : {},
@@ -159,7 +159,7 @@ module.exports = function initTutorial(ctx = {}) {
     ipcMain.removeAllListeners("tutorial:open-settings-tab");
     ipcMain.on("tutorial:open-settings-tab", (_e, tab) => {
       try { if (typeof ctx.openSettingsTab === "function") ctx.openSettingsTab(tab); } catch (err) {
-        console.warn("Clawd: tutorial openSettingsTab failed:", err && err.message);
+        console.warn("omp-pet: tutorial openSettingsTab failed:", err && err.message);
       }
     });
 
@@ -170,7 +170,7 @@ module.exports = function initTutorial(ctx = {}) {
       // from pushing state here — the handler sends once itself below.
       _langChangeFromPicker = true;
       try { if (typeof ctx.setLang === "function") ctx.setLang(value); } catch (err) {
-        console.warn("Clawd: tutorial setLang failed:", err && err.message);
+        console.warn("omp-pet: tutorial setLang failed:", err && err.message);
       }
       _langChangeFromPicker = false;
       // Re-push so the wizard re-renders in the newly chosen language.
@@ -180,7 +180,7 @@ module.exports = function initTutorial(ctx = {}) {
     ipcMain.removeAllListeners("tutorial:open-shortcuts");
     ipcMain.on("tutorial:open-shortcuts", () => {
       try { if (typeof ctx.openSettingsTab === "function") ctx.openSettingsTab("shortcuts"); } catch (err) {
-        console.warn("Clawd: tutorial open shortcuts failed:", err && err.message);
+        console.warn("omp-pet: tutorial open shortcuts failed:", err && err.message);
       }
     });
 
@@ -196,7 +196,7 @@ module.exports = function initTutorial(ctx = {}) {
 
   function markSeen() {
     try { if (typeof ctx.markTutorialSeen === "function") ctx.markTutorialSeen(); } catch (err) {
-      console.warn("Clawd: tutorial markTutorialSeen failed:", err && err.message);
+      console.warn("omp-pet: tutorial markTutorialSeen failed:", err && err.message);
     }
   }
 

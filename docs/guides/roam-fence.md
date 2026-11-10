@@ -1,18 +1,18 @@
-# Roam Fence — limit where free roam wanders
+# Roam Fence: limit where free roam wanders
 
 When Free Roam is on, the pet periodically walks to a random spot on the
-screen. The roam fence keeps those walks inside a rectangle you choose — for
-example the bottom-right quarter of the screen, or a strip above the dock.
+screen. The roam fence keeps those walks inside a rectangle you choose, for
+example the bottom-right quarter of the screen, or a strip above a panel.
 
 ## Choose an area in Settings
 
 Open **Settings → Pet → Movement & position → When idle → Free roam**,
-then choose **Activity area → Choose area…**. Clawd opens an overlay
+then choose **Activity area → Choose area…**. The pet opens an overlay
 on the display where the pet currently sits. Drag a rectangle and confirm it;
-the change applies without restarting Clawd.
+the change applies without restarting the pet.
 
 The picker verifies that the entire pet window fits inside the selected
-rectangle on the current display. On a multi-display setup, Clawd stores the
+rectangle on the current display. On a multi-display setup, the pet stores the
 rectangle as proportions and applies the same proportions to each display's
 work area. Display shapes and proportional pet scaling can differ, so a very
 narrow area that works on one display may pause roaming on another until the
@@ -23,7 +23,7 @@ normal user workflow; direct file editing remains available for automation.
 
 ## The file
 
-Create `~/.clawd/roam-area.json`:
+Create `~/.omp-pet/roam-area.json`:
 
 ```json
 {
@@ -49,7 +49,7 @@ reversed intervals, and out-of-range values make the file invalid.
 Containment is whole-window: the entire pet must fit inside the rectangle.
 A corridor exactly the pet's size is fine (the pet then only moves along the
 other axis), but a fence narrower or shorter than the pet in either dimension
-has no valid position at all — roaming stops entirely until the fence is
+has no valid position at all, so roaming stops entirely until the fence is
 enlarged, disabled, or removed. A fence that only barely exceeds the pet can
 also remain still because roam ignores tiny, jitter-like hops. Fences placed
 against a screen edge work: on an axis it actually narrows, an explicit fence
@@ -81,5 +81,5 @@ restart needed.
   missing), roam holds its rounds instead of wandering the full area.
 - If the pet starts outside the fence on one axis, its next walk brings that
   axis back inside. In axis-constrained mode, if both axes are outside, it
-  recovers over two walks — one axis per walk — so every step still moves
+  recovers over two walks, one axis per walk, so every step still moves
   along a single axis.

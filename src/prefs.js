@@ -112,7 +112,7 @@ const SCHEMA = {
   preMiniX: { type: "number", default: 0, validate: (v) => Number.isFinite(v) },
   preMiniY: { type: "number", default: 0, validate: (v) => Number.isFinite(v) },
   // Pure data prefs
-  lang: { type: "string", default: "en", enum: ["en", "zh", "zh-TW", "ko", "ja", "pt-BR", "es"] },
+  lang: { type: "string", default: "en", enum: ["en", "pt-BR"] },
   // Local activity recap is enabled by default. It stores only bounded
   // aggregate/ticket data under ~/.clawd;
   // there is no network export and the user can disable or clear it later.
@@ -771,10 +771,10 @@ function backupInvalidPrefs(prefsPath, reason) {
   try {
     const bak = prefsPath + ".bak";
     fs.copyFileSync(prefsPath, bak);
-    console.warn(`Clawd: invalid prefs file backed up to ${bak}:`, reason);
+    console.warn(`omp-pet: invalid prefs file backed up to ${bak}:`, reason);
     return true;
   } catch (bakErr) {
-    console.warn("Clawd: invalid prefs file backup failed:", reason, bakErr.message);
+    console.warn("omp-pet: invalid prefs file backup failed:", reason, bakErr.message);
     return false;
   }
 }
@@ -817,7 +817,7 @@ function load(prefsPath) {
     // No backup is attempted on this path: copyFileSync would read the same
     // unreadable file, so it could only fail and emit a second warning.
     console.warn(
-      "Clawd: prefs file could not be read — keeping defaults in memory and refusing to overwrite it:",
+      "omp-pet: prefs file could not be read — keeping defaults in memory and refusing to overwrite it:",
       err.message,
     );
     return { snapshot: getDefaults(), locked: true, recovered: true };
@@ -851,7 +851,7 @@ function load(prefsPath) {
   const incomingVersion = typeof raw.version === "number" ? raw.version : 0;
   if (incomingVersion > CURRENT_VERSION) {
     console.warn(
-      `Clawd: prefs file version ${incomingVersion} is newer than supported (${CURRENT_VERSION}). ` +
+      `omp-pet: prefs file version ${incomingVersion} is newer than supported (${CURRENT_VERSION}). ` +
       `Settings will be readable but not saved to avoid data loss.`
     );
     return { snapshot: validate(raw), locked: true };
@@ -882,16 +882,8 @@ function save(prefsPath, snapshot) {
 function mapLocaleToLang(locale) {
   if (typeof locale !== "string" || !locale) return "en";
   const l = locale.toLowerCase().replace(/_/g, "-");
-  if (l === "zh" || l.startsWith("zh-")) {
-    // Traditional-script tags/regions → zh-TW; all other Chinese → zh.
-    if (/hant/.test(l) || /^zh-(tw|hk|mo)\b/.test(l)) return "zh-TW";
-    return "zh";
-  }
-  if (l === "ko" || l.startsWith("ko-")) return "ko";
-  if (l === "ja" || l.startsWith("ja-")) return "ja";
   // Regional locale: only pt-BR itself auto-selects it.
   if (l === "pt-br") return "pt-BR";
-  if (l === "es" || l.startsWith("es-")) return "es";
   return "en";
 }
 

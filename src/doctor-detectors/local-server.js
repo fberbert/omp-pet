@@ -19,10 +19,10 @@ function checkLocalServer(serverApi) {
       level: "critical",
       detail,
       textHint: denied
-        ? "Restart Clawd. EACCES can mean reserved ports, permission policies or exclusive listeners. On Windows, inspect (read-only): netsh interface ipv4 show excludedportrange protocol=tcp."
+        ? "Restart OMP Pet. EACCES can mean reserved ports, permission policies or exclusive listeners."
         : failure && failure.stage === "bind"
-          ? "Restart Clawd and check the reported bind errors and local port availability."
-          : "Restart Clawd. If the issue persists, check ~/.clawd/ permissions.",
+          ? "Restart OMP Pet and check the reported bind errors and local port availability."
+          : "Restart OMP Pet. If the issue persists, check ~/.omp-pet/ permissions.",
       runtime: status,
       fixAction: { type: "restart-clawd" },
     };
@@ -45,7 +45,7 @@ function checkLocalServer(serverApi) {
       status: "fail",
       level: "warning",
       detail: `Listening on 127.0.0.1:${status.port}; runtime port is ${status.runtimePort || "missing"}${identityDetail}`,
-      textHint: "Restart Clawd to regenerate the runtime file.",
+      textHint: "Restart OMP Pet to regenerate the runtime file.",
       runtime: status,
       fixAction: { type: "local-server" },
     };

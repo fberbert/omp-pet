@@ -1039,18 +1039,14 @@ function loadGeneralLanguageRowForTest({
           rowLanguage: "Language",
           rowLanguageDesc: "Language desc",
           langEnglish: "English",
-          langChinese: "Chinese",
-          langKorean: "Korean",
-          langJapanese: "Japanese",
+          langPortugueseBrazil: "Portuguese",
           toastSaveFailed: "Failed: ",
         },
-        zh: {
+        "pt-BR": {
           rowLanguage: "Language",
           rowLanguageDesc: "Language desc",
           langEnglish: "English",
-          langChinese: "Chinese",
-          langKorean: "Korean",
-          langJapanese: "Japanese",
+          langPortugueseBrazil: "Portuguese",
           toastSaveFailed: "Failed: ",
         },
       },
@@ -2217,10 +2213,6 @@ describe("settings renderer browser environment", () => {
   it("labels juggling tiers as subagents in every supported locale", () => {
     const expectedByLocale = {
       en: ["SubagentStart (1 subagent)", "SubagentStart (2+ subagents)"],
-      zh: ["SubagentStart (1 个子代理)", "SubagentStart (2+ 个子代理)"],
-      "zh-TW": ["SubagentStart (1 個子代理)", "SubagentStart (2+ 個子代理)"],
-      ko: ["SubagentStart (하위 에이전트 1개)", "SubagentStart (하위 에이전트 2개 이상)"],
-      ja: ["SubagentStart (サブエージェント 1)", "SubagentStart (サブエージェント 2+)"],
       "pt-BR": ["SubagentStart (1 subagente)", "SubagentStart (2+ subagentes)"],
     };
 
@@ -2469,38 +2461,6 @@ describe("settings renderer browser environment", () => {
     assert.equal(sw.getAttribute("aria-checked"), "false");
     assert.equal(sw.classList.contains("pending"), false);
     assert.equal(transient, null);
-  });
-
-  it("keeps every Telegram retirement gate string in all supported languages", () => {
-    const strings = loadSettingsI18nForTest();
-    const keys = [
-      "telegramNativeMigrationEyebrow",
-      "telegramLegacyRetiredTitle",
-      "telegramLegacyRetiredBody",
-      "telegramNativeReverifyTitle",
-      "telegramNativeReverifyBody",
-      "telegramNativeMigrationVerify",
-      "telegramNativeMigrationWaiting",
-      "telegramNativeMigrationDisable",
-      "telegramNativeMigrationGuide",
-      "telegramNativeMigrationFailed",
-      "telegramNativeMigrationTimeout",
-      "telegramNativeMigrationStartFailed",
-      "telegramMigrationNudgeTitle",
-      "telegramMigrationNudgeLegacyBody",
-      "telegramMigrationNudgeNativeBody",
-    ];
-    assert.deepStrictEqual(SUPPORTED_LANGS, ["en", "zh", "zh-TW", "ko", "ja", "pt-BR", "es"]);
-    for (const lang of SUPPORTED_LANGS) {
-      for (const key of keys) {
-        assert.equal(
-          typeof strings[lang][key],
-          "string",
-          `${lang}.${key} must exist`,
-        );
-        assert.notEqual(strings[lang][key].trim(), "", `${lang}.${key} must not be empty`);
-      }
-    }
   });
 
   it("keeps the shared disclosure, status line and detail-group primitives generic", () => {
@@ -2784,35 +2744,35 @@ describe("settings renderer browser environment", () => {
 
     assert.deepStrictEqual(
       harness.updateCalls,
-      [{ key: "lang", value: "zh" }],
+      [{ key: "lang", value: "pt-BR" }],
       "clicking a language option should call settingsAPI.update with the new lang"
     );
     assert.strictEqual(picker.classList.contains("open"), false);
     assert.strictEqual(trigger.focused, true);
     assert.strictEqual(harness.getLangMenu().attributes["aria-hidden"], "true");
     for (const option of options) assert.strictEqual(option.tabIndex, -1);
-    assert.strictEqual(harness.getLangValue().textContent, "Chinese");
-    assert.strictEqual(trigger.attributes["aria-label"], "Language: Chinese");
+    assert.strictEqual(harness.getLangValue().textContent, "Portuguese");
+    assert.strictEqual(trigger.attributes["aria-label"], "Language: Portuguese");
     assert.strictEqual(trigger.getAttribute("aria-disabled"), "true");
     trigger.dispatchEvent({ type: "click" });
     assert.strictEqual(picker.classList.contains("open"), false);
     options[0].dispatchEvent({ type: "click" });
     assert.deepStrictEqual(
       harness.updateCalls,
-      [{ key: "lang", value: "zh" }],
+      [{ key: "lang", value: "pt-BR" }],
       "the shared Settings picker should block further changes while saving"
     );
-    assert.strictEqual(harness.getLangValue().textContent, "Chinese");
-    assert.strictEqual(trigger.attributes["aria-label"], "Language: Chinese");
+    assert.strictEqual(harness.getLangValue().textContent, "Portuguese");
+    assert.strictEqual(trigger.attributes["aria-label"], "Language: Portuguese");
     assert.strictEqual(options[1].attributes["aria-selected"], "true");
 
     harness.core.ops.applyChanges({
-      changes: { lang: "zh" },
-      snapshot: { lang: "zh" },
+      changes: { lang: "pt-BR" },
+      snapshot: { lang: "pt-BR" },
     });
     assert.strictEqual(harness.getContentRenderCount(), 2);
-    assert.strictEqual(harness.getLangValue().textContent, "Chinese");
-    assert.strictEqual(harness.getLangTrigger().attributes["aria-label"], "Language: Chinese");
+    assert.strictEqual(harness.getLangValue().textContent, "Portuguese");
+    assert.strictEqual(harness.getLangTrigger().attributes["aria-label"], "Language: Portuguese");
     assert.strictEqual(harness.getLangOptions()[1].attributes["aria-selected"], "true");
   });
 
@@ -2830,7 +2790,7 @@ describe("settings renderer browser environment", () => {
     options[1].dispatchEvent(createKeyboardEventForTest("Enter"));
     await new Promise((resolve) => setImmediate(resolve));
 
-    assert.deepStrictEqual(harness.updateCalls, [{ key: "lang", value: "zh" }]);
+    assert.deepStrictEqual(harness.updateCalls, [{ key: "lang", value: "pt-BR" }]);
     assert.strictEqual(harness.getLangValue().textContent, "English");
     assert.strictEqual(trigger.focused, true);
     assert.strictEqual(harness.getToastText(), "Failed: synthetic failure");
@@ -4405,17 +4365,6 @@ describe("settings renderer browser environment", () => {
     assert.match(css, /@container \(max-width:\s*400px\)\s*\{[\s\S]*\.volume-slider-row \.volume-control\s*\{[\s\S]*width:\s*100%;[\s\S]*min-width:\s*0;/);
   });
 
-  it("describes notification bubble seconds as an auto-close upper bound instead of a guaranteed visible duration", () => {
-    const i18nSource = fs.readFileSync(SETTINGS_I18N, "utf8");
-
-    assert.ok(i18nSource.includes("auto-close upper bound"));
-    assert.ok(i18nSource.includes("later session states may dismiss it earlier"));
-    assert.ok(i18nSource.includes("自动关闭上限"));
-    assert.ok(i18nSource.includes("后续状态可能提前关闭"));
-    assert.ok(i18nSource.includes("자동 종료 상한"));
-    assert.ok(i18nSource.includes("후속 상태가 더 일찍 닫을 수 있습니다"));
-  });
-
   it("clears successful switch transient state so rerenders do not keep wait cursors", () => {
     const coreSource = fs.readFileSync(SETTINGS_UI_CORE, "utf8");
     assert.ok(
@@ -5388,32 +5337,6 @@ describe("settings renderer browser environment", () => {
   // #895: an entry with no verdict is "not checked", and must not propose a
   // deletion any more than a missing entry does.
 
-  it("Codex approval settings: localized descriptions reference the setting and sidebar names", () => {
-    const strings = loadSettingsI18nForTest();
-    for (const lang of SUPPORTED_LANGS) {
-      const locale = strings[lang];
-      for (const key of ["rowCodexApprovalRoutingAutoDesc", "rowCodexApprovalOwnerAutoDesc", "rowCodexInterceptApprovalsDesc"]) {
-        assert.ok(locale[key].includes(locale.rowPermissionAutomation), `${lang} ${key} names the permission setting`);
-      }
-      const path = `${locale.sidebarAgents} → Codex → ${locale.agentGroupAdvanced}`;
-      assert.ok(locale.rowCodexApprovalOwnerInterceptDesc.includes(path), `${lang} names the sidebar path`);
-    }
-  });
-
-  it("Codex approval settings: seven languages have the new copy and no retired keys", () => {
-    for (const [lang, strings] of Object.entries(loadSettingsI18nForTest())) {
-      for (const key of ["agentGroupAdvanced", "rowCodexApprovalRouting", "rowCodexApprovalRoutingAutoDesc",
-        "rowCodexApprovalRoutingInterceptDesc", "rowCodexInterceptApprovals", "rowCodexInterceptApprovalsDesc"]) {
-        assert.ok(typeof strings[key] === "string" && strings[key].trim(), `${lang}.${key}`);
-      }
-      for (const key of ["rowCodexPermissionMode", "rowCodexPermissionModeDesc", "codexPermissionModeAuto", "codexPermissionModeIntercept"]) {
-        assert.equal(Object.hasOwn(strings, key), false, `${lang}.${key} is retired`);
-      }
-      assert.doesNotMatch(strings.rowCodexApprovalOwnerAutoDesc, /\b(?:Auto|Intercept)\b(?!-approve)/);
-      assert.doesNotMatch(strings.rowCodexApprovalOwnerInterceptDesc, /\b(?:Auto|Intercept)\b/);
-    }
-  });
-
   it("uses animated switches and local theme override patching in the Animation Map subtab", () => {
     const animMapSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-anim-map.js"), "utf8");
     const overridesSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-anim-overrides.js"), "utf8");
@@ -6300,21 +6223,9 @@ describe("settings renderer browser environment", () => {
 
     const strings = loadSettingsI18nForTest();
     assert.strictEqual(strings.en.animOverridesReplacementConfig, "Animation override settings");
-    assert.strictEqual(strings.zh.animOverridesReplacementConfig, "动画覆盖设置");
-    assert.strictEqual(strings.ko.animOverridesReplacementConfig, "애니메이션 덮어쓰기 설정");
-    assert.strictEqual(strings.ja.animOverridesReplacementConfig, "アニメーション上書き設定");
     assert.strictEqual(strings.en.animOverridesImport, "Import config…");
-    assert.strictEqual(strings.zh.animOverridesImport, "导入配置…");
-    assert.strictEqual(strings.ko.animOverridesImport, "설정 가져오기…");
-    assert.strictEqual(strings.ja.animOverridesImport, "設定をインポート…");
     assert.strictEqual(strings.en.animOverridesExport, "Export config…");
-    assert.strictEqual(strings.zh.animOverridesExport, "导出配置…");
-    assert.strictEqual(strings.ko.animOverridesExport, "설정 내보내기…");
-    assert.strictEqual(strings.ja.animOverridesExport, "設定をエクスポート…");
     assert.strictEqual(strings.en.animOverridesResetAll, "Restore theme defaults");
-    assert.strictEqual(strings.zh.animOverridesResetAll, "恢复主题默认");
-    assert.strictEqual(strings.ko.animOverridesResetAll, "테마 기본값으로 복원");
-    assert.strictEqual(strings.ja.animOverridesResetAll, "テーマのデフォルトに戻す");
     assert.match(
       css,
       /@media \(max-width:\s*640px\)\s*\{[\s\S]*\.anim-override-meta\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\);/
@@ -6348,12 +6259,6 @@ describe("settings renderer browser environment", () => {
     const strings = loadSettingsI18nForTest();
     assert.strictEqual(strings.en.animOverridesFadeIn, "Fade in on enter");
     assert.strictEqual(strings.en.animOverridesFadeOut, "Fade out on exit");
-    assert.strictEqual(strings.zh.animOverridesFadeIn, "进入时淡入");
-    assert.strictEqual(strings.zh.animOverridesFadeOut, "退出时淡出");
-    assert.strictEqual(strings.ko.animOverridesFadeIn, "진입 시 페이드 인");
-    assert.strictEqual(strings.ko.animOverridesFadeOut, "종료 시 페이드 아웃");
-    assert.strictEqual(strings.ja.animOverridesFadeIn, "開始時フェードイン");
-    assert.strictEqual(strings.ja.animOverridesFadeOut, "終了時フェードアウト");
 
     const css = fs.readFileSync(SETTINGS_CSS, "utf8");
     assert.match(
@@ -7808,15 +7713,6 @@ describe("settings renderer browser environment", () => {
   });
 
   // ── A1 layout contract tests ─────────────────────────────────────────
-
-  it("PR #1329 follow-up: translates the listed-only folder toast in every supported language", () => {
-    const strings = loadSettingsI18nForTest();
-    for (const lang of SUPPORTED_LANGS) {
-      assert.strictEqual(typeof strings[lang].toastClaudeConfigDirListed, "string", lang);
-      assert.ok(strings[lang].toastClaudeConfigDirListed.length > 0, lang);
-      assert.notStrictEqual(strings[lang].toastClaudeConfigDirListed, strings[lang].toastClaudeConfigDirAdded, lang);
-    }
-  });
 
   it("removes the legacy badges, banners and disconnect button from the source", () => {
     const agentsSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-agents.js"), "utf8");

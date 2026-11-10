@@ -347,10 +347,10 @@ describe("prefs.migrate v12 → v13 (Settings window bounds)", () => {
 describe("prefs permission automation safe startup persistence", () => {
   it("save() strips autoApproveAllPermissions from the on-disk file", () => {
     const p = makeTempPath();
-    prefs.save(p, { ...prefs.getDefaults(), autoApproveAllPermissions: true, lang: "zh" });
+    prefs.save(p, { ...prefs.getDefaults(), autoApproveAllPermissions: true, lang: "pt-BR" });
     const onDisk = JSON.parse(fs.readFileSync(p, "utf8"));
     assert.strictEqual("autoApproveAllPermissions" in onDisk, false, "ephemeral key must not be written");
-    assert.strictEqual(onDisk.lang, "zh", "non-ephemeral fields still persist");
+    assert.strictEqual(onDisk.lang, "pt-BR", "non-ephemeral fields still persist");
   });
 });
 
@@ -480,13 +480,13 @@ describe("prefs.load", () => {
     const p = makeTempPath();
     fs.writeFileSync(
       p,
-      JSON.stringify({ lang: "zh", x: 100, y: 200, size: "P:12" }),
+      JSON.stringify({ lang: "pt-BR", x: 100, y: 200, size: "P:12" }),
       "utf8"
     );
     const { snapshot, locked } = prefs.load(p);
     assert.strictEqual(locked, false);
     assert.strictEqual(snapshot.version, prefs.CURRENT_VERSION);
-    assert.strictEqual(snapshot.lang, "zh");
+    assert.strictEqual(snapshot.lang, "pt-BR");
     assert.strictEqual(snapshot.x, 100);
     assert.strictEqual(snapshot.y, 200);
     assert.strictEqual(snapshot.size, "P:12");
@@ -1037,15 +1037,10 @@ describe("prefs.load fresh flag (brand-new install detection)", () => {
 describe("prefs.mapLocaleToLang (device locale → UI language)", () => {
   const cases = [
     ["en-US", "en"], ["en", "en"],
-    ["zh-CN", "zh"], ["zh-Hans", "zh"], ["zh", "zh"],
-    ["zh-TW", "zh-TW"], ["zh-Hant", "zh-TW"], ["zh-HK", "zh-TW"], ["zh-Hant-TW", "zh-TW"],
-    ["ko-KR", "ko"], ["ko", "ko"],
-    ["ja-JP", "ja"], ["ja", "ja"],
     ["pt-BR", "pt-BR"], ["pt_BR", "pt-BR"],
     // Only the shipped regional variant is auto-selected.
     ["pt", "en"], ["pt-PT", "en"], ["pt-AO", "en"],
-    ["es-MX", "es"], ["es-ES", "es"], ["es", "es"],
-    ["fr-FR", "en"], ["de", "en"],
+    ["zh-CN", "en"], ["es-MX", "en"], ["fr-FR", "en"], ["de", "en"],
   ];
   for (const [input, expected] of cases) {
     it(`maps ${input} -> ${expected}`, () => {
@@ -1061,7 +1056,7 @@ describe("prefs.mapLocaleToLang (device locale → UI language)", () => {
   });
 
   it("only ever returns a value inside the lang enum", () => {
-    const enumVals = new Set(["en", "zh", "zh-TW", "ko", "ja", "pt-BR", "es"]);
+    const enumVals = new Set(["en", "pt-BR"]);
     for (const probe of ["xx", "ZH-tw", "JA", "en-GB", "pt-BR", "PT-br", "es-MX", ""]) {
       assert.ok(enumVals.has(prefs.mapLocaleToLang(probe)), `${probe} mapped outside enum`);
     }

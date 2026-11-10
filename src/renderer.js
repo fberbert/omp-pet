@@ -9,7 +9,6 @@ const motionStage = document.getElementById("pet-motion-stage") || container;
 const assetDirectionStage = document.getElementById("pet-asset-direction-stage") || container;
 const mediaLayer = document.getElementById("pet-media-layer") || container;
 const accessoryLayer = document.getElementById("pet-accessory-layer") || container;
-const particleLayer = document.getElementById("pet-particle-layer") || container;
 const accessoryEl = document.getElementById("clawd-accessory");
 const mouthAccessoryEl = document.getElementById("clawd-mouth-accessory");
 const accessoryLayout = globalThis.petAccessoryLayout || null;
@@ -912,7 +911,7 @@ function noteAccessoryDiagnostic(slotName, file, reason) {
   const key = `${file || "unknown"}|${reason}`;
   if (slot.diagnostics.has(key)) return;
   slot.diagnostics.add(key);
-  try { console.warn(`Clawd: ${slotName} accessory fallback for ${file || "unknown"}: ${reason}`); } catch {}
+  try { console.warn(`omp-pet: ${slotName} accessory fallback for ${file || "unknown"}: ${reason}`); } catch {}
 }
 
 function getAccessoryDescriptor(slotName, file, state) {
@@ -1294,81 +1293,7 @@ if (window && typeof window.addEventListener === "function") {
   window.addEventListener("resize", () => refreshAccessoryLayout());
   window.addEventListener("beforeunload", () => {
     clearAllAccessoryRuntimes({ clearAsset: true });
-    clearTestReactionVisuals();
   });
-}
-
-// ── Test-result reactions ──
-// Theme-independent decorative overlays. They never swap the current state
-// SVG, pause cursor tracking, or enter the click/drag reaction state machine.
-const TEST_CONFETTI_COLORS = ["#ff5d8f", "#ffd166", "#4ec3e0", "#8a5cff", "#5ad17a"];
-const testConfettiTimers = new Map();
-let testShakeTimer = null;
-
-function clearTestConfetti() {
-  for (const [particle, timer] of testConfettiTimers) {
-    if (timer) clearTimeout(timer);
-    try { particle.remove(); } catch {}
-  }
-  testConfettiTimers.clear();
-}
-
-function clearTestShake() {
-  if (testShakeTimer) {
-    clearTimeout(testShakeTimer);
-    testShakeTimer = null;
-  }
-  if (facingStage) facingStage.classList.remove("clawd-test-shake");
-}
-
-function clearTestReactionVisuals() {
-  clearTestConfetti();
-  clearTestShake();
-}
-
-function burstTestConfetti() {
-  clearTestReactionVisuals();
-  if (!particleLayer) return;
-  const count = 18;
-  for (let i = 0; i < count; i++) {
-    const particle = document.createElement("div");
-    const startX = 30 + Math.floor((i / count) * 40);
-    const dx = (i % 2 === 0 ? 1 : -1) * (10 + (i * 7) % 60);
-    const delay = (i % 6) * 40;
-    particle.className = "clawd-test-confetti";
-    particle.style.left = `${startX}%`;
-    particle.style.background = TEST_CONFETTI_COLORS[i % TEST_CONFETTI_COLORS.length];
-    particle.style.setProperty("--test-confetti-dx", `${dx}px`);
-    particle.style.animationDelay = `${delay}ms`;
-    particleLayer.appendChild(particle);
-    const timer = setTimeout(() => {
-      testConfettiTimers.delete(particle);
-      try { particle.remove(); } catch {}
-    }, 1500 + delay);
-    testConfettiTimers.set(particle, timer);
-  }
-}
-
-function shakePetForTestFailure() {
-  clearTestReactionVisuals();
-  if (!facingStage) return;
-  // Force a style flush so consecutive failed test runs restart the wobble.
-  void facingStage.offsetWidth;
-  facingStage.classList.add("clawd-test-shake");
-  testShakeTimer = setTimeout(() => {
-    testShakeTimer = null;
-    try { facingStage.classList.remove("clawd-test-shake"); } catch {}
-  }, 650);
-}
-
-function playTestReaction(result) {
-  if (dndEnabled) return;
-  if (result === "pass") burstTestConfetti();
-  else if (result === "fail") shakePetForTestFailure();
-}
-
-if (window.electronAPI && typeof window.electronAPI.onPlayTestReaction === "function") {
-  window.electronAPI.onPlayTestReaction(playTestReaction);
 }
 
 // Release an <object> SVG element: navigate away to unload the SVG document
@@ -1416,14 +1341,12 @@ if (window.electronAPI && typeof window.electronAPI.onPetHiddenChange === "funct
 
 window.electronAPI.onDndChange((enabled) => {
   dndEnabled = enabled;
-  if (dndEnabled) clearTestReactionVisuals();
 });
 
 window.electronAPI.onMiniModeChange((enabled, edge, options) => {
   const preEntry = !!(options && options.preEntry);
   _miniPreEntryMode = !!enabled && preEntry;
   _inMiniMode = !!enabled && !preEntry;
-  if (enabled) clearTestReactionVisuals();
   miniLeftFlip = !!enabled && edge === "left";
   container.classList.toggle("mini-left", miniLeftFlip);
   applyMiniFlip(clawdEl, currentState);
@@ -1734,7 +1657,7 @@ function usesDirectionalDragBridge(file) {
 function warnDirectionalDragBridgeOnce(reason) {
   if (directionalDragBridgeWarnings.has(reason)) return;
   directionalDragBridgeWarnings.add(reason);
-  console.warn(`Clawd: directional drag bridge unavailable (${reason}); keeping the fallback direction.`);
+  console.warn(`omp-pet: directional drag bridge unavailable (${reason}); keeping the fallback direction.`);
 }
 
 function applyDirectionalDragToObject(objectEl, direction, options = {}) {
@@ -1795,7 +1718,7 @@ function restartCodexPetVisualAnimation(root) {
 function warnCodexPetVisualBridgeOnce(reason) {
   if (codexPetVisualBridgeWarnings.has(reason)) return;
   codexPetVisualBridgeWarnings.add(reason);
-  console.warn(`Clawd: Codex Pet visual bridge unavailable (${reason}); using a normal media swap.`);
+  console.warn(`omp-pet: Codex Pet visual bridge unavailable (${reason}); using a normal media swap.`);
 }
 
 function applyCodexPetVisualToObject(objectEl, file, options = {}) {
@@ -2341,7 +2264,7 @@ function getPendingSwapState(next, fallbackState) {
 function forceImageChannelReload(file, state, allowImageFallback = true, options = {}) {
   if (!allowImageFallback) return false;
   if (!file) return false;
-  console.warn("Clawd: animation stayed invisible; reloading through the image channel:", file);
+  console.warn("omp-pet: animation stayed invisible; reloading through the image channel:", file);
   swapToFile(file, state, false, {
     allowImageFallback: false,
     visualRequest: options.visualRequest || null,
@@ -2664,7 +2587,7 @@ function swapToFile(file, state, useObjectChannel, options = {}) {
 function renderStateFile(requestOrState, legacySvg) {
   const visualRequest = normalizeVisualRequest(requestOrState);
   if (requestOrState && typeof requestOrState === "object" && !visualRequest) {
-    try { console.warn("Clawd: ignored malformed visual request"); } catch {}
+    try { console.warn("omp-pet: ignored malformed visual request"); } catch {}
     return;
   }
   const state = visualRequest ? visualRequest.displayState : requestOrState;
@@ -3386,7 +3309,7 @@ function reportSoundPlaybackError(phase, err) {
     window.electronAPI.reportSoundPlaybackError({ phase, message });
     return;
   }
-  try { console.warn(`Clawd sound ${phase} failed:`, message); } catch {}
+  try { console.warn(`omp-pet sound ${phase} failed:`, message); } catch {}
 }
 
 function cacheAudio(url) {

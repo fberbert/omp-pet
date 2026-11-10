@@ -304,14 +304,14 @@ describe("setTextScaleForDisplay end-to-end commit", () => {
 
 describe("applyUpdate sync invariant", () => {
   it("sync action: returns a plain object, NOT a Promise, and the next sync read sees the new value", () => {
-    // This is the contract that lets `ctx.lang = "zh"` work in sync menu setters
+    // This is the contract that lets `ctx.lang = "pt-BR"` work in sync menu setters
     // without microtask deferral. If applyUpdate were `async`, the commit
     // would slip past the next read on the same tick.
     const ctrl = createSettingsController({ prefsPath: makeTempPath() });
-    const r = ctrl.applyUpdate("lang", "zh");
+    const r = ctrl.applyUpdate("lang", "pt-BR");
     assert.strictEqual(typeof r.then, "undefined", "sync action must return plain object");
     assert.strictEqual(r.status, "ok");
-    assert.strictEqual(ctrl.get("lang"), "zh", "sync read after sync update sees new value");
+    assert.strictEqual(ctrl.get("lang"), "pt-BR", "sync read after sync update sees new value");
   });
 
   it("async action: returns a Promise resolving to the same shape", async () => {
@@ -371,12 +371,12 @@ describe("applyUpdate", () => {
   it("commits valid pure-data updates and persists to disk", async () => {
     const p = makeTempPath();
     const ctrl = createSettingsController({ prefsPath: p });
-    const r = await ctrl.applyUpdate("lang", "zh");
+    const r = await ctrl.applyUpdate("lang", "pt-BR");
     assert.strictEqual(r.status, "ok");
-    assert.strictEqual(ctrl.get("lang"), "zh");
+    assert.strictEqual(ctrl.get("lang"), "pt-BR");
     // Persisted to disk
     const onDisk = JSON.parse(fs.readFileSync(p, "utf8"));
-    assert.strictEqual(onDisk.lang, "zh");
+    assert.strictEqual(onDisk.lang, "pt-BR");
   });
 
   it("rejects invalid values without touching the store", async () => {
@@ -394,9 +394,9 @@ describe("applyUpdate", () => {
     const ctrl = createSettingsController({ prefsPath: p });
     let broadcasts = 0;
     ctrl.subscribe(() => broadcasts++);
-    await ctrl.applyUpdate("lang", "zh"); // changes
+    await ctrl.applyUpdate("lang", "pt-BR"); // changes
     assert.strictEqual(broadcasts, 1);
-    const r = await ctrl.applyUpdate("lang", "zh"); // same value
+    const r = await ctrl.applyUpdate("lang", "pt-BR"); // same value
     assert.strictEqual(r.noop, true);
     assert.strictEqual(broadcasts, 1, "no second broadcast");
   });
@@ -456,13 +456,13 @@ describe("applyBulk", () => {
     let broadcasts = 0;
     let lastChanges = null;
     ctrl.subscribe(({ changes }) => { broadcasts++; lastChanges = changes; });
-    const r = await ctrl.applyBulk({ x: 100, y: 200, lang: "zh" });
+    const r = await ctrl.applyBulk({ x: 100, y: 200, lang: "pt-BR" });
     assert.strictEqual(r.status, "ok");
     assert.strictEqual(broadcasts, 1);
-    assert.deepStrictEqual(lastChanges, { x: 100, y: 200, lang: "zh" });
+    assert.deepStrictEqual(lastChanges, { x: 100, y: 200, lang: "pt-BR" });
     assert.strictEqual(ctrl.get("x"), 100);
     assert.strictEqual(ctrl.get("y"), 200);
-    assert.strictEqual(ctrl.get("lang"), "zh");
+    assert.strictEqual(ctrl.get("lang"), "pt-BR");
   });
 
   it("rejects the entire bulk if any field fails validation", async () => {
@@ -539,9 +539,9 @@ describe("applyCommand", () => {
         }),
       },
     });
-    const r = await ctrl.applyCommand("myCmd", { lang: "zh" });
+    const r = await ctrl.applyCommand("myCmd", { lang: "pt-BR" });
     assert.strictEqual(r.status, "ok");
-    assert.strictEqual(ctrl.get("lang"), "zh");
+    assert.strictEqual(ctrl.get("lang"), "pt-BR");
   });
 
   it("propagates command errors", async () => {
@@ -713,9 +713,9 @@ describe("subscribe / subscribeKey", () => {
     ctrl.subscribeKey("lang", (val) => { langCalls++; langValue = val; });
     await ctrl.applyUpdate("soundMuted", true); // unrelated
     assert.strictEqual(langCalls, 0);
-    await ctrl.applyUpdate("lang", "zh");
+    await ctrl.applyUpdate("lang", "pt-BR");
     assert.strictEqual(langCalls, 1);
-    assert.strictEqual(langValue, "zh");
+    assert.strictEqual(langValue, "pt-BR");
   });
 
   it("multiple subscribers all fire on the same change", async () => {
@@ -723,7 +723,7 @@ describe("subscribe / subscribeKey", () => {
     let a = 0, b = 0;
     ctrl.subscribe(() => a++);
     ctrl.subscribe(() => b++);
-    await ctrl.applyUpdate("lang", "zh");
+    await ctrl.applyUpdate("lang", "pt-BR");
     assert.strictEqual(a, 1);
     assert.strictEqual(b, 1);
   });
@@ -736,7 +736,7 @@ describe("subscribe / subscribeKey", () => {
       // Simulate a "re-save" that would cause a death loop in a naive store
       ctrl.persist();
     });
-    await ctrl.applyUpdate("lang", "zh");
+    await ctrl.applyUpdate("lang", "pt-BR");
     assert.strictEqual(calls, 1);
   });
 });
@@ -906,10 +906,10 @@ describe("hydrate (system → prefs import, no effect)", () => {
     ctrl.subscribe(({ changes }) => { broadcasts++; lastChanges = changes; });
     // Use existing pure-data fields (function-form entries) — hydrate must
     // work for both function-form and object-form entries.
-    const r = await ctrl.hydrate({ lang: "zh", soundMuted: true });
+    const r = await ctrl.hydrate({ lang: "pt-BR", soundMuted: true });
     assert.strictEqual(r.status, "ok");
     assert.strictEqual(broadcasts, 1);
-    assert.deepStrictEqual(lastChanges, { lang: "zh", soundMuted: true });
+    assert.deepStrictEqual(lastChanges, { lang: "pt-BR", soundMuted: true });
   });
 
   it("noop when value already matches", async () => {
@@ -931,9 +931,9 @@ describe("locked controller (future-version files)", () => {
     } finally {
       console.warn = originalWarn;
     }
-    const r = await ctrl.applyUpdate("lang", "zh");
+    const r = await ctrl.applyUpdate("lang", "pt-BR");
     assert.strictEqual(r.status, "ok");
-    assert.strictEqual(ctrl.get("lang"), "zh");
+    assert.strictEqual(ctrl.get("lang"), "pt-BR");
     // On-disk file should still have version 999 (not overwritten)
     const onDisk = JSON.parse(fs.readFileSync(p, "utf8"));
     assert.strictEqual(onDisk.version, 999);
@@ -989,7 +989,7 @@ describe("unreadable prefs safe mode", () => {
     assert.strictEqual(ctrl.isLocked(), true);
     assert.strictEqual(ctrl.hasReadFailure(), true);
 
-    const pureUpdate = ctrl.applyUpdate("lang", "zh");
+    const pureUpdate = ctrl.applyUpdate("lang", "pt-BR");
     assert.strictEqual(pureUpdate.status, "error");
     assert.strictEqual(pureUpdate.code, "prefs-read-failure");
 

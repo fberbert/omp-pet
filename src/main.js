@@ -23,10 +23,10 @@ const _xwaylandRelaunch = planXWaylandRelaunch({
 });
 if (_xwaylandRelaunch) {
   console.log(
-    "Clawd: Linux — relaunching under XWayland (--ozone-platform=x11) " +
-    "(issue #441; override with CLAWD_OZONE_PLATFORM=wayland|x11|auto)"
+    "omp-pet: Linux — relaunching under XWayland (--ozone-platform=x11) " +
+    "(issue #441; override with OMP_PET_OZONE_PLATFORM=wayland|x11|auto)"
   );
-  process.env.CLAWD_OZONE_RELAUNCHED = "1";
+  process.env.OMP_PET_OZONE_RELAUNCHED = "1";
   // Spawn the replacement ourselves instead of app.relaunch(). Electron's
   // relauncher helper is a process run from the binary INSIDE the AppImage's
   // FUSE mount, and it deliberately waits for this process to die before it
@@ -52,7 +52,7 @@ if (_xwaylandRelaunch) {
   }
   if (_xwaylandChild && typeof _xwaylandChild.on === "function") {
     _xwaylandChild.on("error", (err) => {
-      console.error("Clawd: XWayland relaunch spawn error:", err && err.message ? err.message : err);
+      console.error("omp-pet: XWayland relaunch spawn error:", err && err.message ? err.message : err);
     });
   }
   if (_xwaylandChild && typeof _xwaylandChild.pid === "number") {
@@ -65,8 +65,8 @@ if (_xwaylandRelaunch) {
   // startup so the app still runs, just without drag (issue #441). The error
   // listener above also prevents async exec failures (ENOENT/EACCES) from
   // crashing this fallback path.
-  delete process.env.CLAWD_OZONE_RELAUNCHED;
-  console.error("Clawd: XWayland relaunch failed; continuing under native Wayland (issue #441).");
+  delete process.env.OMP_PET_OZONE_RELAUNCHED;
+  console.error("omp-pet: XWayland relaunch failed; continuing under native Wayland (issue #441).");
 }
 
 const { clampTextScale, resolveTextScaleForKey } = require("./text-scale");
@@ -322,14 +322,14 @@ function hydrateSystemBackedSettings() {
   try {
     systemValue = !!_readSystemOpenAtLogin();
   } catch (err) {
-    console.warn("Clawd: failed to read system openAtLogin during hydration:", err && err.message);
+    console.warn("omp-pet: failed to read system openAtLogin during hydration:", err && err.message);
   }
   const result = _settingsController.hydrate({
     openAtLogin: systemValue,
     openAtLoginHydrated: true,
   });
   if (result && result.status === "error") {
-    console.warn("Clawd: openAtLogin hydration failed:", result.message);
+    console.warn("omp-pet: openAtLogin hydration failed:", result.message);
   }
 }
 
@@ -345,7 +345,7 @@ function hydrateFreshInstallLanguage() {
   try {
     detected = prefsModule.mapLocaleToLang(app.getLocale());
   } catch (err) {
-    console.warn("Clawd: failed to detect device locale for language:", err && err.message);
+    console.warn("omp-pet: failed to detect device locale for language:", err && err.message);
     return;
   }
   if (detected && detected !== _settingsController.get("lang")) {
@@ -566,7 +566,7 @@ if (_loadedStartupTheme._id !== _requestedThemeId || _loadedStartupTheme._varian
     themeVariant: nextVariantMap,
   });
   if (result && result.status === "error") {
-    console.warn("Clawd: theme hydrate after fallback failed:", result.message);
+    console.warn("omp-pet: theme hydrate after fallback failed:", result.message);
   }
 }
 
@@ -913,14 +913,14 @@ function applyTextScaleNow() {
       settingsWindowRuntime.applyTextScaleToWindow();
     }
   } catch (err) {
-    console.warn("Clawd: settings window text scale failed:", err && err.message);
+    console.warn("omp-pet: settings window text scale failed:", err && err.message);
   }
   try {
     if (_dashboard && typeof _dashboard.applyTextScaleToWindow === "function") {
       _dashboard.applyTextScaleToWindow();
     }
   } catch (err) {
-    console.warn("Clawd: dashboard text scale failed:", err && err.message);
+    console.warn("omp-pet: dashboard text scale failed:", err && err.message);
   }
   repositionAnchoredFloatingSurfaces();
 }
@@ -1604,7 +1604,7 @@ function reconcilePowerSaveBlocker() {
       powerSaveBlockerId = null;
     }
   } catch (err) {
-    console.warn("Clawd: reconcilePowerSaveBlocker failed:", err);
+    console.warn("omp-pet: reconcilePowerSaveBlocker failed:", err);
   }
 }
 function releasePowerSaveBlocker() {
@@ -1754,7 +1754,7 @@ function buildTutorialAgentOnboardingState() {
   try {
     detection = detectAgentInstallations({ skipDefaultIntegrations: false }) || detection;
   } catch (err) {
-    console.warn("Clawd: tutorial agent detection failed:", err && err.message);
+    console.warn("omp-pet: tutorial agent detection failed:", err && err.message);
   }
   return bucketAgentsForTutorial({
     detectionAgents: detection.agents,
@@ -1797,7 +1797,7 @@ function getTutorialHeroSrc() {
   try {
     _tutorialHeroSrcCache = pathToFileURL(path.join(__dirname, "..", "assets", "icon.png")).href;
   } catch (err) {
-    console.warn("Clawd: failed to resolve tutorial icon:", err && err.message);
+    console.warn("omp-pet: failed to resolve tutorial icon:", err && err.message);
     _tutorialHeroSrcCache = "";
   }
   return _tutorialHeroSrcCache;
@@ -1812,7 +1812,7 @@ function getTutorialDoneHeroSvg() {
       "utf8"
     );
   } catch (err) {
-    console.warn("Clawd: failed to read tutorial done hero:", err && err.message);
+    console.warn("omp-pet: failed to read tutorial done hero:", err && err.message);
     _tutorialDoneHeroSvgCache = "";
   }
   return _tutorialDoneHeroSvgCache;
@@ -1933,12 +1933,12 @@ function startDiscordPresence() {
       // Development-only seam: committed GIF URLs intentionally point at main,
       // so pre-merge real-device QA may opt into a public test ref/host. A
       // packaged build always ignores the environment and uses the stable URL.
-      gifBaseUrl: app.isPackaged ? "" : process.env.CLAWD_DISCORD_GIF_BASE_URL,
+      gifBaseUrl: app.isPackaged ? "" : process.env.OMP_PET_DISCORD_GIF_BASE_URL,
       log: (level, msg) => {
         try { sessionLog(`[discord-presence] ${level}: ${msg}`); } catch {}
         // Surface warnings (e.g. wrong App ID) on the house channel; the debug
         // log alone is invisible to an ordinary user.
-        if (level === "warn") { try { console.warn(`Clawd: discord presence: ${msg}`); } catch {} }
+        if (level === "warn") { try { console.warn(`omp-pet: discord presence: ${msg}`); } catch {} }
       },
     });
   }
@@ -2278,11 +2278,11 @@ registerSessionIpc({
     if (result && typeof result.then === "function") {
       result
         .then((r) => {
-          if (r && r.status === "error") console.warn("Clawd: failed to pin Session HUD:", r.message);
+          if (r && r.status === "error") console.warn("omp-pet: failed to pin Session HUD:", r.message);
         })
-        .catch((err) => console.warn("Clawd: failed to pin Session HUD:", err && err.message));
+        .catch((err) => console.warn("omp-pet: failed to pin Session HUD:", err && err.message));
     } else if (result && result.status === "error") {
-      console.warn("Clawd: failed to pin Session HUD:", result.message);
+      console.warn("omp-pet: failed to pin Session HUD:", result.message);
     }
   },
 });
@@ -2449,7 +2449,7 @@ function createWindow() {
     },
     statPath: (p) => fs.promises.stat(p),
     openTerminalAt: (dir) => openTerminalAt(dir),
-    dropLog: (message) => console.log(`Clawd: ${message}`),
+    dropLog: (message) => console.log(`omp-pet: ${message}`),
   });
 
   startMainTick();
@@ -2684,7 +2684,7 @@ try {
     _roam.setConstrainAxis(value === true);
   });
 } catch (err) {
-  console.warn("Clawd: freeRoam subscribeKey failed:", err && err.message);
+  console.warn("omp-pet: freeRoam subscribeKey failed:", err && err.message);
 }
 
 // ── Idle activities — decorative state beats while no agent is active (#1252) ──
@@ -2729,7 +2729,7 @@ try {
     _idleActivity.setFrequency(value);
   });
 } catch (err) {
-  console.warn("Clawd: idleActivity subscribeKey failed:", err && err.message);
+  console.warn("omp-pet: idleActivity subscribeKey failed:", err && err.message);
 }
 
 // Convenience getters for mini state (used throughout main.js)
@@ -2782,9 +2782,9 @@ if (!gotTheLock) {
         return true;
       }
     } catch (err) {
-      console.warn("Clawd: preferences authority nudge failed:", err && err.message);
+      console.warn("omp-pet: preferences authority nudge failed:", err && err.message);
     }
-    console.warn(`Clawd: ${body}`);
+    console.warn(`omp-pet: ${body}`);
     return false;
   }
 
@@ -2809,10 +2809,10 @@ if (!gotTheLock) {
     sessionDebugLog = path.join(app.getPath("userData"), "session-debug.log");
     focusDebugLog = path.join(app.getPath("userData"), "focus-debug.log");
     try { syncDiscordPresence("startup"); }
-    catch (err) { console.warn("Clawd: discord presence startup failed:", err && err.message); }
+    catch (err) { console.warn("omp-pet: discord presence startup failed:", err && err.message); }
     createWindow();
     try { recapRuntime.start(); }
-    catch (err) { console.warn("Clawd: local recap startup failed:", err && err.code ? err.code : "storage-error"); }
+    catch (err) { console.warn("omp-pet: local recap startup failed:", err && err.code ? err.code : "storage-error"); }
     // nativeTheme reads are only used to pick an appearance, so subscribing
     // after the pet window exists keeps startup free of extra reloads. The
     // first did-finish-load repeats the resolution once because the value
@@ -2840,7 +2840,7 @@ if (!gotTheLock) {
       },
       log: sessionLog,
       onError: (err) => safeConsoleError(
-        "Clawd: system wake recovery failed:",
+        "omp-pet: system wake recovery failed:",
         err && err.message ? err.message : err
       ),
     });
@@ -2852,7 +2852,7 @@ if (!gotTheLock) {
     try {
       if (!_settingsController.get("tutorialSeen")) _tutorial.open();
     } catch (err) {
-      console.warn("Clawd: failed to open first-run tutorial:", err && err.message);
+      console.warn("omp-pet: failed to open first-run tutorial:", err && err.message);
     }
     // Register persistent global shortcuts from the validated prefs snapshot.
     shortcutRuntime.registerPersistentShortcutsFromSettings();

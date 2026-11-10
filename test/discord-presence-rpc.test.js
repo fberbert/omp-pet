@@ -311,7 +311,7 @@ test("main caches only ACK-committed visuals, filters reactions, and keeps the G
   assert.ok(startBlock.includes("const visual = lastDiscordPresenceVisual"),
     "first enable must prefer the renderer-visible cache over state.currentSvg");
   assert.ok(startBlock.includes("visual.state, visual.svg, visual.themeId"));
-  assert.ok(startBlock.includes('gifBaseUrl: app.isPackaged ? "" : process.env.CLAWD_DISCORD_GIF_BASE_URL'),
+  assert.ok(startBlock.includes('gifBaseUrl: app.isPackaged ? "" : process.env.OMP_PET_DISCORD_GIF_BASE_URL'),
     "packaged builds must ignore the pre-merge QA override");
 });
 

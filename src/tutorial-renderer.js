@@ -33,9 +33,8 @@
   // Native language names — never translated, so a user who can't read the
   // current UI language can still find their own.
   const LANG_LABELS = {
-    en: "English", zh: "简体中文", "zh-TW": "繁體中文", ko: "한국어", ja: "日本語",
+    en: "English",
     "pt-BR": "Português (Brasil)",
-    es: "Español",
   };
 
   // Fallback mark only used if main couldn't read the icon file.
@@ -168,10 +167,10 @@
           "Could not update every selected item: {message}", { message: firstError || "unknown error" });
       } else if (kind === "cleanup") {
         setAgentNotice(kind, "ok", "tutorialAgentsCleanupDone",
-          "Done. The selected Clawd connections were disconnected.", { count: ok });
+          "Done. The selected OMP Pet connections were disconnected.", { count: ok });
       } else {
         setAgentNotice(kind, "ok", "tutorialAgentsInstallDone",
-          "Done. Clawd is listening to the selected tools.", { count: ok });
+          "Done. OMP Pet is listening to the selected tools.", { count: ok });
       }
     } finally {
       for (const id of ids) busy.delete(id);
@@ -222,9 +221,9 @@
   function renderWelcome() {
     const wrap = el("div", { class: "welcome" });
     wrap.appendChild(heroNode("hero-art hero-lg"));
-    wrap.appendChild(el("h2", { class: "step-title" }, i18n("tutorialWelcomeTitle", "Welcome to Clawd on Desk")));
+    wrap.appendChild(el("h2", { class: "step-title" }, i18n("tutorialWelcomeTitle", "Welcome to OMP Pet")));
     wrap.appendChild(el("p", { class: "step-sub" }, i18n("tutorialWelcomeBody",
-      "Clawd follows the AI tools you choose, then reacts on your desktop when they work, wait for approval, or finish.")));
+      "OMP Pet follows the AI tools you choose, then reacts on your desktop when they work, wait for approval, or finish.")));
     wrap.appendChild(renderLangPicker());
     return wrap;
   }
@@ -244,9 +243,9 @@
   }
 
   function rowDesc(kind) {
-    if (kind === "active") return i18n("tutorialAgentsActiveRowDesc", "Clawd can listen when this tool sends activity.");
-    if (kind === "install") return i18n("tutorialAgentsInstallRowDesc", "Found on this computer. Let Clawd follow its activity.");
-    return i18n("tutorialAgentsCleanupRowDesc", "A Clawd connection exists, but the tool was not found.");
+    if (kind === "active") return i18n("tutorialAgentsActiveRowDesc", "OMP Pet can listen when this tool sends activity.");
+    if (kind === "install") return i18n("tutorialAgentsInstallRowDesc", "Found on this computer. Let OMP Pet follow its activity.");
+    return i18n("tutorialAgentsCleanupRowDesc", "An OMP Pet connection exists, but the tool was not found.");
   }
 
   function agentAvatar(a, kind) {
@@ -343,9 +342,9 @@
   function renderAgents() {
     const ag = STATE.agents;
     const wrap = el("div", {});
-    wrap.appendChild(el("h2", { class: "step-title" }, i18n("tutorialAgentsTitle", "Let Clawd follow your AI tools")));
+    wrap.appendChild(el("h2", { class: "step-title" }, i18n("tutorialAgentsTitle", "Let OMP Pet follow your AI tools")));
     wrap.appendChild(el("p", { class: "step-sub" }, i18n("tutorialAgentsSub",
-      "This only changes Clawd's connection. It won't install or remove the tools themselves.")));
+      "This only changes OMP Pet's connection. It won't install or remove the tools themselves.")));
     const notice = activeAgentNoticeNode();
     if (notice) wrap.appendChild(notice);
 
@@ -363,14 +362,14 @@
     if (ag.install.length) {
       wrap.appendChild(actionPanel("install", ag.install,
         "tutorialAgentsInstallLabel", "Recommended to enable",
-        "tutorialAgentsInstallDesc", "Clawd found these tools on this computer. Select the ones it should follow.",
+        "tutorialAgentsInstallDesc", "OMP Pet found these tools on this computer. Select the ones it should follow.",
         "tutorialAgentsInstallAction", "Enable selected",
         i18n("tutorialAgentsInstallingSelected", "Enabling…")));
     }
     if (ag.cleanup.length) {
       wrap.appendChild(actionPanel("cleanup", ag.cleanup,
         "tutorialAgentsCleanupLabel", "Recommended cleanup",
-        "tutorialAgentsCleanupDesc", "These Clawd connections still exist, but the tools were not found. Disconnect the ones you no longer use.",
+        "tutorialAgentsCleanupDesc", "These OMP Pet connections still exist, but the tools were not found. Disconnect the ones you no longer use.",
         "tutorialAgentsCleanupAction", "Disconnect selected",
         i18n("tutorialAgentsDisconnectingSelected", "Disconnecting…")));
     }
@@ -379,7 +378,7 @@
         el("div", { class: "ag-panel-head" },
           el("div", { class: "ag-panel-copy" },
             el("h3", { class: "ag-panel-title" }, i18n("tutorialAgentsActiveLabel", "Already on")),
-            el("p", { class: "ag-panel-desc" }, i18n("tutorialAgentsActiveDesc", "Clawd is set up to listen to these tools.")))));
+            el("p", { class: "ag-panel-desc" }, i18n("tutorialAgentsActiveDesc", "OMP Pet is set up to listen to these tools.")))));
       for (const a of ag.active) panel.appendChild(activeAgentRow(a));
       wrap.appendChild(panel);
     }
@@ -632,7 +631,7 @@
 
   function fixedShortcuts() {
     return [
-      { key: "shortcutLabelPetReveal", fallback: "Bring Clawd forward", keys: i18n("tutorialShortcutClickPet", "Click pet") },
+      { key: "shortcutLabelPetReveal", fallback: "Bring OMP Pet forward", keys: i18n("tutorialShortcutClickPet", "Click pet") },
       {
         key: "shortcutLabelOpenDashboard",
         fallback: "Open session dashboard",
@@ -664,7 +663,7 @@
 
     wrap.appendChild(renderShortcutSection(
       "tutorialShortcutsEditableTitle", "Can change now",
-      "tutorialShortcutsEditableDesc", "Pick the shortcuts you want. Clawd checks conflicts when you save.",
+      "tutorialShortcutsEditableDesc", "Pick the shortcuts you want. OMP Pet checks conflicts when you save.",
       editableShortcuts().map(renderEditableShortcutRow)));
     wrap.appendChild(renderShortcutSection(
       "tutorialShortcutsFixedTitle", "Built in",
@@ -685,12 +684,12 @@
     const wrap = el("div", {});
     wrap.appendChild(el("h2", { class: "step-title" }, i18n("tutorialFeaturesTitle", "Useful things to try later")));
     wrap.appendChild(el("p", { class: "step-sub" }, i18n("tutorialFeaturesSub",
-      "Nothing here is required for setup. These are handy once Clawd is running.")));
+      "Nothing here is required for setup. These are handy once OMP Pet is running.")));
     const grid = el("div", { class: "features" },
       featureCard("tutorialFeatureDrag", "Drop a project folder",
         "tutorialFeatureDragDesc", "Drop a folder on the pet to open a terminal in that directory."),
       featureCard("tutorialFeatureThemes", "Themes and mini mode",
-        "tutorialFeatureThemesDesc", "Switch character themes, or tuck Clawd against a screen edge."),
+        "tutorialFeatureThemesDesc", "Switch character themes, or tuck OMP Pet against a screen edge."),
     );
     wrap.appendChild(grid);
     return wrap;
@@ -701,7 +700,7 @@
     wrap.appendChild(heroNode("hero-art hero-sm hero-svg", "done"));
     wrap.appendChild(el("h2", { class: "step-title" }, i18n("tutorialDoneTitle", "You're all set")));
     wrap.appendChild(el("p", { class: "step-sub" }, i18n("tutorialDoneBody",
-      "Start a connected AI tool and Clawd will react on your desktop. You can reopen this guide from Settings → General.")));
+      "Start a connected AI tool and OMP Pet will react on your desktop. You can reopen this guide from Settings → General.")));
     wrap.appendChild(el("div", { style: "margin-top:14px" },
       inlineLink(i18n("tutorialDoneOpenSettings", "Open Settings"),
         () => api.openSettingsTab && api.openSettingsTab("general"))));
@@ -767,7 +766,7 @@
       languagePickerControl.dispose();
       languagePickerControl = null;
     }
-    document.title = i18n("tutorialWindowTitle", "Welcome to Clawd on Desk");
+    document.title = i18n("tutorialWindowTitle", "Welcome to OMP Pet");
     renderSteps();
     const body = document.getElementById("body");
     body.className = "body step-" + STEPS[step];

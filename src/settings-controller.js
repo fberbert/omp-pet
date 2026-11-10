@@ -131,7 +131,7 @@ function createSettingsController({
       prefs.save(prefsPath, snapshot);
       return { status: "ok" };
     } catch (err) {
-      console.warn("Clawd: failed to persist prefs:", err && err.message);
+      console.warn("omp-pet: failed to persist prefs:", err && err.message);
       return { status: "error", message: err && err.message };
     }
   }
@@ -148,7 +148,7 @@ function createSettingsController({
       readFailure: true,
       message:
         `Cannot ${operation}: the preferences file could not be read. ` +
-        "Fix access to the file and restart Clawd before changing settings.",
+        "Fix access to the file and restart OMP Pet before changing settings.",
     };
   }
 

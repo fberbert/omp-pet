@@ -305,7 +305,7 @@ function createRoamFencePicker(options = {}) {
       skipTaskbar: true,
       alwaysOnTop: true,
       focusable: true,
-      title: "Choose Clawd activity area",
+      title: "Choose OMP Pet activity area",
       webPreferences: {
         preload: preloadPath,
         nodeIntegration: false,

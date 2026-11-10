@@ -58,9 +58,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onEndDragReaction: (cb) => ipcRenderer.on("end-drag-reaction", () => cb()),
   onPlayClickReaction: (cb) => ipcRenderer.on("play-click-reaction", (_, requestOrSvg, duration, options) => cb(requestOrSvg, duration, options)),
   onCancelClickReaction: (cb) => ipcRenderer.on("cancel-click-reaction", () => cb()),
-  onPlayTestReaction: (cb) => ipcRenderer.on("play-test-reaction", (_, result) => {
-    if (result === "pass" || result === "fail") cb(result);
-  }),
   // Sound playback (from main)
   onPreloadSounds: (cb) => ipcRenderer.on("preload-sounds", (_, payload) => cb(payload)),
   onPlaySound: (cb) => ipcRenderer.on("play-sound", (_, payload) => cb(payload)),

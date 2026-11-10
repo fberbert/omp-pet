@@ -7,7 +7,6 @@
   const PET_IN_PLACE_KEYS = new Set([
     "size",
     "keepSizeAcrossDisplays",
-    "testReactionsEnabled",
     "petAlwaysOnTop",
     "allowEdgePinning",
     "disableMiniMode",
@@ -604,14 +603,6 @@
         key: "eyeTrackingEnabled",
         labelKey: "rowEyeTracking",
         descKey: "rowEyeTrackingDesc",
-      }),
-    ]));
-
-    parent.appendChild(helpers.buildSection(t("sectionPetReactions"), [
-      helpers.buildSwitchRow({
-        key: "testReactionsEnabled",
-        labelKey: "rowTestReactions",
-        descKey: "rowTestReactionsDesc",
       }),
     ]));
   }

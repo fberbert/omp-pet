@@ -1,12 +1,14 @@
 # Theme Creation And Installation Guide
 
-Install a downloaded Clawd theme, or create your own desktop pet theme with custom characters and animations.
+[Back to README](../../README.md)
 
-`states.executing` is an optional animation for Claude Code's tool-call phase. Without it, Clawd reuses the complete `working` visual selection, including session tiers, animation overrides and applicable display hints/eye tracking. It does not add a new required asset or a synthetic theme binding. A theme that supplies `executing` gets its own Settings animation card; `timings.minDisplay.executing` defaults to the theme's working duration. Mini mode continues using `mini-working`.
+Install a theme someone shared, or create your own desktop pet theme with custom characters and animations.
 
-## Install A Downloaded Theme
+`states.executing` is an optional animation that OMP Pet does not trigger today. Themes may declare it; without it the pet uses the `working` visuals.
 
-A Clawd theme is a folder whose top level contains `theme.json`. The folder name is the theme id; the display name shown in Clawd comes from `theme.json.name`.
+## Install A Shared Theme
+
+A theme is a folder whose top level contains `theme.json`. The folder name is the theme id; the display name shown in the pet comes from `theme.json.name`.
 
 1. Download, clone, or unzip the theme.
 
@@ -21,14 +23,11 @@ A Clawd theme is a folder whose top level contains `theme.json`. The folder name
    ```
    If unzipping creates `pixel-cat/pixel-cat/theme.json`, move the inner folder into the themes directory.
 
-3. Put the theme folder in your Clawd user themes directory:
-   - Windows: `%APPDATA%/clawd-on-desk/themes/pixel-cat/`
-   - macOS: `~/Library/Application Support/clawd-on-desk/themes/pixel-cat/`
-   - Linux: `~/.config/clawd-on-desk/themes/pixel-cat/`
+3. Put the theme folder in your user themes directory: `~/.config/omp-pet/themes/pixel-cat/` (or `$XDG_CONFIG_HOME/omp-pet/themes/pixel-cat/`).
 
-4. Open `Settings...` -> `Theme` and select the theme. If Clawd was already open and the theme does not appear, restart Clawd.
+4. Open `Settings...` -> `Theme` and select the theme. If the pet was already open and the theme does not appear, restart it.
 
-Avoid using a folder id that matches a built-in theme (`clawd`, `calico`, or `cloudling`) or an official downloadable theme id (`hash-sage` or `whale-chan`). Built-in themes take priority over user themes with the same id, and an official id is reserved for the downloadable official theme manager. Importing a theme with a reserved id is rejected.
+Avoid using a folder id that matches a built-in theme (`clawd`, `calico` or `cloudling`). Built-in themes take priority over user themes with the same id.
 
 ## Create A New Theme
 
@@ -36,10 +35,7 @@ Avoid using a folder id that matches a built-in theme (`clawd`, `calico`, or `cl
    ```bash
    node scripts/create-theme.js my-theme
    ```
-   The script writes to your Clawd user themes directory by default:
-   - Windows: `%APPDATA%/clawd-on-desk/themes/my-theme/`
-   - macOS: `~/Library/Application Support/clawd-on-desk/themes/my-theme/`
-   - Linux: `~/.config/clawd-on-desk/themes/my-theme/`
+   The script writes to your user themes directory by default: `~/.config/omp-pet/themes/my-theme/`.
    - No argument also works: it creates the next available `my-theme` scaffold automatically
 
 2. (Optional) Customize the generated metadata:
@@ -51,11 +47,11 @@ Avoid using a folder id that matches a built-in theme (`clawd`, `calico`, or `cl
 
 4. Create your assets in the `assets/` folder
 
-5. Open `Settings...` -> `Theme` and select your theme. Restart Clawd if the new folder is not listed yet.
+5. Open `Settings...` -> `Theme` and select your theme. Restart the pet if the new folder is not listed yet.
 
 6. (Optional) Validate:
    ```bash
-   node scripts/validate-theme.js ~/.config/clawd-on-desk/themes/my-theme
+   node scripts/validate-theme.js ~/.config/omp-pet/themes/my-theme
    ```
 
 If you prefer the manual route, copying `themes/template/` yourself still works. The scaffold script just automates the same starting point and patches `name` / `author` for you.
@@ -124,11 +120,11 @@ External themes are treated as untrusted input. SVG files in user themes are san
 - CSS animation in `<style>` is allowed, but `@import` and unsafe `url(...)` references are stripped
 - `url(#local-id)` fragment references for filters, masks, gradients, and markers are allowed
 
-Do not build a user theme that depends on JavaScript inside SVG files. The built-in Cloudling theme uses `trustedRuntime.scriptedSvgFiles`, but that capability is only honored for themes loaded from Clawd's packaged/repo `themes/` directory. If an external theme declares `trustedRuntime`, Clawd ignores it.
+Do not build a user theme that depends on JavaScript inside SVG files. The built-in Cloudling theme uses `trustedRuntime.scriptedSvgFiles`, but that capability is only honored for themes loaded from the app's packaged or repository `themes/` directory. If an external theme declares `trustedRuntime`, the pet ignores it.
 
 Ordinary CSS and SMIL animation can run in Chromium's lower-power `<img>` channel, but that channel does not expose `contentDocument` for runtime controls such as reliable pause/resume or document inspection. List a sanitized SVG basename in `rendering.objectChannelFiles` only when that specific asset has been verified to require document-backed behavior; do not list every animated SVG. Listed files become required theme assets and opt the theme into the higher-power scripted rendering profile. This field does not enable JavaScript: external theme SVGs are still sanitized first, including dynamic SMIL attribute values.
 
-The `<object>` channel hands its animation timeline to the compositor, which advances it once per display refresh — needlessly expensive for a background pet on high-refresh displays. When a listed object-channel SVG should animate more coarsely than that, add it to `rendering.discreteSampling` with an integer steps-per-second value between `1` and `60`. Clawd snaps each infinite CSS animation's period and delay onto a `1/rate`-second grid and gives them a shared start time, so the document as a whole changes at most `rate` times per second when every continuous visual change comes from those aligned animations (a 12-second loop at `24` becomes `steps(288, end)`). Loops at least half a grid step long move by at most half a grid step — 20.8 ms at `24` — while shorter loops are promoted to a full grid step (1 ms becomes 41.67 ms), so a fast loop can read differently and should be watched before it is declared. Transitions, finite animations, scripted animations, and SMIL keep their own timing and can still update outside the grid. Do not declare sprite-style assets that already switch frames with `step-end`; verify each asset and start from `24`. Keys must be SVG basenames that also route through the object channel (or set `rendering.svgChannel` to `"object"`). On displays above or below 100% scaling, Clawd sets a reciprocal root `zoom` so these animations can stay on the compositor; the root must have a `viewBox`, otherwise scale cancellation is skipped and animations stay on the main thread. Avoid CSS lengths on the root element itself (rather than its children), because they do not scale with the viewBox.
+The `<object>` channel hands its animation timeline to the compositor, which advances it once per display refresh — needlessly expensive for a background pet on high-refresh displays. When a listed object-channel SVG should animate more coarsely than that, add it to `rendering.discreteSampling` with an integer steps-per-second value between `1` and `60`. the pet snaps each infinite CSS animation's period and delay onto a `1/rate`-second grid and gives them a shared start time, so the document as a whole changes at most `rate` times per second when every continuous visual change comes from those aligned animations (a 12-second loop at `24` becomes `steps(288, end)`). Loops at least half a grid step long move by at most half a grid step — 20.8 ms at `24` — while shorter loops are promoted to a full grid step (1 ms becomes 41.67 ms), so a fast loop can read differently and should be watched before it is declared. Transitions, finite animations, scripted animations, and SMIL keep their own timing and can still update outside the grid. Do not declare sprite-style assets that already switch frames with `step-end`; verify each asset and start from `24`. Keys must be SVG basenames that also route through the object channel (or set `rendering.svgChannel` to `"object"`). On displays above or below 100% scaling, the pet sets a reciprocal root `zoom` so these animations can stay on the compositor; the root must have a `viewBox`, otherwise scale cancellation is skipped and animations stay on the main thread. Avoid CSS lengths on the root element itself (rather than its children), because they do not scale with the viewBox.
 
 Every animation in a file listed in `rendering.objectChannelFiles` must stay on Chromium's compositor: `@keyframes` may only animate `transform` or `opacity`; Chromium refuses the independent `translate`, `rotate`, and `scale` properties on SVG targets, so they are not allowed (the project also keeps `filter`/`backdrop-filter` out of this allowlist as a stricter local policy). A `<use>` element with non-zero `x`/`y` — including offsets supplied by CSS — must not also animate `transform`; an element referenced by `<use>`, and all of its descendants, must not carry animations themselves; SMIL elements (`<animate>`, `<animateTransform>`, `<animateMotion>`, `<set>`) and nested `<svg>` elements are not allowed. The built-in Clawd theme is guarded by `test/clawd-object-channel-compositing.test.js`, and third-party theme authors can apply the same checks before shipping. This test covers known static rules only: passing it does not prove compositing, because Chromium also has target restrictions such as effective zoom and `vector-effect`; use the trace check for a definitive result.
 
@@ -272,7 +268,7 @@ The existing schema fields are the only runtime truth. They already act as the t
 | `workingTiers` | Optional multi-session working overrides. Omit to fall back to `states.working`. A tier may list several `files` to pick from (see Working Tiers). |
 | `jugglingTiers` | Optional subagent juggling overrides. Its legacy `minSessions` / `maxSessions` fields count live subagents, not top-level sessions. Omit to fall back to `states.juggling` if you provide that state. |
 | `customization.petTint` | Opts the theme into the app's built-in pet color filters. Omit it or set it to `false` when filters distort authored colors. Themes cannot provide custom CSS filter strings. |
-| `customization.accessories` | Opts the theme into Clawd's built-in **head** accessory catalog only when every reachable visual has a deterministic attachment or an explicit hidden policy. Exact `files` entries may also prepare optional assets exposed by the animation-override picker; those files become required theme assets. |
+| `customization.accessories` | Opts the theme into the built-in **head** accessory catalog only when every reachable visual has a deterministic attachment or an explicit hidden policy. Exact `files` entries may also prepare optional assets exposed by the animation-override picker; those files become required theme assets. |
 | `customization.mouthAccessories` | Independently opts the theme into the built-in mouth accessory catalog under the same complete-coverage rule, including optional picker assets declared by exact `files` entries. Omit it for head-only themes. |
 
 The loader also derives read-only metadata such as `idleMode` (`tracked` / `animated` / `static`) from these fields, but that metadata is not a second schema authority.
@@ -390,7 +386,7 @@ Different animations based on how many agent sessions are running concurrently:
 
 `jugglingTiers` uses the same object shape, but its legacy `minSessions` and `maxSessions` names count live subagents within a session.
 
-A tier can list several files in `files` instead of a single `file`, and Clawd picks one of them at random:
+A tier can list several files in `files` instead of a single `file`, and the pet picks one of them at random:
 
 ```json
 "workingTiers": [
@@ -400,7 +396,7 @@ A tier can list several files in `files` instead of a single `file`, and Clawd p
 ```
 
 - The same applies to `states.thinking`, to `states.working` when there are no `workingTiers`, and to `states.juggling` when there are no `jugglingTiers`: when they list several files, one is picked at random.
-- A pick holds for as long as the pet stays in that state, so repeated hook events (every tool call) keep the same file. Clawd picks again when the pet enters the state anew (for example thinking → working → thinking), when the tier changes because the session or subagent count crossed a `minSessions` threshold, and after a theme reload.
+- A pick holds for as long as the pet stays in that state, so repeated hook events (every tool call) keep the same file. The pet picks again when the pet enters the state anew (for example thinking → working → thinking), when the tier changes because the session or subagent count crossed a `minSessions` threshold, and after a theme reload.
 - `files` wins over `file`. Keep `file` next to `files` only when the theme must also run on Clawd 1.3.0 or earlier, which reads `file` and ignores `files`; list that file inside `files` too. `validate-theme` warns when it is missing from `files`.
 - Every file in `files` is a required asset, and accessory attachments must cover it like any other visual.
 - A matching `displayHintMap` entry still wins over the pool.
@@ -529,11 +525,11 @@ Mini mode hides the character at the screen edge. Set `"supported": false` or om
 
 If `miniMode.supported` is `true`, the validator expects all 8 mini states shown above. `mini-idle` only needs to be SVG when `mini-idle` is listed in `eyeTracking.states`.
 
-`mini-working` is optional. If you provide `miniMode.states["mini-working"]`, Clawd can show a compact working animation while the pet is in mini mode. If you omit it, working/thinking/juggling events do not break mini mode; Clawd keeps the current mini visual.
+`mini-working` is optional. If you provide `miniMode.states["mini-working"]`, the pet can show a compact working animation while the pet is in mini mode. If you omit it, working/thinking/juggling events do not break mini mode; the pet keeps the current mini visual.
 
 Two more mini states are optional:
 
-- `mini-peek-hold` plays in a loop after `mini-peek` reaches its `miniMode.timings.autoReturn["mini-peek"]` time while the pointer is still over the pet. Without it, Clawd shows `mini-idle` as before. Leaving the pet returns to `mini-idle` and slides the window home.
+- `mini-peek-hold` plays in a loop after `mini-peek` reaches its `miniMode.timings.autoReturn["mini-peek"]` time while the pointer is still over the pet. Without it, the pet shows `mini-idle` as before. Leaving the pet returns to `mini-idle` and slides the window home.
 - `mini-sleep-peek` plays while hovering over a sleeping mini pet. Without it, the window still slides but `mini-sleep` remains visible. Leaving returns to `mini-sleep`; turning off Do Not Disturb slides home and shows `mini-idle`.
 
 The hover slide can also be tuned without changing the entry or resting position. `miniMode.offsetRatio` above controls how far the pet hides at rest; the following `peek.offsetRatio` controls the extra distance it slides on hover:
@@ -552,7 +548,7 @@ The hover slide can also be tuned without changing the entry or resting position
 
 `offsetRatio` moves `Math.round(current window width × offsetRatio)` pixels; omit it for 25px. `delayMs` is the wait after hover before the window starts sliding (default 0ms). `durationMs` sets both the outward and return slide (default 200ms); easing remains `t × (2 − t)`. Each omitted `sleepPeek` field inherits the matching `peek` field, then the default. Valid ranges are `offsetRatio` 0–0.5, `delayMs` 0–5000, and `durationMs` 16–5000. Invalid fields are ignored with a loader warning. A pointer that leaves during the delay cancels the pending slide. All fields and both states are opt-in; themes that omit them keep the existing hover behavior.
 
-`mirroredFiles` (top level) is optional. Clawd mirrors some visuals: every mini visual against the left screen edge, and a dedicated `roam` visual while the walk heads left (including the pre-entry crabwalk toward the left edge). Raster art with legible text or glyphs (a scroll, a talisman, code symbols) reads backwards once mirrored. Map each such file to a variant whose glyphs are pre-mirrored; whenever Clawd draws that file mirrored it shows the variant instead, and the mirror turns its text the right way round:
+`mirroredFiles` (top level) is optional. The pet mirrors some visuals: every mini visual against the left screen edge, and a dedicated `roam` visual while the walk heads left (including the pre-entry crabwalk toward the left edge). Raster art with legible text or glyphs (a scroll, a talisman, code symbols) reads backwards once mirrored. Map each such file to a variant whose glyphs are pre-mirrored; whenever the pet draws that file mirrored it shows the variant instead, and the mirror turns its text the right way round:
 
 ```json
 "mirroredFiles": {
@@ -609,8 +605,8 @@ A theme can ship two complete asset sets instead of publishing two theme IDs. Ke
 
 - `assetsDir` must be a single directory name (`A–Z`, `a–z`, `0–9`, `_`, `-`; up to 64 characters) directly inside the theme folder. It cannot be `assets` (case-insensitive) or a symbolic link.
 - The dark directory must mirror every regular file in `assets/` at the same relative path. Extra dark-only files are allowed but unused; top-level extra SVGs are still sanitized and their raster references are checked, so a missing image in one of them also makes the whole dark set unavailable. There is no per-file fallback to the light set.
-- Raster files referenced by dark SVGs must also live in the dark directory. Clawd sanitizes the dark SVGs into a separate cache; if a referenced image is missing there, the whole dark set is treated as unavailable.
-- If anything above is wrong, Clawd silently keeps using the light set and logs one `dark appearance unavailable` warning per load. A missing raster also produces the cache layer's existing `Missing raster dependency` warning. The theme still loads — `strict` mode does not make an incomplete dark directory fatal.
+- Raster files referenced by dark SVGs must also live in the dark directory. The pet sanitizes the dark SVGs into a separate cache; if a referenced image is missing there, the whole dark set is treated as unavailable.
+- If anything above is wrong, the pet silently keeps using the light set and logs one `dark appearance unavailable` warning per load. A missing raster also produces the cache layer's existing `Missing raster dependency` warning. The theme still loads — `strict` mode does not make an incomplete dark directory fatal.
 - Dark support applies to external themes only. Built-in themes ignore `appearance`.
 - Older Clawd versions do not know this field. They ignore it and load `assets/`, so declaring a dark directory does **not** require raising `minAppVersion`.
 - Users choose **Follow system**, **Light**, or **Dark** in **Settings → Theme → [your theme] → Appearance**. A missing preference follows the operating system, and the switch only appears when the dark set is usable.
@@ -663,7 +659,7 @@ This is mainly for special transition assets. Prefer one shared canvas unless a 
 
 ### Layout Normalization
 
-If two themes have very different visible body heights even though the window size is the same, add a `layout` block. This lets Clawd align the character by visible body area and baseline instead of the raw file canvas:
+If two themes have very different visible body heights even though the window size is the same, add a `layout` block. This lets the pet align the character by visible body area and baseline instead of the raw file canvas:
 
 ```json
 "layout": {
@@ -798,7 +794,7 @@ The validator checks:
 ## Debugging Tips
 
 - **Theme not appearing in Settings?** Check that `theme.json` is valid JSON (no trailing commas, no comments — use `_comment` fields instead), and that the folder containing it is directly under the user themes directory
-- **Assets not loading?** Check file names match exactly (case-sensitive on Linux/macOS)
+- **Assets not loading?** Check file names match exactly (they are case-sensitive)
 - **Eye tracking not working?** Verify your SVG has `id="eyes-js"` on the eye group, and `eyeTracking.enabled` is `true`
 - **Character jumping between states?** Ensure all assets share the same canvas size and character position
 - **Animation not looping?** GIF/APNG must be set to loop; SVG CSS `@keyframes` need `infinite` iteration
@@ -806,7 +802,7 @@ The validator checks:
 
 ## Distribution
 
-To submit your theme for the downloadable catalog, follow [Contributing external themes](contributing-themes.md) ([中文版](contributing-themes.zh-CN.md)). Proposals and reviews start in the `clawd-on-desk` application repository; accepted packages are published separately through `clawd-themes`. You can also distribute independently using the options below.
+Share a theme in either of these ways.
 
 ### As a GitHub repository
 1. Create a repo with your theme folder structure
@@ -815,16 +811,13 @@ To submit your theme for the downloadable catalog, follow [Contributing external
 
 ### As a zip file
 1. Zip the theme folder (the folder containing `theme.json`)
-2. Users extract to `{userData}/themes/`
-   - Windows: `%APPDATA%/clawd-on-desk/themes/`
-   - macOS: `~/Library/Application Support/clawd-on-desk/themes/`
-   - Linux: `~/.config/clawd-on-desk/themes/`
+2. Users extract it to `~/.config/omp-pet/themes/`
 
 ## Theme Installation (User Side)
 
 1. Download/clone the theme to the themes directory (see paths above)
 2. In `Settings...` -> `Theme`, check the capability badges (`Tracked idle`, `Animated idle`, `Static theme`, `Mini`, `Direct sleep`, `Fine motion`, `No reactions`) to confirm what the theme supports
 3. Select the theme card. The theme appears by its `name` field from `theme.json`.
-4. Restart Clawd only if a newly copied theme folder does not appear yet.
+4. Restart the pet only if a newly copied theme folder does not appear yet.
 
 > **Security note:** Third-party SVG files are automatically sanitized — `<script>`, event handlers, and `javascript:` URLs are stripped before rendering.

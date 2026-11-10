@@ -51,7 +51,7 @@
 
   function locale() {
     const lang = coreState && coreState.snapshot && coreState.snapshot.lang;
-    return ({ zh: "zh-CN", "zh-TW": "zh-TW", ko: "ko-KR", ja: "ja-JP", "pt-BR": "pt-BR", es: "es" })[lang] || "en";
+    return lang === "pt-BR" ? "pt-BR" : "en";
   }
 
   // A local-year render asks for a few hundred formatted labels and numbers.

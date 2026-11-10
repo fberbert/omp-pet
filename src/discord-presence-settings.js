@@ -1,7 +1,7 @@
 "use strict";
 
 // Non-secret config: the Application ID is a public ID (not a token), stored in
-// clawd-prefs.json. Privacy fields default off.
+// omp-pet-prefs.json. Privacy fields default off.
 
 // Official "Clawd on Desk" Discord application (public ID, not a secret) —
 // the zero-friction default from #215. Users can still bring their own App ID

@@ -17,7 +17,7 @@
   let helpers = null;
   let ops = null;
 
-  const LANGUAGE_OPTIONS = ["en", "zh", "zh-TW", "ko", "ja", "pt-BR", "es"];
+  const LANGUAGE_OPTIONS = ["en", "pt-BR"];
 
   function t(key) {
     return helpers.t(key);
@@ -55,12 +55,7 @@
 
   const LANGUAGE_LABEL_KEYS = {
     "en": "langEnglish",
-    "zh": "langChinese",
-    "zh-TW": "langTraditionalChinese",
-    "ko": "langKorean",
-    "ja": "langJapanese",
     "pt-BR": "langPortugueseBrazil",
-    "es": "langSpanish",
   };
 
   function buildLanguageRow() {

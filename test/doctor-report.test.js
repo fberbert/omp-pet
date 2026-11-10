@@ -208,7 +208,7 @@ describe("formatDiagnosticReport", () => {
       appRoot: "D:\\animation",
     });
 
-    assert.match(report, /# Clawd Diagnostic Report/);
+    assert.match(report, /# OMP Pet Diagnostic Report/);
     assert.match(report, /Overall: WARNING/);
     assert.match(report, /Cursor Agent/);
     assert.match(report, /permission bubbles disabled/);

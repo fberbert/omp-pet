@@ -1568,14 +1568,14 @@ describe("pet-window-runtime edge virtualization (#690 Phase 2 batch 2 reconcile
       );
     });
 
-    it("keeps edge reconciliation diagnostics silent unless CLAWD_WINDOW_DEBUG=1", () => {
-      const originalDebug = process.env.CLAWD_WINDOW_DEBUG;
+    it("keeps edge reconciliation diagnostics silent unless OMP_PET_WINDOW_DEBUG=1", () => {
+      const originalDebug = process.env.OMP_PET_WINDOW_DEBUG;
       const originalWarn = console.warn;
       const warnings = [];
       console.warn = (message) => warnings.push(String(message));
 
       try {
-        delete process.env.CLAWD_WINDOW_DEBUG;
+        delete process.env.OMP_PET_WINDOW_DEBUG;
         const quietClock = createFakeClock();
         const quietHarness = createRuntime({ clock: quietClock });
         wireNativeGeometryListeners(quietHarness);
@@ -1585,7 +1585,7 @@ describe("pet-window-runtime edge virtualization (#690 Phase 2 batch 2 reconcile
         quietClock.advance(1000);
         assert.deepEqual(warnings, [], "normal startup/runtime must not emit edge diagnostics");
 
-        process.env.CLAWD_WINDOW_DEBUG = "1";
+        process.env.OMP_PET_WINDOW_DEBUG = "1";
         const debugClock = createFakeClock();
         const debugHarness = createRuntime({ clock: debugClock });
         wireNativeGeometryListeners(debugHarness);
@@ -1599,8 +1599,8 @@ describe("pet-window-runtime edge virtualization (#690 Phase 2 batch 2 reconcile
         );
       } finally {
         console.warn = originalWarn;
-        if (originalDebug === undefined) delete process.env.CLAWD_WINDOW_DEBUG;
-        else process.env.CLAWD_WINDOW_DEBUG = originalDebug;
+        if (originalDebug === undefined) delete process.env.OMP_PET_WINDOW_DEBUG;
+        else process.env.OMP_PET_WINDOW_DEBUG = originalDebug;
       }
     });
   });

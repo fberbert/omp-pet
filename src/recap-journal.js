@@ -229,17 +229,17 @@ function createRecapJournal(options = {}) {
   function normalizeLine(line, localDate, accept, dedupeKeys = null, warnInvalid = true) {
     if (!line.trim()) return "blank";
     if (Buffer.byteLength(line, "utf8") > MAX_PERSISTED_RECORD_BYTES) {
-      if (warnInvalid) warn("Clawd: ignored oversized recap journal line");
+      if (warnInvalid) warn("omp-pet: ignored oversized recap journal line");
       return "invalid";
     }
     let parsed;
     try { parsed = JSON.parse(line); } catch {
-      if (warnInvalid) warn("Clawd: ignored corrupt recap journal line");
+      if (warnInvalid) warn("omp-pet: ignored corrupt recap journal line");
       return "invalid";
     }
     const normalized = normalizePersistedRecord(parsed);
     if (!normalized || normalized.localDate !== localDate) {
-      if (warnInvalid) warn("Clawd: ignored invalid recap journal record");
+      if (warnInvalid) warn("omp-pet: ignored invalid recap journal record");
       return "invalid";
     }
     if (normalized.dedupeKeyHash && dedupeKeys) {
@@ -370,7 +370,7 @@ function createRecapJournal(options = {}) {
         if (Buffer.byteLength(pending, "utf8") > MAX_PERSISTED_RECORD_BYTES) {
           processed += 1;
           if (processed > maxRecords) return { dates, truncated: true };
-          if (!warnedInvalid) warn("Clawd: ignored oversized recap journal line");
+          if (!warnedInvalid) warn("omp-pet: ignored oversized recap journal line");
           warnedInvalid = true;
           pending = "";
           discardingOversizedLine = true;
@@ -426,7 +426,7 @@ function createRecapJournal(options = {}) {
       try {
         if (compareLocalDates(match[1], oldest) < 0) fs.unlinkSync(store.childPath("events", name));
       } catch (err) {
-        if (!err || err.code !== "ENOENT") warn("Clawd: recap event retention failed", err);
+        if (!err || err.code !== "ENOENT") warn("omp-pet: recap event retention failed", err);
       }
     }
     for (const [hash, localDate] of seenDedupe) {

@@ -335,8 +335,6 @@ test("unfocusable and folder feedback copy exists in all supported languages", (
     "dashboardOpenFolder",
     "sessionOpenFolderFailed",
     "sessionOpenFolderUnavailable",
-    "sessionFocusUnavailableRemote",
-    "sessionFocusUnavailableWebui",
     "sessionFocusUnavailableMissingTerminalInfo",
   ];
   for (const lang of SUPPORTED_LANGS) {

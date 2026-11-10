@@ -118,7 +118,7 @@ function createRecapRuntime(options = {}) {
   function notifyChanged() {
     if (!onChanged) return;
     try { onChanged(); }
-    catch (err) { warn("Clawd: recap change notification failed", err); }
+    catch (err) { warn("omp-pet: recap change notification failed", err); }
   }
 
   function currentLocalDate() {
@@ -194,9 +194,9 @@ function createRecapRuntime(options = {}) {
           hydrating = false;
           hydrationBuffer = [];
           try { aggregate.flush(); } catch (err) {
-            warn("Clawd: recap aggregate privacy migration flush failed", err && err.code ? err.code : "storage-error");
+            warn("omp-pet: recap aggregate privacy migration flush failed", err && err.code ? err.code : "storage-error");
           }
-          warn("Clawd: recap journal reconciliation skipped because retained history exceeded its safety bound");
+          warn("omp-pet: recap journal reconciliation skipped because retained history exceeded its safety bound");
           return;
         }
 
@@ -233,7 +233,7 @@ function createRecapRuntime(options = {}) {
             aggregate.resetMemory();
             aggregate.load();
           } catch {}
-          warn("Clawd: recap journal reconciliation failed", err && err.code ? err.code : "storage-error");
+          warn("omp-pet: recap journal reconciliation failed", err && err.code ? err.code : "storage-error");
           return;
         }
         try {
@@ -242,7 +242,7 @@ function createRecapRuntime(options = {}) {
           // The replacement is complete in memory. Keep dirty months intact so
           // a later lifecycle flush can retry instead of discarding the journal
           // projection and serving an empty/stale cache until restart.
-          warn("Clawd: recap aggregate reconciliation flush failed", err && err.code ? err.code : "storage-error");
+          warn("omp-pet: recap aggregate reconciliation flush failed", err && err.code ? err.code : "storage-error");
         }
       })
       .catch((err) => {
@@ -251,9 +251,9 @@ function createRecapRuntime(options = {}) {
         hydrationBuffer = [];
         hydrationOverflow = false;
         try { aggregate.flush(); } catch (flushErr) {
-          warn("Clawd: recap aggregate privacy migration flush failed", flushErr && flushErr.code ? flushErr.code : "storage-error");
+          warn("omp-pet: recap aggregate privacy migration flush failed", flushErr && flushErr.code ? flushErr.code : "storage-error");
         }
-        warn("Clawd: recap journal reconciliation failed", err && err.code ? err.code : "storage-error");
+        warn("omp-pet: recap journal reconciliation failed", err && err.code ? err.code : "storage-error");
       });
     return hydrationPromise;
   }
@@ -277,7 +277,7 @@ function createRecapRuntime(options = {}) {
         if (enabled && !suspended) coverage.tick(now());
         prune();
       } catch (err) {
-        warn("Clawd: recap midnight rollover failed", err);
+        warn("omp-pet: recap midnight rollover failed", err);
       }
       scheduleMidnight();
     }, nextLocalMidnightDelay(now(), getTimeZone()));
@@ -302,7 +302,7 @@ function createRecapRuntime(options = {}) {
     try {
       if (enabled) coverage.stop(now());
     } catch (err) {
-      warn("Clawd: recap suspend checkpoint failed", err && err.code ? err.code : "storage-error");
+      warn("omp-pet: recap suspend checkpoint failed", err && err.code ? err.code : "storage-error");
     }
   }
 
@@ -316,7 +316,7 @@ function createRecapRuntime(options = {}) {
       prune();
       scheduleMidnight();
     } catch (err) {
-      warn("Clawd: recap resume checkpoint failed", err && err.code ? err.code : "storage-error");
+      warn("omp-pet: recap resume checkpoint failed", err && err.code ? err.code : "storage-error");
     }
   }
 
@@ -522,7 +522,7 @@ function createRecapRuntime(options = {}) {
         if (started && enabled && !suspended) coverage.stop(now());
         aggregate.flush();
       } catch (err) {
-        warn("Clawd: local recap shutdown flush failed", err && err.code ? err.code : "storage-error");
+        warn("omp-pet: local recap shutdown flush failed", err && err.code ? err.code : "storage-error");
       }
       try { coverage.resetMemory(); } catch {}
     }

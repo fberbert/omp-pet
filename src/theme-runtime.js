@@ -318,7 +318,7 @@ function createThemeRuntime(options = {}) {
       // switched (windows not ready, animation setup failure). The theme is
       // active either way, so complete the no-fade fallback and report success
       // — returning an error here would leave prefs contradicting the runtime.
-      console.warn("Clawd: theme fade sequencer failed; applying without fade:", err && err.message);
+      console.warn("omp-pet: theme fade sequencer failed; applying without fade:", err && err.message);
       finishThemeReload();
     }
 
@@ -351,7 +351,7 @@ function createThemeRuntime(options = {}) {
       }
       reloadActiveTheme();
     } catch (err) {
-      console.warn("Clawd: theme appearance sync failed:", err && err.message);
+      console.warn("omp-pet: theme appearance sync failed:", err && err.message);
     }
   }
 

@@ -1,7 +1,9 @@
 #!/bin/bash
-# Clawd 动画全播放测试脚本
-# 用法: bash test-demo.sh [每个动画秒数，默认8]
+# Plays every pet animation in turn.
+# Usage: bash test-demo.sh [seconds per animation, default 8]
+# Start the app first (npm start).
 
+source "$(dirname "$0")/scripts/dev-port.sh"
 DELAY=${1:-8}
 
 SVGS=(
@@ -25,11 +27,11 @@ SVGS=(
   "clawd-disconnected.svg"
 )
 
-echo "=== Clawd Demo: ${#SVGS[@]} animations, ${DELAY}s each ==="
+echo "=== Demo: ${#SVGS[@]} animations, ${DELAY}s each, ${OMP_PET_STATE_URL} ==="
 for i in "${!SVGS[@]}"; do
   svg="${SVGS[$i]}"
   echo "[$((i+1))/${#SVGS[@]}] $svg"
-  curl -s -X POST http://127.0.0.1:23333/state \
+  curl -s -X POST "$OMP_PET_STATE_URL" \
     -H "Content-Type: application/json" \
     -d "{\"state\":\"working\",\"svg\":\"$svg\"}"
   sleep "$DELAY"

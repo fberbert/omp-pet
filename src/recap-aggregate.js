@@ -254,7 +254,7 @@ function createRecapAggregate(options = {}) {
       ) {
         try {
           store.quarantine(store.childPath(name), "invalid-daily");
-          warn("Clawd: quarantined invalid recap daily aggregate");
+          warn("omp-pet: quarantined invalid recap daily aggregate");
         } catch (err) {
           throw new Error(`recap daily aggregate could not be quarantined: ${err && err.message}`);
         }
@@ -279,7 +279,7 @@ function createRecapAggregate(options = {}) {
     if (flushTimer) return;
     flushTimer = setTimeout(() => {
       flushTimer = null;
-      try { flush(); } catch (err) { warn("Clawd: recap aggregate flush failed", err); }
+      try { flush(); } catch (err) { warn("omp-pet: recap aggregate flush failed", err); }
     }, flushDelayMs);
     if (flushTimer && typeof flushTimer.unref === "function") flushTimer.unref();
   }

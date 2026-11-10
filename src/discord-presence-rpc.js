@@ -150,7 +150,7 @@ function presenceImageUrl(presenceState, gifBaseUrl = GIF_BASE_URL) {
 
 function agentLabel(agentId) {
   const agent = agentId ? getAgent(agentId) : null;
-  return (agent && agent.name) || "Clawd";
+  return (agent && agent.name) || "OMP";
 }
 
 function buildPresencePayload(session, cfg = {}, visual = null, runtime = {}) {
@@ -177,7 +177,7 @@ function buildPresencePayload(session, cfg = {}, visual = null, runtime = {}) {
   const activity = {
     details: (session && session.agentName) || agentLabel(agentId),
     state: label,
-    assets: { large_image: imageUrl, large_text: "Clawd on Desk" },
+    assets: { large_image: imageUrl, large_text: "OMP Pet" },
   };
   const folder = sessionFolderName(session);
   if (cfg.privacyShowProject && folder) {

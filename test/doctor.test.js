@@ -46,7 +46,7 @@ describe("doctor aggregate checks", () => {
     const prefs = result.checks.find((check) => check.id === "prefs-readability");
     assert.strictEqual(prefs.status, "critical");
     assert.strictEqual(prefs.reason, "prefs-recovered");
-    assert.match(prefs.detail, /clawd-prefs\.json\.bak/);
+    assert.match(prefs.detail, /omp-pet-prefs\.json\.bak/);
     assert.match(prefs.detail, /paused for this launch/i);
   });
 

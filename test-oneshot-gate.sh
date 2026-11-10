@@ -1,62 +1,52 @@
 #!/bin/bash
-# Clawd ONESHOT gate 测试脚本
-# 用法:
-#   bash test-oneshot-gate.sh               # 全测 5 个状态，间隔 6s
-#   bash test-oneshot-gate.sh error         # 只测 error
-#   bash test-oneshot-gate.sh notification
-#   bash test-oneshot-gate.sh sweeping
-#   bash test-oneshot-gate.sh attention
-#   bash test-oneshot-gate.sh carrying
-#   bash test-oneshot-gate.sh all 10        # 全测，间隔 10s
+# Exercises the one-shot animation gates with OMP events.
+# Usage:
+#   bash test-oneshot-gate.sh             # all states, 6s apart
+#   bash test-oneshot-gate.sh error       # one state
+#   bash test-oneshot-gate.sh all 10      # all states, 10s apart
 #
-# 测试场景:
-#   1) Animation Map 里把对应行开关关掉 → 跑脚本 → 桌宠应不出对应动画（gate 生效）
-#   2) 再把开关打开 → 跑脚本 → 桌宠应恢复播放对应动画（反向验证）
+# Turn a row off in Settings -> Animation Map, run the script and check the
+# pet skips that animation; turn it back on and check it plays again.
 
+source "$(dirname "$0")/scripts/dev-port.sh"
 STATE=${1:-all}
 DELAY=${2:-6}
-AGENT=${3:-claude-code}
-URL="http://127.0.0.1:23333/state"
 
-# state → event 映射（对应 agents/claude-code.js 的事件名）
+# state -> OMP event name (see agents/omp.js)
 get_event() {
   case $1 in
-    error)        echo "PostToolUseFailure" ;;
-    notification) echo "Notification" ;;
-    sweeping)     echo "PreCompact" ;;
-    attention)    echo "Stop" ;;
-    carrying)     echo "WorktreeCreate" ;;
+    error)     echo "PostToolUseFailure" ;;
+    sweeping)  echo "PreCompact" ;;
+    attention) echo "Stop" ;;
     *) echo "" ;;
   esac
 }
 
 send_state() {
   local state=$1
-  local event=$(get_event "$state")
-  local sid="test-${state}-$(date +%s)"
-  local payload="{\"state\":\"$state\",\"event\":\"$event\",\"session_id\":\"$sid\",\"agent_id\":\"$AGENT\"}"
-  printf "→ [%-13s] event=%-20s " "$state" "$event"
-  curl -s -X POST "$URL" -H "Content-Type: application/json" -d "$payload" -w "HTTP %{http_code}\n"
+  local event
+  event=$(get_event "$state")
+  local sid="omp:test-${state}-$(date +%s)"
+  local payload="{\"state\":\"$state\",\"event\":\"$event\",\"session_id\":\"$sid\",\"agent_id\":\"omp\"}"
+  printf -- "-> [%-9s] event=%-20s " "$state" "$event"
+  curl -s -X POST "$OMP_PET_STATE_URL" -H "Content-Type: application/json" -d "$payload" -w "HTTP %{http_code}\n"
 }
 
-# 健康检查
-if ! curl -s "$URL" | grep -q '"ok":true'; then
-  echo "✗ Clawd 服务未运行（预期 127.0.0.1:23333）。先 npm start"
+if ! curl -s "$OMP_PET_STATE_URL" | grep -q '"ok":true'; then
+  echo "The pet is not running at ${OMP_PET_STATE_URL}. Start it with npm start."
   exit 1
 fi
 
 if [ "$STATE" = "all" ]; then
-  echo "=== Clawd ONESHOT gate 全测：5 个状态，间隔 ${DELAY}s ==="
-  for s in error notification sweeping attention carrying; do
+  echo "=== One-shot gates: 3 states, ${DELAY}s apart ==="
+  for s in error sweeping attention; do
     send_state "$s"
     sleep "$DELAY"
   done
-  echo "=== 完成 ==="
+  echo "=== DONE ==="
 else
-  event=$(get_event "$STATE")
-  if [ -z "$event" ]; then
-    echo "✗ 未知 state: $STATE"
-    echo "  有效值: error | notification | sweeping | attention | carrying | all"
+  if [ -z "$(get_event "$STATE")" ]; then
+    echo "Unknown state: $STATE (valid: error | sweeping | attention | all)"
     exit 1
   fi
   send_state "$STATE"
