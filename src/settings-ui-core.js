@@ -42,18 +42,6 @@
   const formatAcceleratorPartial = shortcutApi.formatAcceleratorPartial
     || (() => "");
 
-  // startsWith("Mac") not /\bMac\b/ — "MacIntel" has \w after "c", fails \b (regression #135).
-  const IS_MAC = (navigator.platform || "").startsWith("Mac");
-  const IS_WIN = (navigator.platform || "").startsWith("Win");
-  // Renderers have no `process`, so platform-gated shortcut rows resolve their
-  // support from the same navigator probe. Anything we cannot positively
-  // identify as darwin/win32 is treated as unsupported, which is the safe
-  // direction for a gate that must stay closed on Linux.
-  const SHORTCUT_PLATFORM = IS_MAC ? "darwin" : (IS_WIN ? "win32" : "linux");
-  const isShortcutActionSupported = shortcutApi.isShortcutActionSupported
-    || (() => true);
-  const SUPPORTED_SHORTCUT_ACTION_IDS = SHORTCUT_ACTION_IDS.filter((actionId) =>
-    isShortcutActionSupported(actionId, SHORTCUT_PLATFORM));
   const COLLAPSED_GROUPS_STORAGE_KEY = "clawd.settings.collapsedGroups.v1";
   const NAVIGATION_STORAGE_KEY = "clawd.settings.navigation.v1";
   const MAX_PERSISTED_SCROLL_TOP = 10_000_000;
@@ -2623,7 +2611,7 @@
 
   function handleShortcutRecordKey(payload) {
     if (!state.shortcutRecordingActionId) return;
-    const built = buildAcceleratorFromEvent(payload, { isMac: IS_MAC });
+    const built = buildAcceleratorFromEvent(payload);
     if (!built) return;
     if (built.action === "pending") {
       const nextPartial = Array.isArray(built.modifiers) ? built.modifiers : [];
@@ -3022,12 +3010,8 @@
     STRINGS,
     MAINTAINERS,
     CONTRIBUTORS,
-    IS_MAC,
-    IS_WIN,
     SHORTCUT_ACTIONS,
     SHORTCUT_ACTION_IDS,
-    SUPPORTED_SHORTCUT_ACTION_IDS,
-    SHORTCUT_PLATFORM,
     buildAcceleratorFromEvent,
     formatAcceleratorLabel,
     formatAcceleratorPartial,

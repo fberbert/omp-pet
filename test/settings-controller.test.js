@@ -437,22 +437,6 @@ describe("applyUpdate", () => {
     assert.deepStrictEqual(prefs.load(p).snapshot.dashboardWindowBounds, bounds);
   });
 
-  it("enforces cross-field constraints (showTray/showDock)", async () => {
-    const ctrl = createSettingsController({
-      prefsPath: makeTempPath(),
-      // Seed both on explicitly — this guards the cross-field constraint, not
-      // the showDock default (which is off for fresh installs).
-      loadResult: { snapshot: { ...prefs.getDefaults(), showTray: true, showDock: true }, locked: false },
-    });
-    // Both seeded on; turning one off is allowed
-    const r1 = await ctrl.applyUpdate("showTray", false);
-    assert.strictEqual(r1.status, "ok");
-    // Now showTray=false, showDock=true. Turning showDock off should fail.
-    const r2 = await ctrl.applyUpdate("showDock", false);
-    assert.strictEqual(r2.status, "error");
-    assert.strictEqual(ctrl.get("showDock"), true);
-  });
-
   it("propagates async action errors as { status: error }", async () => {
     const ctrl = createSettingsController({
       prefsPath: makeTempPath(),
@@ -509,18 +493,6 @@ describe("applyBulk", () => {
     assert.strictEqual(r.status, "error");
     // Neither field committed — store still has both true
     assert.strictEqual(ctrl.get("showTray"), true);
-    assert.strictEqual(ctrl.get("showDock"), true);
-  });
-
-  it("allows bulk with only one of showTray/showDock set to false", async () => {
-    const ctrl = createSettingsController({
-      prefsPath: makeTempPath(),
-      // Seed both on explicitly (showDock now defaults off for fresh installs).
-      loadResult: { snapshot: { ...prefs.getDefaults(), showTray: true, showDock: true }, locked: false },
-    });
-    const r = await ctrl.applyBulk({ showTray: false });
-    assert.strictEqual(r.status, "ok");
-    assert.strictEqual(ctrl.get("showTray"), false);
     assert.strictEqual(ctrl.get("showDock"), true);
   });
 

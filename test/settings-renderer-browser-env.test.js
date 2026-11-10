@@ -4381,7 +4381,6 @@ describe("settings renderer browser environment", () => {
     assert.strictEqual(harness.menu.style.maxHeight, "");
   });
 
-
   it("lays out idle behavior choices at full width and hides inactive detail rows", () => {
     const css = fs.readFileSync(path.join(SRC_DIR, "settings.css"), "utf8").replace(/\r\n/g, "\n");
     assert.match(css, /\.idle-behavior-group \.row\[hidden\]\s*\{\s*display: none;/);
@@ -7841,14 +7840,6 @@ describe("settings renderer browser environment", () => {
 
 describe("macOS platform detection (Settings shortcut labels)", () => {
   const isMac = (platform) => (platform || "").startsWith("Mac");
-
-  it("keeps the unified (navigator.platform startsWith 'Mac') check in settings-ui-core.js", () => {
-    const source = fs.readFileSync(SETTINGS_UI_CORE, "utf8");
-    assert.ok(
-      source.includes('(navigator.platform || "").startsWith("Mac")'),
-      "settings-ui-core.js must use startsWith('Mac'); word-boundary regex caused #135"
-    );
-  });
 
   it("detects every known macOS navigator.platform value", () => {
     assert.strictEqual(isMac("MacIntel"), true);

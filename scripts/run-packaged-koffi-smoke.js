@@ -65,7 +65,6 @@ function runPackagedSmoke(options) {
     cwd: path.dirname(options.executable),
     stdio: "inherit",
     timeout: options.timeoutMs,
-    windowsHide: true,
   });
   if (result.error) throw result.error;
   const report = fs.existsSync(options.output)

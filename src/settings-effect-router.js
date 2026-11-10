@@ -20,8 +20,6 @@ const MENU_AFFECTING_KEYS = new Set([
   "lang",
   "soundMuted",
   "openAtLogin",
-  "showTray",
-  "showDock",
   "theme",
   "size",
   "sessionAliases",
@@ -56,9 +54,6 @@ function createSettingsEffectRouter(options = {}) {
   const BrowserWindow = options.BrowserWindow || { getAllWindows: () => [] };
   const logWarn = options.logWarn || console.warn;
   const updateMirrors = options.updateMirrors || noop;
-  const createTray = options.createTray || noop;
-  const destroyTray = options.destroyTray || noop;
-  const applyDockVisibility = options.applyDockVisibility || noop;
   const sendToRenderer = options.sendToRenderer || noop;
   const sendDashboardI18n = options.sendDashboardI18n || noop;
   const sendSessionHudI18n = options.sendSessionHudI18n || noop;
@@ -135,16 +130,6 @@ function createSettingsEffectRouter(options = {}) {
     // 1. Update mirror caches first so any side-effect handler reads fresh values.
     updateMirrors(changes);
 
-    if ("showTray" in changes) {
-      safeCall(
-        logWarn,
-        "omp-pet: tray toggle failed:",
-        changes.showTray ? createTray : destroyTray
-      );
-    }
-    if ("showDock" in changes) {
-      safeCall(logWarn, "omp-pet: applyDockVisibility failed:", applyDockVisibility);
-    }
     if ("lowPowerIdleMode" in changes) {
       sendToRenderer("low-power-idle-mode-change", changes.lowPowerIdleMode);
       // The renderer owns the media-channel substitution, but main must own

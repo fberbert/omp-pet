@@ -140,22 +140,6 @@ describe("hit-renderer input layer", () => {
     assert.ok(!names.includes("revealSessionHud"), "must not reveal HUD on Ctrl+click");
   });
 
-  it("Cmd+click on mac opens Dashboard", () => {
-    const h = createHarness({ isMac: true });
-    h.pointerup({ metaKey: true });
-    const names = h.apiCalls.map((c) => c[0]);
-    assert.ok(names.includes("showDashboard"));
-    assert.ok(!names.includes("revealSessionHud"));
-  });
-
-  it("Ctrl+click on mac does NOT open Dashboard and does NOT reveal (system right-click)", () => {
-    const h = createHarness({ isMac: true });
-    h.pointerup({ ctrlKey: true });
-    const names = h.apiCalls.map((c) => c[0]);
-    assert.ok(!names.includes("showDashboard"), "mac Ctrl+click must not trigger Dashboard");
-    assert.ok(!names.includes("revealSessionHud"), "mac Ctrl+click must not reveal HUD");
-  });
-
   it("miniMode + plain click calls exitMiniMode (not reveal)", () => {
     const h = createHarness();
     h.apiHandlers.stateSync({ miniMode: true });
@@ -276,13 +260,6 @@ describe("hit-renderer OS file drop (#459)", () => {
       dataTransfer: { types, files, dropEffect: "" },
     };
   }
-
-  it("macOS registers no drop machinery at all: no listeners, no affordance, no accept handler", () => {
-    const h = createHarness({ isMac: true });
-    assert.strictEqual(h.area.listeners.get("dragover"), undefined);
-    assert.strictEqual(h.area.listeners.get("drop"), undefined);
-    assert.strictEqual(h.apiHandlers.dropAccepted, undefined);
-  });
 
   it("dragover with files shows the copy affordance outside mini mode", () => {
     const h = createHarness();

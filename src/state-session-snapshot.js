@@ -218,7 +218,6 @@ function buildSessionSnapshotEntry(id, session, sessionAliases = {}, options = {
     cwd: (session && session.cwd) || "",
     updatedAt: sessionUpdatedAt(session),
     sourcePid: (session && session.sourcePid) || null,
-    editor: (session && session.editor) || null,
     canFocus: focusTarget.canFocus === true,
     focusTarget: focusTarget.type ? { type: focusTarget.type, url: focusTarget.url || null } : null,
     host: null,

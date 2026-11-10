@@ -13,21 +13,6 @@
 const OMP_AGENT_ID = "omp";
 const OMP_HOOK_SOURCE = "omp-extension";
 
-// Kept in step with hooks/shared-process.js NESTED_TERMINAL_ENV; duplicated
-// rather than imported because this module ships standalone in the extension.
-const NESTED_TERMINAL_ENV = [
-  "WT_SESSION",
-  "ALACRITTY_WINDOW_ID",
-  "WEZTERM_PANE",
-  "KITTY_WINDOW_ID",
-  "KONSOLE_VERSION",
-  "GNOME_TERMINAL_SCREEN",
-  "ConEmuPID",
-  "TMUX",
-  "STY",
-  "ZELLIJ",
-];
-
 // Difference 1 vs the Pi core: completion is a two-event commit. `session_stop`
 // marks a main-session candidate only; OMP then aggregates every extension's
 // stop result and emits `agent_end` with `willContinue: true` when any built-in
@@ -190,24 +175,6 @@ function buildPayload(options = {}) {
     && /^[\w./:-]+$/.test(metadata.tmuxClient)
     ? metadata.tmuxClient : null;
   if (tmuxClient) payload.tmux_client = tmuxClient;
-
-  // Not resolver metadata: the extension runs in-process with the OMP CLI, so
-  // Orca's pane key is simply in the env. Validated locally rather than
-  // imported because this module ships standalone. See orcaPaneKeyFromEnv in
-  // shared-process.js for the list and the residual gap.
-  const env = options.env || process.env;
-  const inOrcaPane = !!env && env.TERM_PROGRAM === "Orca" && !NESTED_TERMINAL_ENV.some((key) => env[key]);
-  const rawPaneKey = inOrcaPane && typeof env.ORCA_PANE_KEY === "string"
-    ? env.ORCA_PANE_KEY.trim() : null;
-  const orcaPaneKey = rawPaneKey
-    && rawPaneKey.length <= 256
-    && /^[\w-]+:[\w-]+$/.test(rawPaneKey)
-    ? rawPaneKey : null;
-  if (orcaPaneKey) payload.orca_pane_key = orcaPaneKey;
-
-  if (metadata.editor === "code" || metadata.editor === "cursor") {
-    payload.editor = metadata.editor;
-  }
 
   addToolFields(payload, options.nativeEvent);
   return payload;

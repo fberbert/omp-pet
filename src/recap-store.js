@@ -5,11 +5,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { freezeLocalTime, getSystemTimeZone, isValidTimeZone, parseLocalDate } = require("./recap-time");
-const {
-  RECAP_ATOMIC_TEMP_PATTERN,
-  assertRecapPrivatePathSupported,
-  hardenRecapPrivateDirectory,
-} = require("./recap-private-permissions");
+const RECAP_ATOMIC_TEMP_PATTERN = /^\.(?:meta\.json|daily-\d{4}-\d{2}\.json|coverage-(?:\d{4}-\d{2}|open)\.json)\.\d+\.[a-f0-9]{12}\.tmp$/;
 
 const SCHEMA_VERSION = 1;
 const DEFAULT_ROOT = path.join(os.homedir(), ".clawd", "recap-v1");
@@ -50,7 +46,7 @@ function unsafeLinkError(filePath) {
 
 function comparablePath(value) {
   const normalized = path.normalize(value);
-  return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+  return normalized;
 }
 
 function writeJsonAtomic(filePath, value) {
@@ -120,12 +116,9 @@ function createRecapStore(options = {}) {
   const root = assertRoot(options.root || DEFAULT_ROOT);
   const logWarn = options.logWarn || console.warn;
   const getTimeZone = options.getTimeZone || getSystemTimeZone;
-  const assertPrivatePathSupported = options.assertPrivatePathSupported || assertRecapPrivatePathSupported;
-  const hardenPrivateDirectory = options.hardenPrivateDirectory || hardenRecapPrivateDirectory;
   let meta = null;
   let canonicalRoot = null;
   let canonicalRootIdentity = null;
-  let hardenedRootIdentity = null;
 
   function fileIdentity(stat) {
     return `${stat.dev}:${stat.ino}`;
@@ -263,20 +256,8 @@ function createRecapStore(options = {}) {
   }
 
   function initialize() {
-    assertPrivatePathSupported(root);
     ensureDirectory(root);
     if (!pinRoot()) throw unsafeLinkError(root);
-    // POSIX modes do not restrict an NTFS DACL. Harden the root before any
-    // metadata or journal directory is created; children then inherit the
-    // protected current-user/SYSTEM/Administrators ACL. Failure is fatal so a
-    // redirected or shared HOME can never silently receive recap data.
-    if (hardenedRootIdentity !== canonicalRootIdentity) {
-      hardenPrivateDirectory(root, {
-        expectedCanonicalRoot: canonicalRoot,
-        expectedIdentity: canonicalRootIdentity,
-      });
-      hardenedRootIdentity = canonicalRootIdentity;
-    }
     ensureDirectory(managedChild("events"));
     assertManagedPath(managedChild("events"));
     cleanupTemps(options.now ? options.now() : Date.now());

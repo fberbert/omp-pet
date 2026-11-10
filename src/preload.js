@@ -1,8 +1,8 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 // The config must be available synchronously before the first paint, but a
-// sandboxed preload cannot read files, and Windows caps the launch command
-// line at 32,767 characters. Ask main over sync IPC first; keep the old
+// sandboxed preload cannot read files and a large theme does not belong on the
+// command line. Ask main over sync IPC first; keep the old
 // additionalArguments path as a fallback for external launches and fixtures.
 function readThemeConfig() {
   if (typeof ipcRenderer.sendSync === "function") {
@@ -69,7 +69,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Render window → main (cursor polling control during reactions)
   pauseCursorPolling: () => ipcRenderer.send("pause-cursor-polling"),
   resumeFromReaction: () => ipcRenderer.send("resume-from-reaction"),
-  notifyPetVisualReady: () => ipcRenderer.send("pet-visual-ready"),
   notifyPetVisualSettled: (payload) => {
     if (!payload || typeof payload !== "object") return;
     const safe = {

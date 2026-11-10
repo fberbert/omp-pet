@@ -367,10 +367,7 @@ const updateRegistry = {
       return { status: "ok" };
     },
   },
-  fullscreenOverlay: requireBoolean("fullscreenOverlay"),
-  fullscreenAutoHide: requireBoolean("fullscreenAutoHide"),
   petAlwaysOnTop: requireBoolean("petAlwaysOnTop"),
-  disableHardwareAcceleration: requireBoolean("disableHardwareAcceleration"),
 
   // ── System-backed prefs (object-form: validate + effect pre-commit gate) ──
   openAtLogin,
@@ -380,32 +377,6 @@ const updateRegistry = {
   //   no effect. After hydration prefs becomes the source of truth and the
   //   user-visible toggle goes through the openAtLogin gate above.
   openAtLoginHydrated: requireBoolean("openAtLoginHydrated"),
-
-  // ── macOS visibility (cross-field validation) ──
-  showTray(value, { snapshot }) {
-    if (typeof value !== "boolean") {
-      return { status: "error", message: "showTray must be a boolean" };
-    }
-    if (!value && snapshot && snapshot.showDock === false) {
-      return {
-        status: "error",
-        message: "Cannot hide Menu Bar while Dock is also hidden - omp-pet would become unquittable.",
-      };
-    }
-    return { status: "ok" };
-  },
-  showDock(value, { snapshot }) {
-    if (typeof value !== "boolean") {
-      return { status: "error", message: "showDock must be a boolean" };
-    }
-    if (!value && snapshot && snapshot.showTray === false) {
-      return {
-        status: "error",
-        message: "Cannot hide Dock while Menu Bar is also hidden - omp-pet would become unquittable.",
-      };
-    }
-    return { status: "ok" };
-  },
 
   // Strict activation gate. Startup uses the lenient path + hydrate() so
   // a deleted theme can't brick boot without polluting this effect.

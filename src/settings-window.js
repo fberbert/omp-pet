@@ -1,13 +1,8 @@
 "use strict";
 
-const defaultFs = require("fs");
 const defaultPath = require("path");
 
-const {
-  SETTINGS_WINDOW_TITLE,
-  getSettingsWindowIconPath,
-  getSettingsWindowTaskbarDetails,
-} = require("./settings-window-icon");
+const SETTINGS_WINDOW_TITLE = "OMP Pet Settings";
 const { clampTextScale, scaleWidth, scaleHeight, applyZoomToWindow } = require("./text-scale");
 
 const DEFAULT_WIDTH = 800;
@@ -15,7 +10,6 @@ const DEFAULT_HEIGHT = 660;
 const MIN_WIDTH = 640;
 const MIN_HEIGHT = 480;
 const READY_TO_SHOW_FALLBACK_MS = 2000;
-const SETTINGS_FRONT_LIFT_MS = 200;
 const BOUNDS_SAVE_DEBOUNCE_MS = 500;
 const RECAP_CHANGED_DEBOUNCE_MS = 500;
 const FALLBACK_WORK_AREA = { x: 0, y: 0, width: 1280, height: 800 };
@@ -78,14 +72,7 @@ function createSettingsWindowRuntime(options = {}) {
   const app = requiredDependency(options.app, "app");
   const BrowserWindow = requiredDependency(options.BrowserWindow, "BrowserWindow");
   const nativeTheme = requiredDependency(options.nativeTheme, "nativeTheme");
-  const fs = options.fs || defaultFs;
   const path = options.path || defaultPath;
-  const platform = options.platform || process.platform;
-  const isWin = options.isWin != null ? !!options.isWin : platform === "win32";
-  const isMac = options.isMac != null ? !!options.isMac : platform === "darwin";
-  const resourcesPath = options.resourcesPath || process.resourcesPath;
-  const execPath = options.execPath || process.execPath;
-  const appDir = options.appDir || path.join(__dirname, "..");
   const settingsHtmlPath = options.settingsHtmlPath || path.join(__dirname, "settings.html");
   const preloadPath = options.preloadPath || path.join(__dirname, "preload-settings.js");
   const discordDefaultAppIdPresent = !!options.discordDefaultAppIdPresent;
@@ -94,7 +81,6 @@ function createSettingsWindowRuntime(options = {}) {
 
   let settingsWindow = null;
   let readyToShowFallbackTimer = null;
-  let liftTimer = null;
   let saveBoundsTimer = null;
   let recapChangedTimer = null;
   let lastSavedBounds = null;
@@ -158,12 +144,6 @@ function createSettingsWindowRuntime(options = {}) {
     readyToShowFallbackTimer = null;
   }
 
-  function clearLiftTimer() {
-    if (!liftTimer) return;
-    clearScheduled(liftTimer);
-    liftTimer = null;
-  }
-
   function clearSaveBoundsTimer() {
     if (!saveBoundsTimer) return;
     clearScheduled(saveBoundsTimer);
@@ -174,28 +154,6 @@ function createSettingsWindowRuntime(options = {}) {
     if (!recapChangedTimer) return;
     clearScheduled(recapChangedTimer);
     recapChangedTimer = null;
-  }
-
-  function getIconPath() {
-    return getSettingsWindowIconPath({
-      platform,
-      isPackaged: app.isPackaged,
-      resourcesPath,
-      appDir,
-      existsSync: fs.existsSync,
-    });
-  }
-
-  function getTaskbarDetails() {
-    return getSettingsWindowTaskbarDetails({
-      platform,
-      isPackaged: app.isPackaged,
-      resourcesPath,
-      appDir,
-      execPath,
-      appPath: app.getAppPath(),
-      existsSync: fs.existsSync,
-    });
   }
 
   function computeInitialBounds() {
@@ -389,20 +347,6 @@ function createSettingsWindowRuntime(options = {}) {
     }
   }
 
-  function temporarilyLiftSettingsWindow(win) {
-    if (!isWin || !isLiveWindow(win) || typeof win.setAlwaysOnTop !== "function") return false;
-    clearLiftTimer();
-    win.setAlwaysOnTop(true);
-    if (typeof win.moveTop === "function") win.moveTop();
-    liftTimer = scheduleTimer(() => {
-      liftTimer = null;
-      if (isLiveWindow(win) && typeof win.setAlwaysOnTop === "function") {
-        win.setAlwaysOnTop(false);
-      }
-    }, SETTINGS_FRONT_LIFT_MS);
-    return true;
-  }
-
   function showAndFocusSettingsWindow(win, showOptions = {}) {
     if (!isLiveWindow(win)) return false;
     if (
@@ -414,8 +358,7 @@ function createSettingsWindowRuntime(options = {}) {
       win.restore();
     }
     if (typeof win.show === "function") win.show();
-    const lifted = temporarilyLiftSettingsWindow(win);
-    if (!lifted && typeof win.moveTop === "function") win.moveTop();
+    if (typeof win.moveTop === "function") win.moveTop();
     if (typeof win.focus === "function") win.focus();
     return true;
   }
@@ -441,7 +384,6 @@ function createSettingsWindowRuntime(options = {}) {
       return;
     }
 
-    const iconPath = getIconPath();
     const bounds = computeInitialBounds();
     const createScale = getTextScale(bounds);
     const opts = {
@@ -456,10 +398,6 @@ function createSettingsWindowRuntime(options = {}) {
       maximizable: true,
       skipTaskbar: false,
       alwaysOnTop: false,
-      // macOS: the pet app mostly lives in the background, so the first click
-      // on the inactive Settings window must reach the page instead of only
-      // activating the window — same treatment the permission prompts get.
-      ...(isMac ? { acceptFirstMouse: true } : {}),
       title: getTitle(),
       // Match settings.html's dark-mode palette to avoid a white flash before
       // CSS media query kicks in. Hex values must stay in sync with the
@@ -475,14 +413,13 @@ function createSettingsWindowRuntime(options = {}) {
         ],
       },
     };
-    if (iconPath) opts.icon = iconPath;
 
     if (typeof options.onBeforeCreate === "function") options.onBeforeCreate();
     settingsWindow = new BrowserWindow(opts);
     settingsRendererLoaded = false;
     const createdWindow = settingsWindow;
     // BrowserWindow's constructor can quantize framed window geometry at
-    // fractional Windows DPI (for example, a persisted outer width of 960
+    // fractional DPI (for example, a persisted outer width of 960
     // may initially report as 962). Re-apply the requested outer bounds via
     // setBounds before listeners are attached so repeated reopen cycles do
     // not persist and accumulate that native-frame drift.
@@ -503,12 +440,6 @@ function createSettingsWindowRuntime(options = {}) {
     // that cannot adopt the requested rectangle exactly must not feed its
     // constructor/frame quantization back into the next launch.
     lastSavedBounds = getNormalWindowBounds(createdWindow) || bounds;
-    if (isWin && typeof createdWindow.setAppDetails === "function") {
-      const taskbarDetails = getTaskbarDetails();
-      if (taskbarDetails && taskbarDetails.appIconPath) {
-        createdWindow.setAppDetails(taskbarDetails);
-      }
-    }
     createdWindow.setMenuBarVisibility(false);
     createdWindow.loadFile(settingsHtmlPath);
     if (createdWindow.webContents && typeof createdWindow.webContents.once === "function") {
@@ -565,7 +496,6 @@ function createSettingsWindowRuntime(options = {}) {
       if (isCurrentWindow) {
         showPendingSettingsWindow = null;
         clearReadyToShowFallbackTimer();
-        clearLiftTimer();
         clearSaveBoundsTimer();
         clearRecapChangedTimer();
         if (moveTextScaleTimer) {
@@ -581,8 +511,6 @@ function createSettingsWindowRuntime(options = {}) {
   }
 
   return {
-    getIconPath,
-    getTaskbarDetails,
     getWindow,
     open,
     openWhenReady,

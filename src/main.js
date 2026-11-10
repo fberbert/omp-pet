@@ -69,16 +69,10 @@ if (_xwaylandRelaunch) {
   console.error("Clawd: XWayland relaunch failed; continuing under native Wayland (issue #441).");
 }
 
-const { clampTextScale, scaleWidth, scaleHeight, resolveTextScaleForKey } = require("./text-scale");
+const { clampTextScale, resolveTextScaleForKey } = require("./text-scale");
 const path = require("path");
 const fs = require("fs");
-const crypto = require("crypto");
 const { pathToFileURL } = require("url");
-const { EventEmitter } = require("events");
-const {
-  applyWindowsAppUserModelId,
-  shouldOpenSettingsWindowFromArgv,
-} = require("./settings-window-icon");
 const createSettingsWindowRuntime = require("./settings-window");
 const createRoamFenceLoader = require("./roam-fence");
 const createRoamFenceSettings = require("./roam-fence-settings");
@@ -113,7 +107,6 @@ const { formatLocalTimestamp } = require("./log-timestamp");
 const { openTerminalAt } = require("./open-terminal");
 const discordPresenceSettings = require("./discord-presence-settings");
 const { createDiscordPresenceBridge } = require("./discord-presence-rpc");
-const { createTrayBalloonOwner } = require("./tray-balloon-owner");
 const createSettingsAnimationOverridesMain = require("./settings-animation-overrides-main");
 const { registerSettingsAnimationOverridesIpc } = createSettingsAnimationOverridesMain;
 const createShortcutRuntime = require("./shortcut-runtime");
@@ -131,15 +124,6 @@ const {
 const { formatSizeKey } = require("./settings-size-slider");
 const { keepOutOfTaskbar } = require("./taskbar");
 const { loadTrayNormalIcon, loadTrayFlashIcon } = require("./tray-flash-icon");
-const {
-  installStartupDockIcon,
-  resolveRuntimeDockIconPolicy,
-} = require("./mac-dock-icon-runtime");
-const createTopmostRuntime = require("./topmost-runtime");
-const { WIN_TOPMOST_LEVEL } = createTopmostRuntime;
-const {
-  createHitWindowActivationRuntime,
-} = require("./win-hit-window-activation");
 const createThemeFadeSequencer = require("./theme-fade-sequencer");
 const createThemeRuntime = require("./theme-runtime");
 const createAgentRuntimeMain = require("./agent-runtime-main");
@@ -149,7 +133,6 @@ const { collectRequiredAssetFiles } = require("./theme-schema");
 const { describeGeometrySync } = require("./pet-accessory-state");
 const { createDisplayedVisualProjection } = require("./displayed-visual-projection");
 const { getRightSideMirrorFiles, isVisualMirrored, resolveMirroredFile } = require("./mirrored-files");
-const createMacHideController = require("./mac-hide");
 const {
   getFocusableLocalHudSessionIds: selectFocusableLocalHudSessionIds,
   getSessionFocusTarget,
@@ -161,51 +144,13 @@ const { getAgentIconUrl } = require("./state-agent-icons");
 // MUST be set before any BrowserWindow is created (before app.whenReady)
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 
-const isMac = process.platform === "darwin";
-const isLinux = process.platform === "linux";
-const isWin = process.platform === "win32";
 const LINUX_WINDOW_TYPE = "toolbar";
 const THEME_SWITCH_FADE_OUT_MS = 140;
 const THEME_SWITCH_FADE_IN_MS = 180;
 const THEME_SWITCH_FADE_FALLBACK_MS = 4000;
 
-applyWindowsAppUserModelId(app, process.platform);
-
-
-// ── Windows: AllowSetForegroundWindow via FFI ──
-let _allowSetForeground = null;
-if (isWin) {
-  try {
-    const koffi = require("koffi");
-    const user32 = koffi.load("user32.dll");
-    _allowSetForeground = user32.func("bool __stdcall AllowSetForegroundWindow(int dwProcessId)");
-  } catch (err) {
-    console.warn("Clawd: koffi/AllowSetForegroundWindow not available:", err.message);
-  }
-}
-
-// ── Foreground fullscreen: Windows windows / macOS active native Space ──
-// #1275: both probes degrade to "never fullscreen" if native loading fails,
-// so a broken probe cannot hide the pet.
-const { createForegroundFullscreenProbe } = require("./win-fullscreen-detect");
-const { createMacFullscreenProbe } = require("./mac-fullscreen-detect");
-const _isForegroundFullscreen = isMac
-  ? createMacFullscreenProbe({
-    isMac,
-    onError: (err) => console.warn("Clawd: mac-fullscreen-detect not available:", err && err.message),
-  })
-  : createForegroundFullscreenProbe({
-    isWin,
-    onError: (err) => console.warn("Clawd: win-fullscreen-detect not available:", err && err.message),
-  });
-const _hitWindowActivationRuntime = createHitWindowActivationRuntime({
-  isWin,
-  getHitWindow: () => hitWin,
-  onError: (err) => console.warn("Clawd: win-hit-window-activation failed:", err && err.message),
-});
 // Registered before any window exists so the sandboxed preloads can read the
-// config synchronously on their first load. Keeping it out of argv avoids the
-// Windows 32,767-character command-line limit.
+// config synchronously on their first load instead of reading it from argv.
 const rendererConfigChannel = createRendererConfigChannel({ ipcMain });
 
 // ── Linux/X11: keep the output-only pet render window out of WM focus ──
@@ -215,56 +160,10 @@ const rendererConfigChannel = createRendererConfigChannel({ ipcMain });
 // "wayland" on native Wayland, where there is no X11 window to hint.
 const { createLinuxX11InputHint } = require("./linux-x11-input-hint");
 const _linuxX11InputHint = createLinuxX11InputHint({
-  isLinuxX11: isLinux && app.commandLine.getSwitchValue("ozone-platform") === "x11",
+  isLinuxX11: app.commandLine.getSwitchValue("ozone-platform") === "x11",
   displayName: app.commandLine.getSwitchValue("display"),
-  onError: (err) => console.warn("Clawd: linux-x11-input-hint failed:", err && err.message),
+  onError: (err) => console.warn("omp-pet: linux-x11-input-hint failed:", err && err.message),
 });
-
-// ── Windows: DWM cloak inspection + un-cloak (#525 self-heal) ──
-// Best-effort; degrades to "never cloaked / recovery no-op" when koffi/dwmapi
-// or the virtual-desktop COM manager is unavailable.
-const { createCloakInspector } = require("./win-cloak-recovery");
-const _cloakInspector = createCloakInspector({
-  isWin,
-  log: (line) => console.warn(`Clawd: ${line}`),
-});
-
-// ── Windows: switch the dev console to UTF-8 ──
-//
-// `npm start` attaches Clawd to a parent PowerShell/cmd console. That
-// console defaults to the system codepage (CP936 on zh-CN), so any
-// Chinese string we console.log lands as mojibake — the strings are
-// already UTF-8 in memory (after the GBK stderr decode fix), but the
-// console interprets the bytes as GBK on the way out.
-//
-// SetConsoleOutputCP(65001) tells the attached console to interpret
-// stdout/stderr as UTF-8 while Clawd is running. Packaged builds run under
-// the Windows GUI subsystem with no console attached, so this call is a
-// no-op there.
-let _restoreConsoleOutputCP = null;
-if (isWin) {
-  try {
-    const koffi = require("koffi");
-    const kernel32 = koffi.load("kernel32.dll");
-    const getConsoleOutputCP = kernel32.func("uint __stdcall GetConsoleOutputCP()");
-    const setConsoleOutputCP = kernel32.func("bool __stdcall SetConsoleOutputCP(uint wCodePageID)");
-    const previousOutputCP = getConsoleOutputCP();
-    if (setConsoleOutputCP(65001) && previousOutputCP && previousOutputCP !== 65001) {
-      let restored = false;
-      _restoreConsoleOutputCP = () => {
-        if (restored) return;
-        restored = true;
-        try { setConsoleOutputCP(previousOutputCP); } catch {}
-      };
-      app.once("will-quit", _restoreConsoleOutputCP);
-      process.once("exit", _restoreConsoleOutputCP);
-    }
-  } catch (err) {
-    // Best-effort — mojibake in dev console is annoying but not fatal.
-    console.warn("Clawd: SetConsoleOutputCP(65001) failed:", err && err.message);
-  }
-}
-
 
 // ── Window size presets ──
 const SIZES = {
@@ -291,47 +190,24 @@ const _initialPrefsLoad = prefsModule.load(PREFS_PATH);
 // process, and a backup failure locks persistence as well. Runtime gates stay
 // closed until restart in either case.
 const _initialPrefsRecovered = _initialPrefsLoad.recovered === true;
-// #1183: must run before app ready, so it reads the startup snapshot directly
-// instead of waiting for the settings controller. Kept as a constant so
-// Settings can tell when the saved switch no longer matches this process.
-const _hardwareAccelerationDisabledAtStartup = isWin
-  && !!_initialPrefsLoad.snapshot
-  && _initialPrefsLoad.snapshot.disableHardwareAcceleration === true;
-if (_hardwareAccelerationDisabledAtStartup) {
-  app.disableHardwareAcceleration();
-}
 const _initialPrefsRecoveryBackupFailed = _initialPrefsLoad.recoveryBackupFailed === true;
 const _recapStartupAuthorityLost = (
   _initialPrefsLoad.locked === true
   || _initialPrefsRecovered
   || _initialPrefsRecoveryBackupFailed
 );
-// Cross-platform "open at login" writer used by both the openAtLogin effect
-// and the startup hydration helper. Throws on failure so the action layer can
-// surface the error to the UI.
+// "Open at login" writer used by both the openAtLogin effect and the startup
+// hydration helper. Throws on failure so the action layer can surface the
+// error to the UI.
 function _writeSystemOpenAtLogin(enabled) {
-  if (isLinux) {
-    const launchScript = path.join(__dirname, "..", "launch.js");
-    const execCmd = app.isPackaged
-      ? `"${process.env.APPIMAGE || app.getPath("exe")}"`
-      : `node "${launchScript}"`;
-    loginItemHelpers.linuxSetOpenAtLogin(enabled, { execCmd });
-    return;
-  }
-  app.setLoginItemSettings(
-    loginItemHelpers.getLoginItemSettings({
-      isPackaged: app.isPackaged,
-      openAtLogin: enabled,
-      execPath: process.execPath,
-      appPath: app.getAppPath(),
-    })
-  );
+  const launchScript = path.join(__dirname, "..", "launch.js");
+  const execCmd = app.isPackaged
+    ? `"${process.env.APPIMAGE || app.getPath("exe")}"`
+    : `node "${launchScript}"`;
+  loginItemHelpers.setOpenAtLogin(enabled, { execCmd });
 }
 function _readSystemOpenAtLogin() {
-  if (isLinux) return loginItemHelpers.linuxGetOpenAtLogin();
-  return app.getLoginItemSettings(
-    app.isPackaged ? {} : { path: process.execPath, args: [app.getAppPath()] }
-  ).openAtLogin;
+  return loginItemHelpers.getOpenAtLogin();
 }
 
 function _deferredResizePet(sizeKey) {
@@ -365,7 +241,6 @@ let themeRuntime = null;
 let systemThemeAppearanceHandler = null;
 let agentRuntime = null;
 let systemWakeRecovery = null;
-const trayBalloonOwner = createTrayBalloonOwner();
 let discordPresenceBridge = null;
 // Renderer-visible state animations can diverge from state.currentSvg (idle
 // rotation and reactions). Presence is fed only after the renderer confirms
@@ -439,9 +314,8 @@ function getDashboardI18nPayload() {
 // and mark it hydrated. After that, prefs is the source of truth and the
 // openAtLogin pre-commit gate handles future writes back to the system.
 //
-// MUST run inside app.whenReady() — Electron's app.getLoginItemSettings() is
-// only stable after the app is ready. MUST run before createWindow() so the
-// first menu render reads the hydrated value.
+// MUST run before createWindow() so the first menu render reads the
+// hydrated value.
 function hydrateSystemBackedSettings() {
   if (_settingsController.get("openAtLoginHydrated")) return;
   let systemValue = false;
@@ -595,8 +469,6 @@ let roamFencePickerRuntime = null;
 const settingsWindowRuntime = createSettingsWindowRuntime({
   app,
   BrowserWindow,
-  fs,
-  isWin,
   nativeTheme,
   path,
   discordDefaultAppIdPresent: !!discordPresenceSettings.DEFAULT_CLAWD_DISCORD_APP_ID,
@@ -645,7 +517,6 @@ roamFencePickerRuntime = createRoamFencePicker({
   nativeTheme,
   screen,
   path,
-  iconPath: settingsWindowRuntime.getIconPath(),
   getSettingsWindow,
   getPetWindowBounds: () => getPetWindowBounds(),
   getEffectivePetSize: (workArea) => getEffectiveCurrentPixelSize(workArea),
@@ -654,7 +525,6 @@ roamFencePickerRuntime = createRoamFencePicker({
 shortcutRuntime = createShortcutRuntime({
   ipcMain,
   globalShortcut,
-  platform: process.platform,
   settingsController: _settingsController,
   getSettingsWindow,
   shortcutHandlers,
@@ -776,15 +646,9 @@ const petWindowRuntime = createPetWindowRuntime({
     sendToHitWin("force-drag-release");
   },
   screen,
-  isWin,
-  isMac,
-  isLinux,
-  windowsHitWindowFocusable: _hitWindowActivationRuntime.windowsHitWindowFocusable,
   linuxWindowType: LINUX_WINDOW_TYPE,
-  topmostLevel: WIN_TOPMOST_LEVEL,
   getRenderWindow: () => win,
   getHitWindow: () => hitWin,
-  getSettingsWindow: () => getSettingsWindow(),
   getActiveTheme: () => getActiveTheme(),
   getDisplayedVisual: () => getDisplayedVisualTuple(),
   getCurrentState: () => getDisplayedVisualTuple().displayState,
@@ -799,32 +663,22 @@ const petWindowRuntime = createPetWindowRuntime({
   getCurrentPixelSize: () => getCurrentPixelSize(),
   getEffectiveCurrentPixelSize: (workArea) => getEffectiveCurrentPixelSize(workArea),
   getAllowEdgePinning: () => allowEdgePinningCached,
-  // #1275: gates creation-time and size-preview topmost writes; runtime-level
-  // reassert paths gate themselves inside topmost-runtime.
-  getAlwaysOnTop: () => getPetAlwaysOnTopEffective(),
+  // #1275: the creation-time window level.
+  getAlwaysOnTop: () => petAlwaysOnTopCached,
   getPrimaryWorkAreaSafe: () => getPrimaryWorkAreaSafe(),
   getNearestWorkArea,
   sendToRenderer,
   keepOutOfTaskbar,
   repositionSessionHud: () => repositionSessionHud(),
   repositionAnchoredSurfaces: () => repositionAnchoredFloatingSurfaces(),
-  // Lazy-bound like isMiniAnimating below — topmostRuntime is constructed
-  // after petWindowRuntime, but this closure only fires on a user gesture,
-  // well after module load finishes. (#935 override latch)
-  noteManualPetShow: () => topmostRuntime.noteFullscreenAutoHideOverride(),
   syncSessionHudVisibilityAndBubbles: () => syncSessionHudVisibility(),
   buildTrayMenu: () => buildTrayMenu(),
   buildContextMenu: () => buildContextMenu(),
-  reapplyMacVisibility: () => reapplyMacVisibility(),
-  reassertWinTopmost: (...args) => reassertWinTopmost(...args),
-  scheduleHwndRecovery: () => scheduleHwndRecovery(),
-  cloakInspector: _cloakInspector,
   isMiniAnimating: () => _mini.getIsAnimating(),
   // Issue #690 plan §4.3.10's fourth reconcile protection period (lazy-bound
   // like isMiniAnimating above — _roam is constructed after petWindowRuntime,
   // but this closure isn't invoked until well after module load finishes).
   isRoamAnimating: () => _roam.isRoamAnimating(),
-  isNearWorkAreaEdge: (bounds) => isNearWorkAreaEdge(bounds),
   flushRuntimeStateToPrefs: () => flushRuntimeStateToPrefs(),
   handleMiniDisplayChange: () => _mini.handleDisplayChange(),
   // Issue #690 plan §4.5 point 4.5-4: handleDisplayMetricsChanged() used to
@@ -968,8 +822,6 @@ let quitCleanupStarted = false;
 // Mirror caches: kept in sync with the settings store via settings-effect-router
 // further down. Read freely; never assign
 // directly (writes go through ctx setters → controller.applyUpdate).
-let showTray = _settingsController.get("showTray");
-let showDock = _settingsController.get("showDock");
 let openAtLogin = _settingsController.get("openAtLogin");
 let sessionHudEnabled = _settingsController.get("sessionHudEnabled");
 let sessionHudShowStateLabels = _settingsController.get("sessionHudShowStateLabels");
@@ -989,14 +841,8 @@ let allowEdgePinningCached = _settingsController.get("allowEdgePinning");
 let disableMiniModeCached = _settingsController.get("disableMiniMode");
 let eyeTrackingEnabledCached = _settingsController.get("eyeTrackingEnabled");
 let keepSizeAcrossDisplaysCached = _settingsController.get("keepSizeAcrossDisplays");
-let fullscreenOverlayCached = _settingsController.get("fullscreenOverlay");
-let fullscreenAutoHideCached = _settingsController.get("fullscreenAutoHide");
 // #1275: master always-on-top preference for the pet body.
 let petAlwaysOnTopCached = _settingsController.get("petAlwaysOnTop");
-const petAlwaysOnTopAtStartup = petAlwaysOnTopCached;
-function getPetAlwaysOnTopEffective() {
-  return isMac ? petAlwaysOnTopAtStartup : petAlwaysOnTopCached;
-}
 let textScale = _settingsController.get("textScale");
 let textScaleByDisplay = _settingsController.get("textScaleByDisplay");
 // Transient slider-drag override for ONE display — the one the settings
@@ -1098,19 +944,7 @@ function endTextScalePreview() {
   return { status: "ok" };
 }
 
-let macHideController = null; // macOS app-hidden ↔ pet visibility bridge (#416); created in whenReady
-// Shared mac prep for any manual "show / move the pet" entry point (tray,
-// shortcut, bring-to-primary): release OS-hide ownership so a later
-// activate/unhide won't falsely restore, and if the app is OS-hidden, unhide it
-// first to avoid a "window shown but app still hidden" limbo.
-function prepManualPetVisibility() {
-  if (macHideController) macHideController.noteManualChange();
-  if (isMac && petWindowRuntime.isPetHidden() && typeof app.isHidden === "function" && app.isHidden()) {
-    try { app.show(); } catch (_) {}
-  }
-}
 function togglePetVisibility() {
-  prepManualPetVisibility();
   return petWindowRuntime.togglePetVisibility();
 }
 // Explicit-direction variant for the menus: the Show/Hide Pet items apply the
@@ -1118,11 +952,9 @@ function togglePetVisibility() {
 // lands while the menu is open degrades to a no-op instead of inverting the
 // action (see menu.js).
 function setPetVisibility(visible) {
-  prepManualPetVisibility();
   return petWindowRuntime.setPetHidden(!visible);
 }
 function bringPetToPrimaryDisplay() {
-  prepManualPetVisibility();
   return petWindowRuntime.bringPetToPrimaryDisplay();
 }
 
@@ -1336,7 +1168,7 @@ function syncRendererStateAfterLoad({ includeStartupRecovery = true } = {}) {
   sendToRenderer("pet-tint-change", resolvePetTintPayload(tintId, activeTheme));
   deliverAccessorySlotsSnapshot(activeTheme);
   sendToRenderer("low-power-idle-mode-change", lowPowerIdleMode);
-  sendToRenderer("pet-hidden-change", petWindowRuntime.isPetEffectivelyHidden());
+  sendToRenderer("pet-hidden-change", petWindowRuntime.isPetHidden());
   if (_mini.getMiniMode()) {
     sendToRenderer("mini-mode-change", true, _mini.getMiniEdge());
     // mini-clip is a renderer inline style — a renderer/theme reload (and
@@ -1428,20 +1260,15 @@ function flashTaskbar() {
   if (!trayFlashNormalIcon) {
     trayFlashNormalIcon = loadTrayNormalIcon({
       nativeImage,
-      platform: process.platform,
-      templatePath: path.join(__dirname, "../assets/tray-iconTemplate.png"),
       iconPath: path.join(__dirname, "../assets/icon.png"),
     });
   }
 
-  // Cache the completion icon on first call. macOS uses a dedicated Template
-  // pair in the same 18pt slot; Windows/Linux retain the 32px orange dot.
+  // Cache the completion icon (32px orange dot) on first call.
   if (!trayFlashHighlightIcon) {
     trayFlashHighlightIcon = loadTrayFlashIcon({
       nativeImage,
-      platform: process.platform,
       flashPath: path.join(__dirname, "../assets/tray-icon-flash.png"),
-      flashTemplatePath: path.join(__dirname, "../assets/tray-icon-flashTemplate.png"),
       fileExists: (p) => fs.existsSync(p),
     });
   }
@@ -1520,21 +1347,11 @@ let repositionSessionHud = () => {};
 let syncSessionHudVisibility = () => {};
 let broadcastSessionHudSnapshot = () => {};
 let sendSessionHudI18n = () => {};
-let getSessionHudWindow = () => null;
 
 const themeFadeSequencer = createThemeFadeSequencer({
   getRenderWindow: () => win,
   getHitWindow: () => hitWin,
-  // #640: while the pet dodges an editing bubble its baseline opacity is the
-  // faded value, not 1 — restoring to 1 mid-edit would plant an opaque pet on
-  // top of the box being typed into. (Lazy: topmostRuntime is defined below.)
-  // #1275: a hidden non-topmost Mac pet stays shown at opacity 0 to retain
-  // its Space membership; finishing a theme fade must preserve that hiding.
-  getRestoreOpacity: () => (
-    isMac && !getPetAlwaysOnTopEffective() && petWindowRuntime.isPetEffectivelyHidden()
-      ? 0
-      : topmostRuntime.getPetTargetOpacity()
-  ),
+  getRestoreOpacity: () => 1,
   fadeOutMs: THEME_SWITCH_FADE_OUT_MS,
   fadeInMs: THEME_SWITCH_FADE_IN_MS,
   fallbackMs: THEME_SWITCH_FADE_FALLBACK_MS,
@@ -1559,66 +1376,18 @@ function beginDragSnapshot() { return petWindowRuntime.beginDragSnapshot(); }
 function clearDragSnapshot() { return petWindowRuntime.clearDragSnapshot(); }
 function moveWindowForDrag() { return petWindowRuntime.moveWindowForDrag(); }
 
-// Windows-only (#538/#562 drag focus-steal): the topmost runtime calls this
-// with the inverse of the fullscreen state. The native controller toggles
-// WS_EX_NOACTIVATE without calling BrowserWindow.setFocusable(false), whose
-// Focus(false) side effect deactivates the user's fullscreen foreground app.
-// A WM_MOUSEACTIVATE hook keeps clicks deliverable while Electron remains
-// non-focusable. If setup fails, the window falls back before first show.
-const setHitWinFocusable = _hitWindowActivationRuntime.setHitWinFocusable;
-
 // ── Mini Mode — delegated to src/mini.js ──
 // Initialized after state module (needs applyState, resolveDisplayState, etc.)
 // See _mini initialization below
 
-// ── alwaysOnTop recovery — delegated to src/topmost-runtime.js ──
-const topmostRuntime = createTopmostRuntime({
-  isWin,
-  isMac,
-  getWin: () => win,
-  getHitWin: () => hitWin,
-  recoverCloakedPet: () => petWindowRuntime.recoverIfCloaked(),
-  getSessionHudWindow: () => getSessionHudWindow(),
-  getContextMenuOwner: () => contextMenuOwner,
-  getNearestWorkArea,
-  getPetWindowBounds,
-  // #640: tight sprite rect for the editing-overlap dodge test
-  getHitRectScreen: (bounds) => getHitRectScreen(bounds),
-  getShowDock: () => showDock,
-  isDragLocked: () => petWindowRuntime.isDragLocked(),
-  isMiniAnimating: () => _mini.getIsAnimating(),
-  isMiniTransitioning: () => _mini.getMiniTransitioning(),
-  isForegroundFullscreen: () => _isForegroundFullscreen(),
-  getForegroundFullscreenObservation: () => _isForegroundFullscreen.getLastObservation(),
-  isFullscreenWindowAlive: (windowId) => _isForegroundFullscreen.isWindowIdAlive(windowId),
-  getFullscreenOverlay: () => fullscreenOverlayCached,
-  // #1275: Mac uses the launch value to preserve all-Space membership;
-  // Windows and Linux demote the render + hit windows immediately.
-  getAlwaysOnTop: () => getPetAlwaysOnTopEffective(),
-  // #935 fullscreen auto-hide: the pref gate plus pet-window-runtime's
-  // dedicated visibility layer (stacked on the user's manual hide).
-  getFullscreenAutoHide: () => fullscreenAutoHideCached || (isMac && !getPetAlwaysOnTopEffective()),
-  setFullscreenAutoHidden: (...args) => petWindowRuntime.setFullscreenAutoHidden(...args),
-  isFullscreenAutoHidden: () => petWindowRuntime.isFullscreenAutoHidden(),
-  setHitWinFocusable,
-  keepOutOfTaskbar,
-  setForceEyeResend,
-  applyPetWindowPosition,
-  syncHitWin,
-  // I5 (plan §3): report the macOS editing-overlap dodge intent through
-  // pet-window-runtime's single ignore-mouse writer instead of this module
-  // calling hitWin.setIgnoreMouseEvents() directly.
-  setImeEditingPetDodge: (value) => petWindowRuntime.setImeEditingPetDodge(value),
-});
-const {
-  reassertWinTopmost,
-  reapplyMacVisibility,
-  isNearWorkAreaEdge,
-  scheduleHwndRecovery,
-  guardAlwaysOnTop,
-  startTopmostWatchdog,
-  startFocusablePoll,
-} = topmostRuntime;
+// #1275: apply the always-on-top preference to the live pet windows.
+function applyPetAlwaysOnTopPreference() {
+  for (const target of [win, hitWin]) {
+    if (!target || target.isDestroyed() || typeof target.setAlwaysOnTop !== "function") continue;
+    if (target.isAlwaysOnTop() === petAlwaysOnTopCached) continue;
+    target.setAlwaysOnTop(petAlwaysOnTopCached);
+  }
+}
 
 const {
   createRuntimeAgentGate,
@@ -1639,7 +1408,6 @@ function repositionAnchoredFloatingSurfaces() {
 
 // ── State machine — delegated to src/state.js ──
 let showDashboard = () => {};
-let showQuickSelect = () => {};
 let broadcastDashboardSessionSnapshot = () => {};
 let sendDashboardI18n = () => {};
 
@@ -1806,8 +1574,8 @@ displayedVisualProjection = createDisplayedVisualProjection({
 });
 const { setState, applyState, updateSession, resolveDisplayState, getSvgOverride,
         enableDoNotDisturb, disableDoNotDisturb: disableDoNotDisturbState,
-        startStaleCleanup, stopStaleCleanup,
-        startWakePoll, stopWakePoll, detectRunningAgentProcesses,
+        startStaleCleanup,
+        stopWakePoll, detectRunningAgentProcesses,
         startStartupRecovery: _startStartupRecovery } = _state;
 const sessions = _state.sessions;
 
@@ -1899,13 +1667,7 @@ requestFastTick = (maxDelay) => _tick.scheduleSoon(maxDelay);
 const { startMainTick, resetIdleTimer } = _tick;
 
 // ── Terminal focus — delegated to src/focus.js ──
-const _focus = require("./focus")({ _allowSetForeground, focusLog });
-const {
-  initFocusHelper,
-  killFocusHelper,
-  focusTerminalWindow,
-  clearMacFocusCooldownTimer,
-} = _focus;
+const { focusTerminalWindow } = require("./focus")({ focusLog });
 
 function getFocusableLocalHudSessionIds() {
   if (!_state || typeof _state.buildSessionSnapshot !== "function") return [];
@@ -1928,11 +1690,9 @@ function focusDashboardSession(sessionId, options = {}) {
   return focusTerminalWindow({
     sourcePid: session.sourcePid,
     cwd: session.cwd,
-    editor: session.editor,
     pidChain: session.pidChain,
     tmuxSocket: session.tmuxSocket,
     tmuxClient: session.tmuxClient,
-    orcaPaneKey: session.orcaPaneKey,
     sessionId: id,
     agentId: session.agentId,
     requestSource,
@@ -1971,27 +1731,14 @@ const _dashboard = require("./dashboard")({
   ),
   getSavedBounds: () => _settingsController.get("dashboardWindowBounds"),
   onSaveBounds: (bounds) => _settingsController.applyUpdate("dashboardWindowBounds", bounds),
-  iconPath: settingsWindowRuntime.getIconPath(),
 });
 showDashboard = _dashboard.showDashboard;
-// The keyboard mode is a temporary state of the real Dashboard page, so it is
-// owned by the Dashboard rather than by a second window/renderer.
-showQuickSelect = () => _dashboard.quick.show();
 broadcastDashboardSessionSnapshot = (snapshot) => {
   _dashboard.broadcastSessionSnapshot(snapshot);
 };
 sendDashboardI18n = () => {
   _dashboard.sendI18n();
 };
-// The quick host is a real window whose own `close` handler refuses to close
-// (it is a borrow surface for the shared page, not something the user destroys).
-// Electron closes every window BEFORE `will-quit`, so disposing it only there
-// deadlocks a normal Quit: the close is refused, the window survives and
-// `will-quit` never arrives. Tear it down while the app is still deciding to
-// quit; the `will-quit` call stays as an idempotent backstop for a host created
-// after that point.
-app.on("before-quit", () => _dashboard.quick.dispose());
-app.on("will-quit", () => _dashboard.quick.dispose());
 
 // ── First-run onboarding tutorial ──
 // Buckets the installable agents for the tutorial's step 2. We call the
@@ -2086,7 +1833,6 @@ const _tutorial = require("./tutorial")({
   },
   getHeroSrc: () => getTutorialHeroSrc(),
   getDoneHeroSvg: () => getTutorialDoneHeroSvg(),
-  iconPath: settingsWindowRuntime.getIconPath(),
   getAgentOnboardingState: () => buildTutorialAgentOnboardingState(),
   // install/uninstall route through the controller's command API so the commit
   // (integrationInstalled flag, hint cleanup, monitor start/stop) persists and
@@ -2107,7 +1853,7 @@ const _tutorial = require("./tutorial")({
 
 const _sessionHud = require("./session-hud")({
   get win() { return win; },
-  get petHidden() { return petWindowRuntime.isPetEffectivelyHidden(); },
+  get petHidden() { return petWindowRuntime.isPetHidden(); },
   get sessionHudEnabled() { return sessionHudEnabled; },
   get sessionHudShowStateLabels() { return sessionHudShowStateLabels; },
   get sessionHudShowElapsed() { return sessionHudShowElapsed; },
@@ -2123,14 +1869,11 @@ const _sessionHud = require("./session-hud")({
   getSessionHudAnchorRect,
   getNearestWorkArea,
   getTextScale: () => getTextScaleForPetWindows(),
-  guardAlwaysOnTop,
-  reapplyMacVisibility,
 });
 repositionSessionHud = _sessionHud.repositionSessionHud;
 syncSessionHudVisibility = _sessionHud.syncSessionHud;
 broadcastSessionHudSnapshot = _sessionHud.broadcastSessionSnapshot;
 sendSessionHudI18n = _sessionHud.sendI18n;
-getSessionHudWindow = _sessionHud.getWindow;
 
 agentRuntime = createAgentRuntimeMain({
   getServer: () => _server,
@@ -2233,7 +1976,6 @@ function syncDiscordPresence(reason = "settings") {
 
 const _menuCtx = {
   get win() { return win; },
-  get petAlwaysOnTop() { return getPetAlwaysOnTopEffective(); },
   get sessions() { return sessions; },
   cancelRoam: () => _roam.cancelRoam(),
   resetKeepSizeFrozen: () => resetKeepSizeFrozen(),
@@ -2248,16 +1990,12 @@ const _menuCtx = {
   get doNotDisturb() { return doNotDisturb; },
   get lang() { return lang; },
   set lang(v) { _settingsController.applyUpdate("lang", v); },
-  get showTray() { return showTray; },
-  set showTray(v) { _settingsController.applyUpdate("showTray", v); },
-  get showDock() { return showDock; },
-  set showDock(v) { _settingsController.applyUpdate("showDock", v); },
   get openAtLogin() { return openAtLogin; },
   set openAtLogin(v) { _settingsController.applyUpdate("openAtLogin", v); },
   get soundMuted() { return soundMuted; },
   set soundMuted(v) { _settingsController.applyUpdate("soundMuted", v); },
   get soundVolume() { return soundVolume; },
-  get petHidden() { return petWindowRuntime.isPetEffectivelyHidden(); },
+  get petHidden() { return petWindowRuntime.isPetHidden(); },
   setPetVisibility: (visible) => setPetVisibility(visible),
   bringPetToPrimaryDisplay: () => bringPetToPrimaryDisplay(),
   get isQuitting() { return isQuitting; },
@@ -2301,10 +2039,7 @@ const _menuCtx = {
   getHookServerPort: () => getHookServerPort(),
   clampToScreenVisual,
   getNearestWorkArea,
-  reapplyMacVisibility,
-  raisePetWindows: () => topmostRuntime.raisePetWindows(),
   getSettingsWindow,
-  getSystemVersion: () => process.getSystemVersion(),
   discoverThemes: () => themeLoader.discoverThemes(),
   getActiveThemeId: () => themeRuntime.getActiveThemeId("clawd"),
   getActiveThemeCapabilities: () => themeRuntime.getActiveThemeCapabilities(),
@@ -2314,13 +2049,11 @@ const _menuCtx = {
 };
 const _menu = require("./menu")(_menuCtx);
 const { t, buildContextMenu, buildTrayMenu, rebuildAllMenus, createTray,
-        destroyTray, showPetContextMenu, ensureContextMenuOwner,
-        requestAppQuit, applyDockVisibility } = _menu;
+        showPetContextMenu, ensureContextMenuOwner } = _menu;
 
 // ── Settings effect router ──
 const SETTINGS_MIRROR_SETTERS = {
-  lang: (v) => { lang = v; }, size: (v) => { currentSize = v; resetKeepSizeFrozen(); }, showTray: (v) => { showTray = v; },
-  showDock: (v) => { showDock = v; if (macHideController) macHideController.noteManualChange(); },
+  lang: (v) => { lang = v; }, size: (v) => { currentSize = v; resetKeepSizeFrozen(); },
   openAtLogin: (v) => { openAtLogin = v; },
   sessionHudEnabled: (v) => { sessionHudEnabled = v; },
   sessionHudShowStateLabels: (v) => { sessionHudShowStateLabels = v; },
@@ -2334,19 +2067,9 @@ const SETTINGS_MIRROR_SETTERS = {
   keepAwakeWhileWorking: (v) => { keepAwakeWhileWorking = v; },
   petTint: (v) => { petTint = v; },
   allowEdgePinning: (v) => { allowEdgePinningCached = v; }, disableMiniMode: (v) => { disableMiniModeCached = v; }, eyeTrackingEnabled: (v) => { eyeTrackingEnabledCached = v; }, keepSizeAcrossDisplays: (v) => { keepSizeAcrossDisplaysCached = v; resetKeepSizeFrozen(); },
-  fullscreenOverlay: (v) => { fullscreenOverlayCached = v; },
-  fullscreenAutoHide: (v) => {
-    fullscreenAutoHideCached = v;
-    if (!v) {
-      topmostRuntime.clearFullscreenAutoHideOverride();
-      petWindowRuntime.setFullscreenAutoHidden(false);
-    }
-  },
-  // #1275: Mac needs a restart: once delegated into the private Space, the
-  // pet cannot return to all ordinary Spaces. Other platforms apply now.
   petAlwaysOnTop: (v) => {
     petAlwaysOnTopCached = v;
-    if (!isMac) topmostRuntime.applyPetAlwaysOnTopPreference();
+    applyPetAlwaysOnTopPreference();
   },
   freeRoam: (v) => { _roam.setEnabled(v); },
   textScale: (v) => { textScale = v; textScalePreview = null; },
@@ -2376,9 +2099,6 @@ const settingsEffectRouter = createSettingsEffectRouter({
   recapRuntime,
   BrowserWindow,
   updateMirrors: updateSettingsMirrors,
-  createTray,
-  destroyTray,
-  applyDockVisibility,
   sendToRenderer,
   sendDashboardI18n: () => sendDashboardI18n(),
   sendSessionHudI18n: () => sendSessionHudI18n(),
@@ -2531,8 +2251,6 @@ registerSettingsIpc({
     ),
   }),
   getSizeContext: getSizeSliderContext,
-  getHardwareAccelerationDisabledAtStartup: () => _hardwareAccelerationDisabledAtStartup,
-  getPetAlwaysOnTopAtStartup: () => petAlwaysOnTopAtStartup,
   sendToRenderer,
   getDoNotDisturb: () => doNotDisturb,
   getSoundMuted: () => soundMuted,
@@ -2571,7 +2289,7 @@ registerSessionIpc({
 
 function createWindow() {
   // Read everything from the settings controller. The mirror caches above
-  // (lang/showTray/etc.) were already initialized at module-load time, so
+  // (lang/size/etc.) were already initialized at module-load time, so
   // here we just need the position/mini fields plus the legacy size migration.
   let prefs = _settingsController.getSnapshot();
   // Legacy S/M/L → P:N migration. Only kicks in for prefs files that haven't
@@ -2583,10 +2301,6 @@ function createWindow() {
     const migrated = `P:${Math.max(1, Math.min(75, ratio))}`;
     _settingsController.applyUpdate("size", migrated); // subscriber updates currentSize mirror
     prefs = _settingsController.getSnapshot();
-  }
-  // macOS: apply dock visibility (default visible — but persisted state wins).
-  if (isMac) {
-    applyDockVisibility();
   }
   const launchSizingWorkArea = getLaunchSizingWorkArea(
     prefs,
@@ -2630,13 +2344,12 @@ function createWindow() {
     rendererConfigChannel,
     setRenderWindow: (createdWindow) => { win = createdWindow; },
     isQuitting: () => isQuitting,
-    applyDockVisibility,
     applyNoInputHint: (createdWindow) => _linuxX11InputHint.applyNoInputHint(createdWindow),
   });
   finalizePetAccessorySlotsDelivery(initialAccessoryDelivery, true);
 
   buildContextMenu();
-  if (!isMac || showTray) createTray();
+  createTray();
   ensureContextMenuOwner();
 
   // ── Create input window (hitWin) — small rect over hitbox, receives all pointer events ──
@@ -2646,11 +2359,6 @@ function createWindow() {
     loadFilePath: path.join(__dirname, "hit.html"),
     hitThemeConfig: themeRuntime.getHitRendererConfig(),
     rendererConfigChannel,
-    isQuitting: () => isQuitting,
-    guardAlwaysOnTop,
-    prepareActivation: (createdHitWin) => (
-      _hitWindowActivationRuntime.controller.prepare(createdHitWin)
-    ),
     onDidFinishLoad: () => {
       const hitConfig = themeRuntime.getHitRendererConfig();
       rendererConfigChannel.setHitConfig(hitConfig);
@@ -2706,17 +2414,8 @@ function createWindow() {
       ) return false;
       return displayedVisualProjection.settle(payload);
     },
-    recoverVisiblePetAfterRendererLoad: (event) => {
-      if (!win || win.isDestroyed()) return;
-      if (!event || event.sender !== win.webContents) return;
-      if (themeRuntime.isReloadInProgress()) return;
-      petWindowRuntime.recoverVisiblePetAfterRendererLoad();
-    },
     setDragLocked: (value) => {
-      if (value) {
-        _mini.cancelPendingMiniPeek(true);
-        topmostRuntime.raisePetWindows();
-      }
+      if (value) _mini.cancelPendingMiniPeek(true);
       petWindowRuntime.setDragLocked(value);
     },
     setMouseOverPet: (value) => { mouseOverPet = !!value; },
@@ -2725,7 +2424,6 @@ function createWindow() {
     clearDragSnapshot: () => clearDragSnapshot(),
     syncHitWin: () => syncHitWin(),
     syncDisplayedVisualGeometry,
-    syncImeEditingPetDodge: () => topmostRuntime.syncImeEditingPetDodge(),
     isMiniMode: () => _mini.getMiniMode(),
     checkMiniModeSnap: () => checkMiniModeSnap(),
     getDisableMiniMode: () => disableMiniModeCached,
@@ -2738,8 +2436,6 @@ function createWindow() {
       computeFinalDragBounds(virtualBounds, size, clampToScreenVisual),
     applyPetWindowBounds: (bounds) => applyPetWindowBounds(bounds),
     flushRuntimeStateToPrefs: () => flushRuntimeStateToPrefs(),
-    reassertWinTopmost: () => reassertWinTopmost(),
-    scheduleHwndRecovery: () => scheduleHwndRecovery(),
     repositionFloatingBubbles: () => repositionAnchoredFloatingSurfaces(),
     exitMiniMode: () => exitMiniMode(),
     getFocusableLocalHudSessionIds: () => getFocusableLocalHudSessionIds(),
@@ -2756,7 +2452,6 @@ function createWindow() {
     dropLog: (message) => console.log(`Clawd: ${message}`),
   });
 
-  initFocusHelper();
   startMainTick();
   startHttpServer().catch(() => {});
   startStaleCleanup();
@@ -2788,10 +2483,6 @@ function createWindow() {
     resetDisplayedVisualProjection("renderer-process-gone", { preserveCommitted: true });
     petWindowRuntime.reloadWindowWebContents(win, { crashKey: "renderWin", details });
   });
-
-  guardAlwaysOnTop(win);
-  startTopmostWatchdog();
-  startFocusablePoll();
 
   // display-metrics-changed fires in bursts during DPI changes and RDP
   // reconnects, and each one re-clamps/repositions the pet — running them all
@@ -2873,7 +2564,6 @@ function getNearestWorkArea(cx, cy) {
 }
 
 function clampToScreenVisual(x, y, w, h, options = {}) { return petWindowRuntime.clampToScreenVisual(x, y, w, h, options); }
-function clampToScreen(x, y, w, h) { return petWindowRuntime.clampToScreen(x, y, w, h); }
 
 function computeFinalDragBounds(bounds, size, clampPosition = clampToScreenVisual) {
   return petWindowRuntime.computeFinalDragBounds(bounds, size, clampPosition);
@@ -2928,8 +2618,7 @@ const _miniCtx = {
 };
 const _mini = require("./mini")(_miniCtx);
 
-const { enterMiniMode, exitMiniMode, enterMiniViaMenu, miniPeekIn, miniPeekOut,
-        checkMiniModeSnap, cancelMiniTransition, animateWindowX, animateWindowParabola } = _mini;
+const { exitMiniMode, enterMiniViaMenu, miniPeekIn, miniPeekOut, checkMiniModeSnap } = _mini;
 
 // ── Free Roam — initialized here after state and mini modules ──
 const _roamCtx = {
@@ -2956,8 +2645,7 @@ const _roamCtx = {
   },
   getSleepTimeoutMs: () => getActiveTheme().timings.mouseSleepTimeout,
   isSizePreviewActive: () => petWindowRuntime.isSettingsSizePreviewActive(),
-  isScreenCaptureOverlayForeground: () => _isForegroundFullscreen.getLastObservation().captureOverlay === true,
-  isPetHidden: () => petWindowRuntime.isPetEffectivelyHidden(),
+  isPetHidden: () => petWindowRuntime.isPetHidden(),
   isIdleActivityPlaying: () => _idleActivity.isAnimating(),
   get miniTransitioning() { return _mini.getMiniTransitioning(); },
   applyState: (state, svgOverride, opts) => _state.applyState(state, svgOverride, opts),
@@ -3011,7 +2699,7 @@ function canPlayIdleActivity() {
   if (_mini.getMiniMode() || _mini.getMiniTransitioning()) return false;
   if (anySessionInProgress()) return false;
   if (petWindowRuntime.isSettingsSizePreviewActive()) return false;
-  if (petWindowRuntime.isPetEffectivelyHidden()) return false;
+  if (petWindowRuntime.isPetHidden()) return false;
   if (typeof win.isVisible === "function" && !win.isVisible()) return false;
   if (_state.isSettingsPreviewVisual()) return false;
   // Same sleep guard as Free roam: do not start a beat that the sleep
@@ -3060,36 +2748,21 @@ if (!gotTheLock) {
   // Another instance is already running — quit silently
   app.quit();
 } else {
-  app.on("second-instance", (_event, commandLine) => {
-    if (petWindowRuntime.isPetEffectivelyHidden()) {
-      prepManualPetVisibility();
+  // Relaunching while the pet runs is a "where is my pet?" signal.
+  app.on("second-instance", () => {
+    if (petWindowRuntime.isPetHidden()) {
       petWindowRuntime.setPetHidden(false);
-    } else {
-      if (win && !win.isDestroyed()) {
-        win.showInactive();
-        keepOutOfTaskbar(win);
-      }
-      if (hitWin && !hitWin.isDestroyed()) {
-        hitWin.showInactive();
-        keepOutOfTaskbar(hitWin);
-      }
-      // #525: relaunching while the pet is nominally visible is a "where is my
-      // pet?" signal — showInactive() alone cannot clear a DWM cloak, so run
-      // the cloak recovery path too.
-      petWindowRuntime.recoverIfCloaked();
+      return;
     }
-    if (shouldOpenSettingsWindowFromArgv(commandLine)) {
-      settingsWindowRuntime.openWhenReady();
+    if (win && !win.isDestroyed()) {
+      win.showInactive();
+      keepOutOfTaskbar(win);
     }
-    reapplyMacVisibility();
+    if (hitWin && !hitWin.isDestroyed()) {
+      hitWin.showInactive();
+      keepOutOfTaskbar(hitWin);
+    }
   });
-
-  // macOS: hide dock icon early if user previously disabled it
-  if (isMac && app.dock) {
-    if (_settingsController.get("showDock") === false) {
-      app.dock.hide();
-    }
-  }
 
   function notifyPrefsAuthorityFailure() {
     const readFailure = _settingsController.hasReadFailure();
@@ -3102,15 +2775,6 @@ if (!gotTheLock) {
       : (readFailure ? "prefsReadFailureNudgeBody" : "prefsRecoveredNudgeBody"));
     const onClick = () => settingsWindowRuntime.open();
     try {
-      const tray = _menu && typeof _menu.getTray === "function" ? _menu.getTray() : null;
-      if (process.platform === "win32" && trayBalloonOwner.show(tray, {
-        iconType: "warning",
-        title,
-        content: body,
-        onClick,
-      })) {
-        return true;
-      }
       if (Notification && typeof Notification.isSupported === "function" && Notification.isSupported()) {
         const notification = new Notification({ title, body });
         notification.once("click", onClick);
@@ -3130,24 +2794,9 @@ if (!gotTheLock) {
     // caller. Same backend check as linux-x11-input-hint. The screen module is
     // only usable after ready.
     require("./linux-x11-cursor").installLinuxX11CursorFallback(screen, {
-      isLinuxX11: isLinux && app.commandLine.getSwitchValue("ozone-platform") === "x11",
+      isLinuxX11: app.commandLine.getSwitchValue("ozone-platform") === "x11",
       displayName: app.commandLine.getSwitchValue("display"),
-      onError: (err) => console.warn("Clawd: linux-x11-cursor failed:", err && err.message),
-    });
-
-    // Older macOS and development builds retain the padded runtime icon from
-    // #416. Packaged Tahoe+ leaves the Dock untouched so macOS can apply the
-    // user's Default/Dark/Clear/Tinted treatment to the bundle icon (#941).
-    const installRuntimeDockIcon = resolveRuntimeDockIconPolicy({
-      platform: process.platform,
-      isPackaged: app.isPackaged === true,
-      getSystemVersion: () => process.getSystemVersion(),
-    });
-    installStartupDockIcon({
-      dock: app.dock,
-      showDock: _settingsController.get("showDock") !== false,
-      dockIconPath: path.join(__dirname, "..", "assets", "dock-icon.png"),
-      installRuntimeIcon: installRuntimeDockIcon,
+      onError: (err) => console.warn("omp-pet: linux-x11-cursor failed:", err && err.message),
     });
 
     // Import system-backed settings (openAtLogin) into prefs on first run.
@@ -3196,34 +2845,6 @@ if (!gotTheLock) {
       ),
     });
     systemWakeRecovery.start();
-    // #525: sleep/wake and lock/unlock are prime DWM-cloak moments. Hang the
-    // cloak recovery directly on powerMonitor rather than onRecovered above:
-    // onRecovered only fires after a renderer round-trip and is skipped on
-    // timeout (system-wake-recovery.js finishWithTimeout), while un-cloaking is
-    // a main-process concern that must not depend on renderer health. The two
-    // paths coexist; recoverIfCloaked() is a no-op when nothing is cloaked.
-    if (isWin) {
-      powerMonitor.on("resume", () => petWindowRuntime.recoverIfCloaked());
-      powerMonitor.on("unlock-screen", () => petWindowRuntime.recoverIfCloaked());
-    }
-    // macOS: bridge the OS app-hidden state (⌘H / Dock right-click → 隐藏) to the
-    // pet. Pet windows are setCanHide:NO, so the OS marks the app hidden but the
-    // windows refuse to vanish, and an inactive-app Dock Hide fires no
-    // did-resign-active — so we poll app.isHidden() and drive setPetHidden(). (#416)
-    if (isMac) {
-      macHideController = createMacHideController({
-        isMac,
-        app,
-        getShowDock: () => showDock,
-        isPetHidden: () => petWindowRuntime.isPetHidden(),
-        setPetHidden: (hidden) => petWindowRuntime.setPetHidden(hidden),
-      });
-      macHideController.start();
-      app.on("activate", () => { if (macHideController) macHideController.onActivate(); });
-    }
-    if (shouldOpenSettingsWindowFromArgv(process.argv)) {
-      settingsWindowRuntime.open();
-    }
     // First-run onboarding: anyone who has never seen the tutorial gets it once.
     // `tutorialSeen` is persisted but deliberately NOT migration-backfilled, so
     // existing users who update also see it once on their next launch, then the
@@ -3242,12 +2863,8 @@ if (!gotTheLock) {
     isQuitting = true;
     if (quitCleanupStarted) return;
     quitCleanupStarted = true;
-    trayBalloonOwner.dispose();
     holidayAccessoryRuntime.dispose();
     if (systemWakeRecovery) systemWakeRecovery.dispose();
-    // #525: release the IVirtualDesktopManager COM ref and pay back our own
-    // CoInitializeEx count (see win-cloak-recovery.js dispose()).
-    _cloakInspector.dispose();
     releasePowerSaveBlocker();
     flushRuntimeStateToPrefs();
     globalShortcut.unregisterAll();
@@ -3260,18 +2877,14 @@ if (!gotTheLock) {
     _state.cleanup();
     _tick.cleanup();
     _mini.cleanup();
-    if (macHideController) macHideController.stop();
     _sessionHud.cleanup();
     agentRuntime.cleanup();
-    topmostRuntime.cleanup();
     themeRuntime.cleanup();
     if (systemThemeAppearanceHandler) {
       nativeTheme.removeListener("updated", systemThemeAppearanceHandler);
       systemThemeAppearanceHandler = null;
     }
-    _focus.cleanup();
     if (animationOverridesMain) animationOverridesMain.cleanup();
-    _hitWindowActivationRuntime.controller.dispose();
     if (hitWin && !hitWin.isDestroyed()) hitWin.destroy();
   });
 

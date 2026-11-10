@@ -74,12 +74,11 @@
     if (isRecording) value.classList.add("recording");
     if (isRecording) {
       const partial = state.shortcutRecordingPartial.length > 0
-        ? i18n.formatAcceleratorPartial(state.shortcutRecordingPartial, { isMac: i18n.IS_MAC })
+        ? i18n.formatAcceleratorPartial(state.shortcutRecordingPartial)
         : "";
       value.textContent = partial || t("shortcutRecordingHint");
     } else {
       value.textContent = i18n.formatAcceleratorLabel(readers.getShortcutValue(actionId), {
-        isMac: i18n.IS_MAC,
         unassignedLabel: t("shortcutUnassigned"),
       });
     }
@@ -134,15 +133,9 @@
     ));
     parent.appendChild(head);
 
-    // Platform-gated actions (Dashboard quick select is macOS/Windows only)
-    // are absent from the list entirely: no disabled row, no placeholder.
-    const actionIds = i18n.SUPPORTED_SHORTCUT_ACTION_IDS || i18n.SHORTCUT_ACTION_IDS;
-    const rows = actionIds.map((actionId) => buildShortcutRow(actionId));
+    const rows = i18n.SHORTCUT_ACTION_IDS.map((actionId) => buildShortcutRow(actionId));
     rows.push(buildFixedKeyRow("shortcutLabelPetReveal", "Click pet"));
-    rows.push(buildFixedKeyRow(
-      "shortcutLabelOpenDashboard",
-      i18n.IS_MAC ? "⌘ + Click pet" : "Ctrl + Click pet"
-    ));
+    rows.push(buildFixedKeyRow("shortcutLabelOpenDashboard", "Ctrl + Click pet"));
     parent.appendChild(helpers.buildSection("", rows));
   }
 

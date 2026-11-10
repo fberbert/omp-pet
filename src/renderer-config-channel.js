@@ -6,9 +6,9 @@ const HIT_GET_CHANNEL = "renderer-config:get-hit";
 /**
  * Hand the theme config to a sandboxed preload over synchronous IPC.
  *
- * Windows caps a process command line at 32,767 characters, and the renderer
- * previously received the whole theme JSON as an additionalArguments entry;
- * a large theme pushed the launch past that limit. A sandboxed preload also
+ * The renderer previously received the whole theme JSON as an
+ * additionalArguments entry, and a large theme pushed the launch command line
+ * past the OS limit. A sandboxed preload also
  * has no fs/zlib, so neither reading a file nor compressing the payload is an
  * option. The synchronous read happens once per window load and returns the
  * latest value, so reloads do not go stale.

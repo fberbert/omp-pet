@@ -4,7 +4,6 @@ const { createRecapAggregate, createRecapDayProjection } = require("./recap-aggr
 const { createRecapCoverage } = require("./recap-coverage");
 const { createCanonicalRecapEvent } = require("./recap-event");
 const { createRecapJournal } = require("./recap-journal");
-const { isTransientRecapPrivateAclError } = require("./recap-private-permissions");
 const { createRecapStore, DEFAULT_ROOT } = require("./recap-store");
 const {
   addLocalDays,
@@ -19,7 +18,6 @@ const {
 const PERIODS = new Set(["today", "week", "month", "year"]);
 const MAX_FUTURE_SKEW_MS = 5 * 60000;
 const MAX_HYDRATION_BUFFER = 4096;
-const STORAGE_RETRY_DELAYS_MS = Object.freeze([100, 250, 500, 1000, 2000, 5000, 10000, 30000]);
 
 function rangeForPeriod(period, anchorDate) {
   if (!PERIODS.has(period)) throw new TypeError("unsupported recap period");
@@ -108,9 +106,6 @@ function createRecapRuntime(options = {}) {
   let hydrationOverflow = false;
   let hydrationToken = 0;
   let lifecycleWired = false;
-  let storageRetryTimer = null;
-  let storageRetryAttempt = 0;
-  let storageRetryGeneration = 0;
 
   function warn(message, err) {
     try {
@@ -143,45 +138,6 @@ function createRecapRuntime(options = {}) {
     coverage.prune(date);
   }
 
-  function cancelStorageRetry() {
-    storageRetryGeneration += 1;
-    if (storageRetryTimer) clearTimer(storageRetryTimer);
-    storageRetryTimer = null;
-    storageRetryAttempt = 0;
-  }
-
-  function activateAfterStorageRecovery() {
-    unavailable = false;
-    unavailableCode = null;
-    storageRetryAttempt = 0;
-    enabled = started || explicitEnabledIntent !== null ? resolveEnabledIntent() : false;
-    if (started && enabled && !suspended) coverage.start(now());
-    if (started) {
-      scheduleMidnight();
-      beginHydration();
-    }
-    notifyChanged();
-  }
-
-  function scheduleStorageRetry(error) {
-    if (!isTransientRecapPrivateAclError(error) || storageRetryTimer) return;
-    const delay = STORAGE_RETRY_DELAYS_MS[Math.min(
-      storageRetryAttempt,
-      STORAGE_RETRY_DELAYS_MS.length - 1
-    )];
-    storageRetryAttempt += 1;
-    const generation = storageRetryGeneration;
-    storageRetryTimer = setTimer(() => {
-      if (generation !== storageRetryGeneration) return;
-      storageRetryTimer = null;
-      unavailable = false;
-      unavailableCode = null;
-      if (!initialize()) return;
-      activateAfterStorageRecovery();
-    }, delay);
-    if (storageRetryTimer && typeof storageRetryTimer.unref === "function") storageRetryTimer.unref();
-  }
-
   function initialize() {
     if (initialized) return true;
     if (unavailable) return false;
@@ -198,10 +154,7 @@ function createRecapRuntime(options = {}) {
       enabled = false;
       try { aggregate.resetMemory(); } catch {}
       try { coverage.resetMemory(); } catch {}
-      if (!isTransientRecapPrivateAclError(err) || storageRetryAttempt === 0) {
-        warn("Clawd: local recap storage is unavailable; recording is paused", unavailableCode);
-      }
-      scheduleStorageRetry(err);
+      warn("omp-pet: local recap storage is unavailable; recording is paused", unavailableCode);
       return false;
     }
   }
@@ -518,7 +471,6 @@ function createRecapRuntime(options = {}) {
     // Invalidate async hydration before touching memory so a reader cannot
     // swap its projection in after the generation has been deleted.
     hydrationToken += 1;
-    cancelStorageRetry();
     hydrating = false;
     hydrationBuffer = [];
     hydrationOverflow = false;
@@ -532,8 +484,7 @@ function createRecapRuntime(options = {}) {
       unavailable = true;
       unavailableCode = err && err.code ? err.code : "storage-error";
       enabled = false;
-      warn("Clawd: local recap clear failed", unavailableCode);
-      scheduleStorageRetry(err);
+      warn("omp-pet: local recap clear failed", unavailableCode);
       return false;
     }
     if (!initialize()) return false;
@@ -553,7 +504,6 @@ function createRecapRuntime(options = {}) {
   }
 
   function dispose() {
-    cancelStorageRetry();
     if (midnightTimer) clearTimer(midnightTimer);
     midnightTimer = null;
     if (lifecycleWired && powerMonitor && typeof powerMonitor.removeListener === "function") {

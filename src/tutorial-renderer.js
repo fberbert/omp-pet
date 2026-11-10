@@ -10,7 +10,7 @@
 
   const STEPS = ["welcome", "agents", "shortcuts", "features", "done"];
   let STATE = {
-    i18n: {}, lang: "en", langs: [], heroSrc: "", doneHeroSvg: "", platform: "",
+    i18n: {}, lang: "en", langs: [], heroSrc: "", doneHeroSvg: "",
     agents: { install: [], cleanup: [], active: [] }, shortcuts: [],
   };
   let step = 0;
@@ -398,10 +398,6 @@
     });
   }
 
-  function isMac() {
-    return STATE.platform === "darwin";
-  }
-
   function shortcutMeta(actionId) {
     const actions = shortcutActions.SHORTCUT_ACTIONS || {};
     return actions[actionId] || {};
@@ -435,10 +431,7 @@
   function formatShortcutValue(accelerator) {
     const unassigned = i18n("shortcutUnassigned", "— unassigned —");
     if (shortcutActions.formatAcceleratorLabel) {
-      return shortcutActions.formatAcceleratorLabel(accelerator, {
-        isMac: isMac(),
-        unassignedLabel: unassigned,
-      });
+      return shortcutActions.formatAcceleratorLabel(accelerator, { unassignedLabel: unassigned });
     }
     if (!accelerator) return unassigned;
     return formatAccel(accelerator).join("+");
@@ -524,7 +517,7 @@
       render();
       return;
     }
-    const built = shortcutActions.buildAcceleratorFromEvent(event, { isMac: isMac() });
+    const built = shortcutActions.buildAcceleratorFromEvent(event);
     if (!built) return;
     if (built.action === "pending") {
       shortcutRecordingPartial = Array.isArray(built.modifiers) ? built.modifiers : [];
@@ -602,7 +595,7 @@
 
     if (isRecording) {
       valueText = shortcutRecordingPartial.length && shortcutActions.formatAcceleratorPartial
-        ? shortcutActions.formatAcceleratorPartial(shortcutRecordingPartial, { isMac: isMac() })
+        ? shortcutActions.formatAcceleratorPartial(shortcutRecordingPartial)
         : i18n("shortcutRecordingHint", "Press keys (Esc)");
       statusText = isSaving
         ? i18n("tutorialShortcutChecking", "Checking…")
@@ -614,11 +607,7 @@
     }
 
     const isDefault = shortcutActions.acceleratorsConflict
-      ? shortcutActions.acceleratorsConflict(
-        item.accelerator,
-        item.defaultAccelerator,
-        { isMac: isMac() }
-      )
+      ? shortcutActions.acceleratorsConflict(item.accelerator, item.defaultAccelerator)
       : item.accelerator === item.defaultAccelerator;
     return el("div", {
       class: "sc-row editable" + (isRecording ? " recording" : ""),
@@ -647,7 +636,7 @@
       {
         key: "shortcutLabelOpenDashboard",
         fallback: "Open session dashboard",
-        keys: isMac() ? "⌘ + Click pet" : "Ctrl + Click pet",
+        keys: "Ctrl + Click pet",
       },
     ];
   }
@@ -697,14 +686,9 @@
     wrap.appendChild(el("h2", { class: "step-title" }, i18n("tutorialFeaturesTitle", "Useful things to try later")));
     wrap.appendChild(el("p", { class: "step-sub" }, i18n("tutorialFeaturesSub",
       "Nothing here is required for setup. These are handy once Clawd is running.")));
-    const platformStarter = isMac()
-      ? featureCard("tutorialFeatureDashboard", "Session dashboard",
-        "tutorialFeatureDashboardDesc", "See live sessions, aliases, and recent activity in one place.")
-      : featureCard("tutorialFeatureDrag", "Drop a project folder",
-        "tutorialFeatureDragDesc", "Drop a folder on Clawd to open a terminal in that directory.",
-        i18n("tutorialFeatureDragPlatform", "Windows / Linux"));
     const grid = el("div", { class: "features" },
-      platformStarter,
+      featureCard("tutorialFeatureDrag", "Drop a project folder",
+        "tutorialFeatureDragDesc", "Drop a folder on the pet to open a terminal in that directory."),
       featureCard("tutorialFeatureThemes", "Themes and mini mode",
         "tutorialFeatureThemesDesc", "Switch character themes, or tuck Clawd against a screen edge."),
     );

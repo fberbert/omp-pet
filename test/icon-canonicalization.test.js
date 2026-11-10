@@ -11,8 +11,6 @@ const CANONICAL_ICON = path.join(ROOT, "assets", "icon.png");
 const RETIRED_TRAY_ICON = path.join(ROOT, "assets", "tray-icon.png");
 const PACKAGED_ICON_ASSETS = [
   "assets/icon.png",
-  "assets/tray-iconTemplate.png",
-  "assets/tray-iconTemplate@2x.png",
   "assets/tray-icon-flash.png",
 ];
 const LOCALIZED_READMES = [

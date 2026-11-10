@@ -124,9 +124,6 @@ function registerSettingsIpc(options = {}) {
   const getAllAgents = requiredDependency(options.getAllAgents, "getAllAgents");
   const detectAgentInstallations = options.detectAgentInstallations || defaultDetectAgentInstallations;
   const getRecentHookEvents = options.getRecentHookEvents || (() => []);
-  const getHardwareAccelerationDisabledAtStartup =
-    options.getHardwareAccelerationDisabledAtStartup || (() => false);
-  const getPetAlwaysOnTopAtStartup = options.getPetAlwaysOnTopAtStartup || (() => true);
   const showTutorial = options.showTutorial || (() => ({
     status: "error",
     message: "Tutorial is unavailable",
@@ -472,13 +469,6 @@ function registerSettingsIpc(options = {}) {
       heroSvgContent,
     };
   });
-
-  // #1183/#1275: Settings compares launch values with saved preferences to
-  // offer a restart for GPU mode and macOS pet topmost changes.
-  handle("settings:get-startup-render-state", () => ({
-    hardwareAccelerationDisabled: getHardwareAccelerationDisabledAtStartup() === true,
-    petAlwaysOnTop: getPetAlwaysOnTopAtStartup(),
-  }));
 
   handle("settings:show-tutorial", async () => {
     try {

@@ -34,19 +34,9 @@ function fakeElf(machine) {
   return buffer;
 }
 
-function fakeMach(cpu) {
-  const buffer = Buffer.alloc(64);
-  Buffer.from("cffaedfe", "hex").copy(buffer, 0);
-  buffer.writeUInt32LE(cpu, 4);
-  return buffer;
-}
 
 function nativeForTarget(targetId) {
-  if (targetId === "windows-x64") return fakePe(0x8664);
-  if (targetId === "windows-arm64") return fakePe(0xaa64);
   if (targetId === "linux-x64") return fakeElf(0x003e);
-  if (targetId === "darwin-x64") return fakeMach(0x01000007);
-  if (targetId === "darwin-arm64") return fakeMach(0x0100000c);
   throw new Error(`Unsupported fixture target: ${targetId}`);
 }
 
@@ -91,11 +81,11 @@ async function makePackagedKoffi(root, targetId) {
 test("afterPack prune keeps one target addon and removes every lib/exp", async (t) => {
   const root = tempDir();
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  const fixture = await makePackagedKoffi(root, "windows-x64");
-  const output = path.join(root, "manifests", "windows-x64.json");
+  const fixture = await makePackagedKoffi(root, "linux-x64");
+  const output = path.join(root, "manifests", "linux-x64.json");
   const report = pruneKoffiNative({
     appOutDir: fixture.appRoot,
-    targetId: "windows-x64",
+    targetId: "linux-x64",
     outputPath: output,
   });
 
@@ -104,8 +94,8 @@ test("afterPack prune keeps one target addon and removes every lib/exp", async (
   assert.equal(report.logicalKoffiNativeEntries.length, 18, "afterPack must not rewrite app.asar");
   assert.deepEqual(fs.readdirSync(fixture.nativeRoot), [fixture.targetTriplet]);
   assert.deepEqual(fs.readdirSync(path.join(fixture.nativeRoot, fixture.targetTriplet)), ["koffi.node"]);
-  assert.equal(report.retained.format, "PE");
-  assert.deepEqual(report.retained.architectures, ["x64"]);
+  assert.equal(report.retained.format, "ELF");
+  assert.deepEqual(report.retained.architectures, ["x86_64"]);
   assert.equal(fs.existsSync(output), true);
 });
 
@@ -115,15 +105,15 @@ test("afterPack containment checks canonicalize parent path aliases", async (t) 
   const actualRoot = path.join(root, "actual");
   const aliasRoot = path.join(root, "alias");
   fs.mkdirSync(actualRoot);
-  fs.symlinkSync(actualRoot, aliasRoot, process.platform === "win32" ? "junction" : "dir");
+  fs.symlinkSync(actualRoot, aliasRoot, "dir");
 
-  const fixture = await makePackagedKoffi(aliasRoot, "windows-x64");
+  const fixture = await makePackagedKoffi(aliasRoot, "linux-x64");
   const report = pruneKoffiNative({
     appOutDir: fixture.appRoot,
-    targetId: "windows-x64",
+    targetId: "linux-x64",
   });
 
-  assert.equal(report.retained.format, "PE");
+  assert.equal(report.retained.format, "ELF");
   assert.deepEqual(fs.readdirSync(fixture.nativeRoot), [fixture.targetTriplet]);
 });
 
@@ -137,24 +127,14 @@ test("afterPack prune supports the Linux target without a platform exception", a
   assert.deepEqual(fs.readdirSync(fixture.nativeRoot), ["linux_x64"]);
 });
 
-test("afterPack prune resolves a macOS app bundle and retains a thin Mach-O target", async (t) => {
-  const root = tempDir();
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  const fixture = await makePackagedKoffi(root, "darwin-x64");
-  const report = pruneKoffiNative({ appOutDir: fixture.appOutDir, targetId: "darwin-x64" });
-  assert.equal(report.appRoot, path.resolve(fixture.appRoot));
-  assert.equal(report.retained.format, "Mach-O");
-  assert.deepEqual(report.retained.architectures, ["x86_64"]);
-  assert.deepEqual(fs.readdirSync(fixture.nativeRoot), ["darwin_x64"]);
-});
 
 test("prune fails closed on unknown layout and wrong version", async (t) => {
   const root = tempDir();
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  const fixture = await makePackagedKoffi(root, "windows-x64");
+  const fixture = await makePackagedKoffi(root, "linux-x64");
   fs.mkdirSync(path.join(fixture.nativeRoot, "unexpected_triplet"));
   assert.throws(
-    () => pruneKoffiNative({ appOutDir: fixture.appRoot, targetId: "windows-x64" }),
+    () => pruneKoffiNative({ appOutDir: fixture.appRoot, targetId: "linux-x64" }),
     /Unexpected Koffi 2\.16\.3 triplet layout/,
   );
   fs.rmSync(path.join(fixture.nativeRoot, "unexpected_triplet"), { recursive: true });
@@ -163,7 +143,7 @@ test("prune fails closed on unknown layout and wrong version", async (t) => {
     JSON.stringify({ version: "2.15.2" }),
   );
   assert.throws(
-    () => pruneKoffiNative({ appOutDir: fixture.appRoot, targetId: "windows-x64" }),
+    () => pruneKoffiNative({ appOutDir: fixture.appRoot, targetId: "linux-x64" }),
     /unexpected Koffi version/i,
   );
 });
@@ -171,10 +151,10 @@ test("prune fails closed on unknown layout and wrong version", async (t) => {
 test("prune validates the retained architecture before deleting foreign triplets", async (t) => {
   const root = tempDir();
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  const fixture = await makePackagedKoffi(root, "windows-x64");
+  const fixture = await makePackagedKoffi(root, "linux-x64");
   fs.writeFileSync(path.join(fixture.nativeRoot, fixture.targetTriplet, "koffi.node"), fakePe(0xaa64));
   assert.throws(
-    () => pruneKoffiNative({ appOutDir: fixture.appRoot, targetId: "windows-x64" }),
+    () => pruneKoffiNative({ appOutDir: fixture.appRoot, targetId: "linux-x64" }),
     /wrong architecture/i,
   );
   assert.equal(fs.readdirSync(fixture.nativeRoot).length, KOFFI_2163_TRIPLETS.length);
@@ -183,11 +163,11 @@ test("prune validates the retained architecture before deleting foreign triplets
 test("prune manifest is never written back inside the staged app", async (t) => {
   const root = tempDir();
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  const fixture = await makePackagedKoffi(root, "windows-x64");
+  const fixture = await makePackagedKoffi(root, "linux-x64");
   assert.throws(
     () => pruneKoffiNative({
       appOutDir: fixture.appRoot,
-      targetId: "windows-x64",
+      targetId: "linux-x64",
       outputPath: path.join(fixture.appRoot, "manifest.json"),
     }),
     /manifest must be outside appOutDir/i,
@@ -197,7 +177,7 @@ test("prune manifest is never written back inside the staged app", async (t) => 
 test("prune rejects junctions/reparse points before deleting anything", async (t) => {
   const root = tempDir();
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  const fixture = await makePackagedKoffi(root, "windows-x64");
+  const fixture = await makePackagedKoffi(root, "linux-x64");
   const foreign = path.join(fixture.nativeRoot, "darwin_arm64");
   fs.rmSync(foreign, { recursive: true });
   const outside = path.join(root, "outside");
@@ -205,7 +185,7 @@ test("prune rejects junctions/reparse points before deleting anything", async (t
   fs.writeFileSync(path.join(outside, "keep.txt"), "keep");
   fs.symlinkSync(outside, foreign, process.platform === "win32" ? "junction" : "dir");
   assert.throws(
-    () => pruneKoffiNative({ appOutDir: fixture.appRoot, targetId: "windows-x64" }),
+    () => pruneKoffiNative({ appOutDir: fixture.appRoot, targetId: "linux-x64" }),
     /non-directory or link|symlink\/reparse/i,
   );
   assert.equal(fs.readFileSync(path.join(outside, "keep.txt"), "utf8"), "keep");

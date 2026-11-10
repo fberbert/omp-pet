@@ -120,48 +120,14 @@ test("rejects a fifth unreviewed top-level export without a colon", () => {
   assert.throws(() => validateAppRunContent(changed), /top-level exports changed/);
 });
 
-test("release and Wayland workflows gate the final AppImage before artifact handoff", () => {
+test("the build workflow gates the final AppImage before artifact handoff", () => {
   const release = fs.readFileSync(path.join(ROOT, ".github", "workflows", "build.yml"), "utf8");
-  const wayland = fs.readFileSync(path.join(ROOT, ".github", "workflows", "wayland-smoke.yml"), "utf8");
   const releaseLinux = workflowJob(release, "build-linux");
-  const releaseJob = workflowJob(release, "release");
-  const waylandBuild = workflowJob(wayland, "build-appimage");
   const gateCommand = "node scripts/verify-appimage-apprun.js --artifact dist/*.AppImage";
   const uploadAction = "uses: actions/upload-artifact@v4";
 
   assertAppearsBefore(releaseLinux, gateCommand, uploadAction, "build-linux");
-  assertAppearsBefore(waylandBuild, gateCommand, uploadAction, "build-appimage");
-  assert.match(releaseLinux, /uses: actions\/upload-artifact@v4\n\s+if: always\(\)/);
-  assert.doesNotMatch(waylandBuild, /^\s+if: always\(\)\s*$/m);
-  assert.match(
-    releaseJob,
-    /needs: \[build-windows, build-mac, build-linux, native-package-audit\]/,
-  );
 });
-
-test("Wayland smoke PR paths cover the hook closure by pattern instead of a drifting hand list", () => {
-  const wayland = fs.readFileSync(path.join(ROOT, ".github", "workflows", "wayland-smoke.yml"), "utf8");
-  const start = wayland.indexOf("  pull_request:");
-  const end = wayland.indexOf("\npermissions:");
-  assert.ok(start !== -1 && end > start, "pull_request paths block present");
-  const pathsBlock = wayland.slice(start, end);
-
-  assert.match(pathsBlock, /- hooks\/\*\*/, "hooks/** must trigger the packaged gate");
-  for (const required of [
-    "src/claude-hook-health.js",
-    "src/claude-settings-watcher.js",
-    "src/claude-hook-operations.js",
-    "src/prefs.js",
-    "src/integration-sync.js",
-    "src/server.js",
-    "src/remote-ssh-deploy.js",
-  ]) {
-    assert.ok(pathsBlock.includes(`- ${required}`), `${required} must trigger the packaged gate`);
-  }
-  // A hand-enumerated hook file would silently miss a newly added dependency.
-  assert.doesNotMatch(pathsBlock, /- hooks\/[^/*\s]+\.js/, "hook files must be covered by hooks/**");
-});
-
 
 test("packaged launcher keeps reviewed exports and hands off before mounted paths enter the environment", (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "clawd-apprun-stage-"));

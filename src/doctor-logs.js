@@ -27,9 +27,8 @@ function uniqueDirs(dirs, pathApi = path) {
   for (const dir of dirs) {
     if (typeof dir !== "string" || !dir) continue;
     const resolved = pathApi.resolve(dir);
-    const key = process.platform === "win32" ? resolved.toLowerCase() : resolved;
-    if (seen.has(key)) continue;
-    seen.add(key);
+    if (seen.has(resolved)) continue;
+    seen.add(resolved);
     out.push(resolved);
   }
   return out;

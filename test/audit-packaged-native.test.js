@@ -6,14 +6,7 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 const asar = require("@electron/asar");
-const {
-  parseNativeBuffer,
-  auditPackagedNative,
-  getException,
-  parseArgs,
-  stableJson,
-} = require("../scripts/audit-packaged-native");
-const policy = require("../scripts/native-package-policy.json");
+const { parseNativeBuffer, auditPackagedNative, parseArgs } = require("../scripts/audit-packaged-native");
 
 function tempDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "clawd-native-audit-"));
@@ -134,32 +127,12 @@ test("malformed native-looking headers fail closed", () => {
   assert.throws(() => parseNativeBuffer(Buffer.from("cafebabe00000002", "hex")), /Truncated fat Mach-O/);
 });
 
-test("Windows audit records the exact elevate exception and one Koffi addon", async (t) => {
-  const root = tempDir();
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  const fixture = await makeAppRoot(root, "windows-x64");
-  const report = auditPackagedNative({ appRoot: fixture.appRoot, targetId: "windows-x64" });
-  assert.deepEqual(report.errors, []);
-  assert.equal(report.koffi.physical.length, 1);
-  assert.equal(report.koffi.logical.length, 1);
-  assert.equal(report.logicalNative.length, 1);
-  assert.equal(report.logicalNative[0].disposition, "physical-unpacked");
-  assert.equal(report.summary.countByDisposition.exception, 1);
-  const elevate = report.binaries.find((entry) => entry.path === "resources/elevate.exe");
-  assert.equal(elevate.policyId, "electron-builder-nsis-elevate-helper");
-  assert.equal(
-    report.binaries.some((entry) => entry.path.includes("\\")),
-    false,
-    "manifest-relative paths must be POSIX-normalized",
-  );
-  assert.equal(stableJson(report).endsWith("\n"), true);
-});
 
 test("logical native candidates inside app.asar require a physical unpacked payload", async (t) => {
   const root = tempDir();
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  const fixture = await makeAppRoot(root, "windows-x64", { logicalOnlyNative: true });
-  const report = auditPackagedNative({ appRoot: fixture.appRoot, targetId: "windows-x64" });
+  const fixture = await makeAppRoot(root, "linux-x64", { logicalOnlyNative: true });
+  const report = auditPackagedNative({ appRoot: fixture.appRoot, targetId: "linux-x64" });
   const orphan = report.logicalNative.find((entry) => /orphan\.node$/.test(entry.path));
   assert.equal(orphan.physicalPresent, false);
   assert.equal(orphan.disposition, "error");
@@ -172,8 +145,8 @@ test("logical native candidates inside app.asar require a physical unpacked payl
 test("unknown Koffi logical triplets never receive the known-stale exemption", async (t) => {
   const root = tempDir();
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  const fixture = await makeAppRoot(root, "windows-x64", { unknownKoffiLogical: true });
-  const report = auditPackagedNative({ appRoot: fixture.appRoot, targetId: "windows-x64" });
+  const fixture = await makeAppRoot(root, "linux-x64", { unknownKoffiLogical: true });
+  const report = auditPackagedNative({ appRoot: fixture.appRoot, targetId: "linux-x64" });
   const unknown = report.logicalNative.find((entry) => /evil_triplet/.test(entry.path));
   assert.equal(unknown.disposition, "error");
   assert.equal(
@@ -194,12 +167,12 @@ test("zero, duplicate, and wrong-triplet physical Koffi payloads hard-fail", asy
     }
   });
 
-  const zero = await makeAppRoot(zeroRoot, "windows-x64");
+  const zero = await makeAppRoot(zeroRoot, "linux-x64");
   fs.rmSync(zero.koffiNode);
-  const zeroReport = auditPackagedNative({ appRoot: zero.appRoot, targetId: "windows-x64" });
+  const zeroReport = auditPackagedNative({ appRoot: zero.appRoot, targetId: "linux-x64" });
   assert.equal(zeroReport.errors.some((entry) => entry.code === "unexpected-koffi-native-count"), true);
 
-  const duplicate = await makeAppRoot(duplicateRoot, "windows-x64");
+  const duplicate = await makeAppRoot(duplicateRoot, "linux-x64");
   const duplicateNode = path.join(
     duplicate.resources,
     "app.asar.unpacked",
@@ -212,10 +185,10 @@ test("zero, duplicate, and wrong-triplet physical Koffi payloads hard-fail", asy
   );
   fs.mkdirSync(path.dirname(duplicateNode), { recursive: true });
   fs.copyFileSync(duplicate.koffiNode, duplicateNode);
-  const duplicateReport = auditPackagedNative({ appRoot: duplicate.appRoot, targetId: "windows-x64" });
+  const duplicateReport = auditPackagedNative({ appRoot: duplicate.appRoot, targetId: "linux-x64" });
   assert.equal(duplicateReport.errors.some((entry) => entry.code === "unexpected-koffi-native-count"), true);
 
-  const wrong = await makeAppRoot(wrongRoot, "windows-x64");
+  const wrong = await makeAppRoot(wrongRoot, "linux-x64");
   const wrongNode = path.join(
     wrong.resources,
     "app.asar.unpacked",
@@ -228,38 +201,21 @@ test("zero, duplicate, and wrong-triplet physical Koffi payloads hard-fail", asy
   );
   fs.mkdirSync(path.dirname(wrongNode), { recursive: true });
   fs.renameSync(wrong.koffiNode, wrongNode);
-  const wrongReport = auditPackagedNative({ appRoot: wrong.appRoot, targetId: "windows-x64" });
+  const wrongReport = auditPackagedNative({ appRoot: wrong.appRoot, targetId: "linux-x64" });
   assert.equal(wrongReport.errors.some((entry) => entry.code === "wrong-koffi-native-target"), true);
 });
 
-test("macOS audit reads app.asar from Contents/Resources", async (t) => {
-  const root = tempDir();
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  const fixture = await makeAppRoot(root, "darwin-x64");
-  const report = auditPackagedNative({ appRoot: fixture.appRoot, targetId: "darwin-x64" });
-  assert.deepEqual(report.errors, []);
-  assert.equal(report.koffi.logical.length, 1);
-  assert.match(report.koffi.physical[0], /^Contents\/Resources\/app\.asar\.unpacked\//);
-});
 
 test("foreign binaries and wrong Koffi triplets hard-fail", async (t) => {
   const root = tempDir();
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  const fixture = await makeAppRoot(root, "windows-x64");
+  const fixture = await makeAppRoot(root, "linux-x64");
   fs.writeFileSync(path.join(fixture.resources, "foreign.exe"), fakePe(0xaa64));
-  const report = auditPackagedNative({ appRoot: fixture.appRoot, targetId: "windows-x64" });
+  const report = auditPackagedNative({ appRoot: fixture.appRoot, targetId: "linux-x64" });
   assert.equal(report.errors.some((entry) => entry.code === "foreign-native-binary"), true);
   assert.equal(report.binaries.find((entry) => entry.path === "resources/foreign.exe").disposition, "error");
 });
 
-test("near-miss elevate helpers never receive the exception", () => {
-  const parsed = parseNativeBuffer(fakePe(0x014c));
-  assert.equal(getException(policy, "windows-x64", "resources/elevate.exe", parsed).id, "electron-builder-nsis-elevate-helper");
-  assert.equal(getException(policy, "windows-x64", "other/elevate.exe", parsed), null);
-  assert.equal(getException(policy, "darwin-x64", "resources/elevate.exe", parsed), null);
-  assert.equal(getException(policy, "windows-x64", "resources/Elevate.exe", parsed), null);
-  assert.equal(getException(policy, "windows-x64", "resources/elevate.exe", parseNativeBuffer(fakePe(0x8664))), null);
-});
 
 test("audit CLI parser requires explicit app root and target", () => {
   assert.throws(() => parseArgs([]), /--app-root is required/);

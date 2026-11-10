@@ -60,7 +60,6 @@ function createHarness(overrides = {}) {
     sendToRenderer: (...args) => calls.push(["sendToRenderer", ...args]),
     refreshIdleVisualAfterDrag: overrides.refreshIdleVisualAfterDrag,
     settleVisual: (event, payload) => calls.push(["settleVisual", event.sender, payload]),
-    recoverVisiblePetAfterRendererLoad: (event) => calls.push(["recoverVisiblePetAfterRendererLoad", event.sender]),
     setDragLocked: (value) => calls.push(["setDragLocked", value]),
     setMouseOverPet: (value) => calls.push(["setMouseOverPet", value]),
     cancelRoam: Object.prototype.hasOwnProperty.call(overrides, "cancelRoam")
@@ -72,7 +71,6 @@ function createHarness(overrides = {}) {
     syncDisplayedVisualGeometry: () => calls.push(["syncDisplayedVisualGeometry"]),
     setAccessoryMirror: overrides.setAccessoryMirror
       || ((value) => calls.push(["setAccessoryMirror", value])),
-    syncImeEditingPetDodge: () => calls.push(["syncImeEditingPetDodge"]),
     isMiniMode: () => state.miniMode,
     checkMiniModeSnap: overrides.checkMiniModeSnap
       ? () => overrides.checkMiniModeSnap({ calls, state })
@@ -89,8 +87,6 @@ function createHarness(overrides = {}) {
     },
     applyPetWindowBounds: (bounds) => calls.push(["applyPetWindowBounds", bounds]),
     flushRuntimeStateToPrefs: () => calls.push(["flushRuntimeStateToPrefs"]),
-    reassertWinTopmost: () => calls.push(["reassertWinTopmost"]),
-    scheduleHwndRecovery: () => calls.push(["scheduleHwndRecovery"]),
     repositionFloatingBubbles: () => calls.push(["repositionFloatingBubbles"]),
     exitMiniMode: () => calls.push(["exitMiniMode"]),
     getDisableMiniMode: () => state.disableMiniMode,
@@ -113,7 +109,6 @@ function createHarness(overrides = {}) {
     dropLog: (message) => calls.push(["dropLog", message]),
     // Default to the enabled platforms so the suite behaves the same on a
     // macOS dev machine; the macOS-disabled path has its own explicit test.
-    isMacPlatform: overrides.isMacPlatform != null ? overrides.isMacPlatform : false,
   });
   return { ipcMain, runtime, calls, state };
 }
@@ -156,7 +151,6 @@ test("pet interaction IPC registers owned channels and disposes them", () => {
     "pause-cursor-polling",
     "pet-drop-paths",
     "pet-interaction:reveal-session-hud",
-    "pet-visual-ready",
     "pet-visual-settled",
     "play-click-reaction",
     "resume-from-reaction",
@@ -167,16 +161,6 @@ test("pet interaction IPC registers owned channels and disposes them", () => {
   runtime.dispose();
 
   assert.strictEqual(ipcMain.listeners.size, 0);
-});
-
-test("pet interaction IPC delegates the first rendered visual recovery signal", () => {
-  const { ipcMain, calls } = createHarness();
-
-  ipcMain.send("pet-visual-ready");
-
-  assert.deepStrictEqual(calls.filter((c) => c[0] === "recoverVisiblePetAfterRendererLoad"), [
-    ["recoverVisiblePetAfterRendererLoad", "sender-web-contents"],
-  ]);
 });
 
 test("pet interaction IPC delegates renderer settlement with the sender intact", () => {
@@ -282,7 +266,6 @@ test("pet interaction IPC preserves drag lock lifecycle", () => {
     ["syncDisplayedVisualGeometry"],
     // #640: the dodge defers its hit-window click-through write while a drag
     // is in flight — releasing the lock must re-run the sync.
-    ["syncImeEditingPetDodge"],
   ]);
 });
 
@@ -305,26 +288,20 @@ test("pet interaction IPC finalizes drag end and always clears drag state", () =
     ["computeDragEndBounds", state.petWindowBounds, state.currentPixelSize],
     ["applyPetWindowBounds", state.clampedBounds],
     ["flushRuntimeStateToPrefs"],
-    ["reassertWinTopmost"],
-    ["scheduleHwndRecovery"],
     ["syncHitWin"],
     ["syncDisplayedVisualGeometry"],
     ["repositionFloatingBubbles"],
     ["setDragLocked", false],
     ["clearDragSnapshot"],
-    ["syncImeEditingPetDodge"],
     ["checkMiniModeSnap"],
     ["computeDragEndBounds", state.petWindowBounds, state.effectivePixelSize],
     ["applyPetWindowBounds", state.clampedBounds],
     ["flushRuntimeStateToPrefs"],
-    ["reassertWinTopmost"],
-    ["scheduleHwndRecovery"],
     ["syncHitWin"],
     ["syncDisplayedVisualGeometry"],
     ["repositionFloatingBubbles"],
     ["setDragLocked", false],
     ["clearDragSnapshot"],
-    ["syncImeEditingPetDodge"],
   ]);
 });
 
@@ -342,7 +319,6 @@ test("pet interaction IPC skips drag-end clamp when mini snap starts", () => {
     ["checkMiniModeSnap"],
     ["setDragLocked", false],
     ["clearDragSnapshot"],
-    ["syncImeEditingPetDodge"],
   ]);
 });
 
@@ -386,14 +362,11 @@ test("pet interaction IPC does not persist when drag-end has no clamped bounds",
   assert.deepStrictEqual(calls, [
     ["checkMiniModeSnap"],
     ["computeDragEndBounds", { x: 10, y: 20, width: 120, height: 80 }, { width: 90, height: 60 }],
-    ["reassertWinTopmost"],
-    ["scheduleHwndRecovery"],
     ["syncHitWin"],
     ["syncDisplayedVisualGeometry"],
     ["repositionFloatingBubbles"],
     ["setDragLocked", false],
     ["clearDragSnapshot"],
-    ["syncImeEditingPetDodge"],
   ]);
 });
 
@@ -408,14 +381,11 @@ test("pet interaction IPC disables mini snap without skipping drag-end cleanup",
     ["computeDragEndBounds", state.petWindowBounds, state.currentPixelSize],
     ["applyPetWindowBounds", state.clampedBounds],
     ["flushRuntimeStateToPrefs"],
-    ["reassertWinTopmost"],
-    ["scheduleHwndRecovery"],
     ["syncHitWin"],
     ["syncDisplayedVisualGeometry"],
     ["repositionFloatingBubbles"],
     ["setDragLocked", false],
     ["clearDragSnapshot"],
-    ["syncImeEditingPetDodge"],
   ]);
 });
 
@@ -430,7 +400,6 @@ test("pet interaction IPC still clears drag state when drag end has no live pet 
     ["checkMiniModeSnap"],
     ["setDragLocked", false],
     ["clearDragSnapshot"],
-    ["syncImeEditingPetDodge"],
   ]);
 });
 
@@ -506,20 +475,6 @@ test("pet drop takes the first usable path only", async () => {
     calls.filter((c) => c[0] === "openTerminalAt"),
     [["openTerminalAt", "/first"]],
   );
-});
-
-test("pet drop is disabled on macOS: no stat, no terminal, no accept ping", async () => {
-  const { ipcMain, calls, state } = createHarness({ isMacPlatform: true });
-  state.statDirs.add("/proj/dir");
-  const sender = makeDropSender();
-
-  await sendDrop(ipcMain, ["/proj/dir"], sender);
-
-  assert.deepStrictEqual(calls.filter((c) => c[0] === "statPath"), []);
-  assert.deepStrictEqual(calls.filter((c) => c[0] === "openTerminalAt"), []);
-  assert.deepStrictEqual(sender.sent, []);
-  const logs = calls.filter((c) => c[0] === "dropLog").map((c) => c[1]);
-  assert.ok(logs.some((m) => m.includes("disabled on macOS")), logs.join("; "));
 });
 
 test("pet drop is ignored in mini mode and during mini transitions", async () => {

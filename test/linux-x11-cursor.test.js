@@ -302,7 +302,7 @@ describe("main.js wiring", () => {
     assert.ok(ready >= 0 && install > ready, "install must run inside app.whenReady()");
     assert.match(
       mainSource.slice(install),
-      /^installLinuxX11CursorFallback\(screen, \{\s*isLinuxX11:\s*isLinux && app\.commandLine\.getSwitchValue\("ozone-platform"\) === "x11",\s*displayName:\s*app\.commandLine\.getSwitchValue\("display"\),\s*onError:/,
+      /^installLinuxX11CursorFallback\(screen, \{\s*isLinuxX11:\s*app\.commandLine\.getSwitchValue\("ozone-platform"\) === "x11",\s*displayName:\s*app\.commandLine\.getSwitchValue\("display"\),\s*onError:/,
     );
   });
 });

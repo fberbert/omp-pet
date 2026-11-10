@@ -145,43 +145,6 @@ test("store creates private metadata and stable HMAC without leaking input", (t)
   }
 });
 
-test("store fails closed before creating managed data when private ACL setup fails", (t) => {
-  const parent = tempRoot();
-  const root = path.join(parent, "recap-v1");
-  t.after(() => fs.rmSync(parent, { recursive: true, force: true }));
-  const error = Object.assign(new Error("acl unavailable"), { code: "RECAP_PRIVATE_ACL_FAILED" });
-  const store = createRecapStore({
-    root,
-    hardenPrivateDirectory: () => { throw error; },
-  });
-  assert.throws(() => store.initialize(), (caught) => caught === error);
-  assert.equal(fs.existsSync(path.join(root, "meta.json")), false);
-  assert.equal(fs.existsSync(path.join(root, "events")), false);
-});
-
-test("store rejects an unsupported private path before creating the recap root", (t) => {
-  const parent = tempRoot();
-  const root = path.join(parent, "recap-v1");
-  t.after(() => fs.rmSync(parent, { recursive: true, force: true }));
-  const error = Object.assign(new Error("remote roots are unsupported"), {
-    code: "RECAP_PRIVATE_ACL_FAILED",
-    stage: "remote-root",
-  });
-  let hardenCalls = 0;
-  const store = createRecapStore({
-    root,
-    assertPrivatePathSupported: (target) => {
-      assert.equal(target, root);
-      throw error;
-    },
-    hardenPrivateDirectory: () => { hardenCalls += 1; },
-  });
-
-  assert.throws(() => store.initialize(), (caught) => caught === error);
-  assert.equal(fs.existsSync(root), false);
-  assert.equal(hardenCalls, 0);
-});
-
 test("store fails closed when the newly created root disappears before it can be pinned", (t) => {
   const parent = tempRoot();
   const root = path.join(parent, "recap-v1");
@@ -212,33 +175,6 @@ test("store fails closed when the newly created root disappears before it can be
   assert.equal(hardenCalls, 0);
   assert.equal(fs.existsSync(path.join(root, "meta.json")), false);
   assert.equal(fs.existsSync(path.join(root, "events")), false);
-});
-
-test("store hardens one root generation only once across clear reinitialization", (t) => {
-  const parent = tempRoot();
-  const root = path.join(parent, "recap-v1");
-  t.after(() => fs.rmSync(parent, { recursive: true, force: true }));
-  let calls = 0;
-  let hardeningTarget = null;
-  let hardeningOptions = null;
-  const store = createRecapStore({
-    root,
-    hardenPrivateDirectory: (target, options) => {
-      calls += 1;
-      hardeningTarget = target;
-      hardeningOptions = options;
-    },
-  });
-  store.initialize();
-  const rootStat = fs.lstatSync(root, { bigint: true });
-  assert.equal(hardeningTarget, root);
-  assert.deepEqual(hardeningOptions, {
-    expectedCanonicalRoot: path.resolve(fs.realpathSync.native(root)),
-    expectedIdentity: `${rootStat.dev}:${rootStat.ino}`,
-  });
-  store.clear();
-  store.initialize();
-  assert.equal(calls, 1);
 });
 
 test("store path guard rejects escapes and clear only resets recap children", (t) => {

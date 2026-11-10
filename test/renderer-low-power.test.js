@@ -17,12 +17,6 @@ function readNormalized(filePath) {
   return fs.readFileSync(filePath, "utf8").replace(/\r\n/g, "\n");
 }
 
-function matchSource(source, pattern, message) {
-  const match = source.match(pattern);
-  assert.ok(match, message || `missing pattern ${pattern}`);
-  return match;
-}
-
 // PR #751 Codex review #12 (rework batch B-8, §6.6): loads the REAL
 // src/preload.js against a minimal mocked electron module (same
 // require.cache-swap technique as test/mini.test.js's loadMiniWithElectron),
@@ -3373,19 +3367,6 @@ describe("renderer object-channel selection", () => {
     assert.strictEqual(harness.api.pendingSvgFile, "next.svg");
   });
 
-  it("notifies main once the first pet visual is actually swapped into view", () => {
-    const harness = createRendererHarness();
-
-    harness.api.swapToFile("first.svg", "idle", false);
-    harness.api.pendingNext.listeners.get("load")();
-    harness.api.swapToFile("second.svg", "working", false);
-    harness.api.pendingNext.listeners.get("load")();
-
-    assert.deepStrictEqual(
-      harness.electronCalls.filter((call) => call.name === "notifyPetVisualReady"),
-      [{ name: "notifyPetVisualReady", args: [] }]
-    );
-  });
 });
 
 describe("renderer pet tint", () => {
@@ -4067,34 +4048,6 @@ describe("renderer pet accessory wardrobe", () => {
     assert.strictEqual(harness.accessory.style.display, "block");
   });
 
-  it("fails open once when an accessory asset never settles and accepts a late load", () => {
-    const harness = createRendererHarness({
-      initialObjectData: "",
-      themeConfig: accessoryConfig(),
-    });
-    const pendingPet = harness.api.pendingNext;
-    pendingPet.listeners.get("load")();
-    assert.ok(harness.api.pendingNext, "the first pet visual should briefly wait for its accessory");
-
-    const loadTimer = harness.api.accessoryAssetLoadTimer;
-    assert.ok(loadTimer, "the accessory request should own one bounded load timer");
-    loadTimer.cleared = true;
-    loadTimer.callback();
-
-    assert.strictEqual(harness.api.accessoryAssetSettled, true);
-    assert.strictEqual(harness.api.accessoryAssetLoadTimer, null);
-    assert.strictEqual(harness.api.pendingNext, null, "timeout must release the waiting pet visual");
-    assert.strictEqual(harness.accessory.style.display, "none");
-    assert.strictEqual(
-      harness.electronCalls.filter((call) => call.name === "notifyPetVisualReady").length,
-      1,
-      "the first visible pet must still notify main exactly once"
-    );
-
-    harness.accessory.onload();
-    assert.strictEqual(harness.accessory.style.display, "block", "a late successful load should recover");
-  });
-
   it("does not let the img load deadline kill media already waiting for an accessory", () => {
     const harness = createRendererHarness({
       initialObjectData: "",
@@ -4121,27 +4074,6 @@ describe("renderer pet accessory wardrobe", () => {
     );
     harness.accessory.onload();
     assert.strictEqual(harness.api.pendingNext, null);
-  });
-
-  it("fails open when an accessory asset reports an error", () => {
-    const harness = createRendererHarness({
-      initialObjectData: "",
-      themeConfig: accessoryConfig(),
-    });
-    harness.api.pendingNext.listeners.get("load")();
-    const loadTimer = harness.api.accessoryAssetLoadTimer;
-    assert.ok(loadTimer);
-
-    harness.accessory.onerror();
-
-    assert.strictEqual(loadTimer.cleared, true);
-    assert.strictEqual(harness.api.accessoryAssetSettled, true);
-    assert.strictEqual(harness.api.pendingNext, null);
-    assert.strictEqual(harness.accessory.style.display, "none");
-    assert.strictEqual(
-      harness.electronCalls.filter((call) => call.name === "notifyPetVisualReady").length,
-      1
-    );
   });
 
   it("stops dynamic accessory follow while low-power SVG animation is paused", () => {
@@ -5728,24 +5660,4 @@ describe("preload theme config transport", () => {
     }
   });
 
-  it("hands the hit preload its config over IPC and falls back to argv", () => {
-    let loader = null;
-    let fallback = null;
-    try {
-      withProcessArgs(['--hit-theme-config={"source":"argv"}', "--hit-platform=win32"], () => {
-        loader = loadPreloadWithElectron({
-          preloadPath: "../src/preload-hit",
-          syncResponses: { "renderer-config:get-hit": { source: "ipc" } },
-        });
-        fallback = loadPreloadWithElectron({ preloadPath: "../src/preload-hit" });
-      });
-      assert.deepStrictEqual(loader.hitThemeConfig, { source: "ipc" });
-      assert.strictEqual(loader.hitPlatform.platform, "win32");
-      assert.deepStrictEqual(loader.sendSyncCalls, ["renderer-config:get-hit"]);
-      assert.deepStrictEqual(fallback.hitThemeConfig, { source: "argv" });
-    } finally {
-      if (fallback) fallback.restore();
-      if (loader) loader.restore();
-    }
-  });
 });

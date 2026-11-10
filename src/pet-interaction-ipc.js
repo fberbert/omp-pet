@@ -28,10 +28,6 @@ function registerPetInteractionIpc(options = {}) {
   const requestDragReaction = options.requestDragReaction || null;
   const requestClickReaction = options.requestClickReaction || null;
   const refreshIdleVisualAfterDrag = options.refreshIdleVisualAfterDrag || (() => {});
-  const recoverVisiblePetAfterRendererLoad = requiredDependency(
-    options.recoverVisiblePetAfterRendererLoad,
-    "recoverVisiblePetAfterRendererLoad"
-  );
   const setDragLocked = requiredDependency(options.setDragLocked, "setDragLocked");
   const setMouseOverPet = requiredDependency(options.setMouseOverPet, "setMouseOverPet");
   const cancelRoam = requiredDependency(options.cancelRoam, "cancelRoam");
@@ -52,8 +48,6 @@ function registerPetInteractionIpc(options = {}) {
     options.flushRuntimeStateToPrefs,
     "flushRuntimeStateToPrefs"
   );
-  const reassertWinTopmost = requiredDependency(options.reassertWinTopmost, "reassertWinTopmost");
-  const scheduleHwndRecovery = requiredDependency(options.scheduleHwndRecovery, "scheduleHwndRecovery");
   const repositionFloatingBubbles = requiredDependency(
     options.repositionFloatingBubbles,
     "repositionFloatingBubbles"
@@ -75,16 +69,9 @@ function registerPetInteractionIpc(options = {}) {
   const setAccessoryMirror = options.setAccessoryMirror || (() => {});
   const settleVisual = options.settleVisual || (() => false);
   const syncDisplayedVisualGeometry = options.syncDisplayedVisualGeometry || (() => {});
-  // #640: the editing-overlap dodge defers its hit-window click-through write
-  // while a drag is in flight; drag-lock release must re-run the sync so the
-  // state the drag ended in (overlapping or not) gets applied.
-  const syncImeEditingPetDodge = options.syncImeEditingPetDodge || (() => {});
   const statPath = requiredDependency(options.statPath, "statPath");
   const openTerminalAt = requiredDependency(options.openTerminalAt, "openTerminalAt");
   const dropLog = options.dropLog || (() => {});
-  const isMacPlatform = options.isMacPlatform != null
-    ? !!options.isMacPlatform
-    : process.platform === "darwin";
   const disposers = [];
 
   function on(channel, listener) {
@@ -94,7 +81,6 @@ function registerPetInteractionIpc(options = {}) {
 
   on("show-context-menu", showContextMenu);
   on("drag-move", () => moveWindowForDrag());
-  on("pet-visual-ready", (event) => recoverVisiblePetAfterRendererLoad(event));
   on("pet-visual-settled", (event, payload) => settleVisual(event, payload));
 
   on("pause-cursor-polling", () => {
@@ -125,7 +111,6 @@ function registerPetInteractionIpc(options = {}) {
       clearDragSnapshot();
       syncHitWin();
       syncDisplayedVisualGeometry();
-      syncImeEditingPetDodge();
     }
   });
 
@@ -153,8 +138,6 @@ function registerPetInteractionIpc(options = {}) {
             applyPetWindowBounds(clamped);
             flushRuntimeStateToPrefs();
           }
-          reassertWinTopmost();
-          scheduleHwndRecovery();
           syncHitWin();
           syncDisplayedVisualGeometry();
           repositionFloatingBubbles();
@@ -164,11 +147,6 @@ function registerPetInteractionIpc(options = {}) {
     } finally {
       setDragLocked(false);
       clearDragSnapshot();
-      // Normally the preceding drag-lock(false) already re-ran the dodge, but
-      // this handler also releases the lock defensively — mirror the re-run so
-      // a drag-end without a paired drag-lock(false) can't strand the deferred
-      // click-through write.
-      syncImeEditingPetDodge();
     }
   });
 
@@ -180,19 +158,12 @@ function registerPetInteractionIpc(options = {}) {
     revealSessionHud();
   });
 
-  // OS file drop from the hit window (#459, Windows/Linux only): first path
-  // wins, files resolve to their parent directory, then open a plain terminal
-  // there (no agent). The accept ping goes back to the SENDING window (hit
-  // renderer plays its own reaction so its isReacting gate stays consistent).
-  // macOS never registers the renderer-side listeners (screen-saver-level
-  // windows are invisible to macOS drag-destination search); this guard is the
-  // second layer so a stray IPC can't open terminals there either.
+  // OS file drop from the hit window (#459): first path wins, files resolve
+  // to their parent directory, then open a plain terminal there (no agent).
+  // The accept ping goes back to the SENDING window (hit renderer plays its
+  // own reaction so its isReacting gate stays consistent).
   on("pet-drop-paths", async (event, paths) => {
     try {
-      if (isMacPlatform) {
-        dropLog("drop ignored: OS file drop is disabled on macOS");
-        return;
-      }
       if (isMiniMode() || isMiniTransitioning()) return;
       if (!Array.isArray(paths)) return;
       const first = paths.find((p) => typeof p === "string" && p.length > 0);

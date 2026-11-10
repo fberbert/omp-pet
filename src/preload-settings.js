@@ -149,7 +149,6 @@ contextBridge.exposeInMainWorld("settingsAPI", {
   detectAgentInstallations: (opts) => ipcRenderer.invoke("settings:detect-agent-installations", opts),
   getAboutInfo: () => ipcRenderer.invoke("settings:get-about-info"),
   showTutorial: () => ipcRenderer.invoke("settings:show-tutorial"),
-  getStartupRenderState: () => ipcRenderer.invoke("settings:get-startup-render-state"),
   openExternal: (url) => ipcRenderer.invoke("settings:open-external", url),
   listThemes: () => ipcRenderer.invoke("settings:list-themes"),
   openUserThemesDir: () => ipcRenderer.invoke("settings:open-user-themes-dir"),

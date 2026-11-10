@@ -113,18 +113,10 @@ const SCHEMA = {
   preMiniY: { type: "number", default: 0, validate: (v) => Number.isFinite(v) },
   // Pure data prefs
   lang: { type: "string", default: "en", enum: ["en", "zh", "zh-TW", "ko", "ja", "pt-BR", "es"] },
-  showTray: { type: "boolean", default: true },
   // Local activity recap is enabled by default. It stores only bounded
   // aggregate/ticket data under ~/.clawd;
   // there is no network export and the user can disable or clear it later.
   recapEnabled: { type: "boolean", default: true },
-  // Default off (macOS): a fresh install runs as an accessory/agent app — pet +
-  // menu-bar icon, no Dock tile. Existing users keep their Dock — a persisted
-  // showDock is kept (save() bakes the full snapshot), and the v11->v12 migration
-  // backfills showDock=true for any pre-v12 file that lacks the key — so ONLY
-  // brand-new installs (which never run migrate) pick up this off default.
-  // showTray stays default-on so there is always one access point (menu bar).
-  showDock: { type: "boolean", default: false },
   // System-backed: actual truth lives in OS login items / autostart files.
   // `openAtLoginHydrated` starts false; main.js's startup hydrate helper imports
   // the current system value into prefs on first run, then flips this flag.
@@ -204,38 +196,9 @@ const SCHEMA = {
     default: "medium",
     enum: ["low", "medium", "high"],
   },
-  // #562: Windows-only. When ON, the pet floats ON TOP of a foreground
-  // fullscreen app (e.g. a borderless game) and stays draggable, instead of
-  // standing down below it (#538). Default ON — most users want to glance at
-  // the pet while gaming. OFF only restores the #538 stand-down, which depends
-  // on the game grabbing topmost: that fires for exclusive-fullscreen, but a
-  // borderless-fullscreen game never yields topmost, so the pet floats on top
-  // there regardless of this pref (a Windows platform limit — forcing the pet
-  // below via setAlwaysOnTop(false) scrambles z-order, so we don't). To remove
-  // the pet entirely the user hides it (Hide Pet). No settings UI as of #562
-  // (the toggle was a non-choice for borderless games — see
-  // settings-tab-general.js); this pref persists as an escape hatch and can be
-  // re-exposed. #1282: recognized screen capture overlays always stand down.
-  fullscreenOverlay: { type: "boolean", default: true },
-  // #935: opt-in auto-hide — when a real fullscreen app owns the foreground
-  // (Windows or macOS native Space probe, #1275), hide the pet + floating surfaces
-  // entirely and restore them when fullscreen ends. Takes precedence over
-  // fullscreenOverlay while active (a hidden pet has nothing to overlay).
-  // Windows and macOS only. Default OFF preserves the existing overlay;
-  // a non-topmost Mac pet also auto-hides, but leaves approvals visible.
-  fullscreenAutoHide: { type: "boolean", default: false },
   // #1275: controls the pet body (render + hit windows). Default ON keeps
-  // it above normal windows and macOS fullscreen apps. OFF lets windows cover
-  // it; Mac also hides it and adjacent surfaces in native fullscreen while
-  // keeping permission bubbles visible. Mac applies the launch value because
-  // private-Space membership cannot be undone across all Spaces at runtime.
+  // it above normal windows; OFF lets other windows cover it.
   petAlwaysOnTop: { type: "boolean", default: true },
-  // #1183: escape hatch for machines whose GPU compositor draws the
-  // transparent pet window as an opaque black square once part of it leaves
-  // the virtual desktop (edge snap / mini mode). Read once at startup, before
-  // app ready, because Electron can only turn GPU acceleration off then — a
-  // change takes effect on the next launch. Windows-only in effect.
-  disableHardwareAcceleration: { type: "boolean", default: false },
   // Text-window zoom (bubbles, HUD, dashboard, settings, resume input). The
   // pet itself scales via `size` and is never zoomed. `textScale` is the
   // global default; `textScaleByDisplay` overrides it per display id (the
@@ -351,8 +314,7 @@ const SCHEMA = {
   // no tutorialSeen key, so validate() resolves it to the false default — meaning
   // they ALSO get the tutorial once on their next launch after updating, exactly
   // like a brand-new install. "Seen once → true → never shown again", across any
-  // future version update. (Contrast showDock, which is migration-backfilled so
-  // ONLY fresh installs pick up its new default.)
+  // future version update.
   tutorialSeen: { type: "boolean", default: false },
 };
 

@@ -8,9 +8,6 @@ const area = document.getElementById("hit-area");
 let tc = window.hitThemeConfig || {};
 let _reactions = (tc && tc.reactions) || {};
 
-// ── Platform (injected via preload-hit.js additionalArguments) ──
-const isMac = !!(window.hitPlatform && window.hitPlatform.isMac);
-
 // Theme switch: IPC push overrides additionalArguments
 if (window.hitAPI && window.hitAPI.onThemeConfig) {
   window.hitAPI.onThemeConfig((cfg) => {
@@ -136,18 +133,8 @@ document.addEventListener("pointerup", (e) => {
   stopDrag();
   if (wasDrag) return;
 
-  // macOS Ctrl-click is the system right-click gesture. Let the OS / our
-  // contextmenu handler deal with it; do NOT treat it as the Dashboard
-  // shortcut, and do NOT fall through to handleClick (would otherwise
-  // leak into the click accumulator).
-  if (isMac && e.ctrlKey && !e.metaKey) {
-    resetClickAccumulator();
-    return;
-  }
-
-  // Dashboard shortcut: Cmd-click on mac, Ctrl-click elsewhere.
-  const isDashboardShortcut = isMac ? e.metaKey : (e.ctrlKey && !e.metaKey);
-  if (isDashboardShortcut) {
+  // Dashboard shortcut: Ctrl-click.
+  if (e.ctrlKey && !e.metaKey) {
     resetClickAccumulator();
     window.hitAPI.showDashboard();
     return;
@@ -272,18 +259,10 @@ function endDragReaction(force = false) {
   window.hitAPI.endDragReaction();
 }
 
-// --- OS file drop → open terminal at that directory (#459, Windows/Linux only) ---
-// macOS is OUT: the pet windows live at screen-saver level so they stay above
-// fullscreen apps, and macOS drag-destination search never delivers drag
-// events to windows at that level (real-machine bisect, 2026-06-11 — lowering
-// only the hit window doesn't help either, the overlapping screen-saver render
-// window still blocks the search; ignoresMouseEvents passes mouse events
-// through but NOT drag destinations). Don't re-attempt without changing the
-// window-level model; listeners are simply not registered on mac.
-//
+// --- OS file drop → open terminal at that directory (#459) ---
 // Affordance gating lives HERE (not only in main): in mini mode dragover must
 // not preventDefault, so the OS shows "no drop" instead of a copy cursor that
-// would then do nothing. Main re-checks mini (and platform) as the second layer.
+// would then do nothing. Main re-checks mini as the second layer.
 function dragHasFiles(e) {
   const types = e.dataTransfer && e.dataTransfer.types;
   if (!types) return false;
@@ -291,44 +270,42 @@ function dragHasFiles(e) {
   return false;
 }
 
-if (!isMac) {
-  area.addEventListener("dragover", (e) => {
-    if (miniMode || !dragHasFiles(e)) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "copy";
-  });
+area.addEventListener("dragover", (e) => {
+  if (miniMode || !dragHasFiles(e)) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = "copy";
+});
 
-  area.addEventListener("drop", (e) => {
-    if (!dragHasFiles(e)) return;
-    e.preventDefault();
-    if (miniMode) return;
-    const paths = [];
-    for (const file of e.dataTransfer.files || []) {
-      const p = window.hitAPI.getPathForFile(file);
-      if (typeof p === "string" && p) paths.push(p);
-    }
-    if (paths.length) window.hitAPI.dropPaths(paths);
-  });
+area.addEventListener("drop", (e) => {
+  if (!dragHasFiles(e)) return;
+  e.preventDefault();
+  if (miniMode) return;
+  const paths = [];
+  for (const file of e.dataTransfer.files || []) {
+    const p = window.hitAPI.getPathForFile(file);
+    if (typeof p === "string" && p) paths.push(p);
+  }
+  if (paths.length) window.hitAPI.dropPaths(paths);
+});
 
-  // Main confirmed the drop opened a terminal → react. Routed back through the
-  // local playReaction so isReacting gating stays consistent. Best-effort with a
-  // fallback chain: double (Clawd) → clickLeft/clickRight poke (Calico) →
-  // nothing (Cloudling only ships a drag reaction; no new theme capability is
-  // invented for drops).
-  window.hitAPI.onDropAccepted(() => {
-    if (!canPlayReactionNow()) return;
-    const doubleReact = _getReaction("double");
-    if (doubleReact) {
-      const files = doubleReact.files || [doubleReact.file];
-      playReaction(files[Math.floor(Math.random() * files.length)], doubleReact.duration || 3500);
-      return;
-    }
-    const left = _getReaction("clickLeft");
-    const right = _getReaction("clickRight");
-    const poke = left && right ? (Math.random() < 0.5 ? left : right) : (left || right);
-    if (poke) playReaction(poke.file, poke.duration || 2500);
-  });
-}
+// Main confirmed the drop opened a terminal → react. Routed back through the
+// local playReaction so isReacting gating stays consistent. Best-effort with a
+// fallback chain: double (Clawd) → clickLeft/clickRight poke (Calico) →
+// nothing (Cloudling only ships a drag reaction; no new theme capability is
+// invented for drops).
+window.hitAPI.onDropAccepted(() => {
+  if (!canPlayReactionNow()) return;
+  const doubleReact = _getReaction("double");
+  if (doubleReact) {
+    const files = doubleReact.files || [doubleReact.file];
+    playReaction(files[Math.floor(Math.random() * files.length)], doubleReact.duration || 3500);
+    return;
+  }
+  const left = _getReaction("clickLeft");
+  const right = _getReaction("clickRight");
+  const poke = left && right ? (Math.random() < 0.5 ? left : right) : (left || right);
+  if (poke) playReaction(poke.file, poke.duration || 2500);
+});
 
 // --- Right-click context menu ---
 // #1260: a menu popped mid-drag runs a modal loop that takes the OS mouse

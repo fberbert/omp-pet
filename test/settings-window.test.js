@@ -183,24 +183,13 @@ function createRuntime(options = {}) {
   FakeBrowserWindow.setBoundsOffset = options.setBoundsOffset || null;
   const { app, listeners } = createFakeApp(options.app);
   const fakeTimers = createFakeTimers();
-  const fs = {
-    existsSync(filePath) {
-      return /assets[\\/](icons[\\/]256x256\.png|icon\.ico)$/.test(filePath);
-    },
-  };
   const runtime = createSettingsWindowRuntime({
     app,
     BrowserWindow: FakeBrowserWindow,
-    fs,
-    isWin: true,
     nativeTheme: { shouldUseDarkColors: !!options.dark },
-    path: path.win32,
-    platform: "win32",
-    resourcesPath: "C:\\resources",
-    execPath: "C:\\electron\\electron.exe",
-    appDir: "C:\\app",
-    settingsHtmlPath: "C:\\app\\src\\settings.html",
-    preloadPath: "C:\\app\\src\\preload-settings.js",
+    path: path.posix,
+    settingsHtmlPath: "/app/src/settings.html",
+    preloadPath: "/app/src/preload-settings.js",
     setTimeout: fakeTimers.setTimeout,
     clearTimeout: fakeTimers.clearTimeout,
     ...options.runtime,
@@ -271,7 +260,7 @@ test("Settings window accepts a webContents stub without on", () => {
   assert.doesNotThrow(() => runtime.open());
 });
 
-test("settings window runtime creates the Settings BrowserWindow with taskbar identity", () => {
+test("settings window runtime creates the Settings BrowserWindow", () => {
   const events = [];
   let runtime;
   let timers;
@@ -289,55 +278,33 @@ test("settings window runtime creates the Settings BrowserWindow with taskbar id
   const win = FakeBrowserWindow.instances[0];
 
   assert.strictEqual(runtime.getWindow(), win);
-  assert.strictEqual(win.options.title, "Clawd Settings");
+  assert.strictEqual(win.options.title, "OMP Pet Settings");
   assert.strictEqual(win.options.x, 240);
   assert.strictEqual(win.options.y, 70);
   assert.strictEqual(win.options.width, 800);
   assert.strictEqual(win.options.height, 660);
   assert.strictEqual(win.options.backgroundColor, "#1c1c1f");
-  assert.strictEqual(win.options.webPreferences.preload, "C:\\app\\src\\preload-settings.js");
+  assert.strictEqual(win.options.webPreferences.preload, "/app/src/preload-settings.js");
   assert.strictEqual(win.options.webPreferences.nodeIntegration, false);
-  assert.strictEqual(win.options.acceptFirstMouse, undefined,
-    "non-macOS windows never set acceptFirstMouse");
   assert.strictEqual(win.options.webPreferences.contextIsolation, true);
   assert.deepStrictEqual(win.options.webPreferences.additionalArguments, [
     "--discord-default-app-id-present=0",
   ]);
-  assert.match(win.options.icon, /assets[\\/]icons[\\/]256x256\.png$/);
   assert.strictEqual(win.menuBarVisible, false);
-  assert.strictEqual(win.loadedFile, "C:\\app\\src\\settings.html");
-  assert.match(win.appDetails.appIconPath, /assets[\\/]icon\.ico$/);
-  assert.ok(win.appDetails.relaunchCommand.includes("--open-settings-window"));
+  assert.strictEqual(win.loadedFile, "/app/src/settings.html");
   assert.deepStrictEqual(events, ["before-create"]);
 
   win.emit("ready-to-show");
-  assert.deepStrictEqual(win.calls.slice(-4), [
+  assert.deepStrictEqual(win.calls.slice(-3), [
     "show",
-    ["setAlwaysOnTop", true, undefined],
     "moveTop",
     "focus",
   ]);
   assert.strictEqual(findPendingTimer(timers, 2000), undefined);
 
-  const lowerTimer = findPendingTimer(timers, 200);
-  assert.ok(lowerTimer);
-  lowerTimer.callback();
-  assert.deepStrictEqual(win.calls.at(-1), ["setAlwaysOnTop", false, undefined]);
-
   win.emit("closed");
   assert.deepStrictEqual(events, ["before-create", "before-closed", "after-closed-null"]);
   assert.strictEqual(runtime.getWindow(), null);
-});
-
-test("macOS settings window passes acceptFirstMouse so the first click reaches the page", () => {
-  let runtime;
-  ({ runtime } = createRuntime({ runtime: { platform: "darwin", isWin: false } }));
-
-  runtime.open();
-  assert.strictEqual(FakeBrowserWindow.instances.length, 1);
-  const win = FakeBrowserWindow.instances[0];
-  assert.strictEqual(win.options.acceptFirstMouse, true,
-    "the pet app lives in the background; the first click must not be eaten by window activation");
 });
 
 test("settings window uses and refreshes the localized title", () => {
@@ -396,11 +363,10 @@ test("settings window injects the Discord default-App-ID flag into the sandboxed
 });
 
 test("settings window runtime reuses an existing non-destroyed Settings window", () => {
-  const { runtime, timers } = createRuntime();
+  const { runtime } = createRuntime();
   runtime.open();
   const win = FakeBrowserWindow.instances[0];
   win.emit("ready-to-show");
-  findPendingTimer(timers, 200).callback();
   win.calls = [];
   win.minimized = true;
 
@@ -410,7 +376,6 @@ test("settings window runtime reuses an existing non-destroyed Settings window",
   assert.deepStrictEqual(win.calls, [
     "restore",
     "show",
-    ["setAlwaysOnTop", true, undefined],
     "moveTop",
     "focus",
   ]);
@@ -486,7 +451,6 @@ test("settings window deep-link survives a reopen before load and reaches a mini
     ["send", "settings:select-tab", "recap"],
     "restore",
     "show",
-    ["setAlwaysOnTop", true, undefined],
     "moveTop",
     "focus",
   ]);
@@ -699,9 +663,8 @@ test("settings window runtime shows from timeout if ready-to-show never fires", 
   assert.ok(readyFallbackTimer);
 
   readyFallbackTimer.callback();
-  assert.deepStrictEqual(win.calls.slice(-4), [
+  assert.deepStrictEqual(win.calls.slice(-3), [
     "show",
-    ["setAlwaysOnTop", true, undefined],
     "moveTop",
     "focus",
   ]);
@@ -718,9 +681,8 @@ test("settings window runtime does not show twice if reopened before ready", () 
   const win = FakeBrowserWindow.instances[0];
   runtime.open();
 
-  assert.deepStrictEqual(win.calls.slice(-4), [
+  assert.deepStrictEqual(win.calls.slice(-3), [
     "show",
-    ["setAlwaysOnTop", true, undefined],
     "moveTop",
     "focus",
   ]);

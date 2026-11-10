@@ -299,15 +299,6 @@ describe("prefs.migrate v9 → v10 (compact HUD defaults are fresh-install only)
 });
 
 describe("prefs.migrate v11 → v12 (showDock default off for fresh installs)", () => {
-  it("preserves an explicit showDock=false from a pre-v12 file", () => {
-    const validated = prefs.validate(prefs.migrate({ version: 11, showDock: false }));
-    assert.strictEqual(validated.showDock, false);
-  });
-
-  it("fresh defaults (no prefs file, migrate never runs) get showDock off", () => {
-    const d = prefs.getDefaults();
-    assert.strictEqual(d.showDock, false);
-  });
 
   it("is idempotent on v12 input (a fresh-install save is not re-backfilled)", () => {
     const upgraded = prefs.migrate({ version: 12 });
@@ -1074,26 +1065,6 @@ describe("prefs.mapLocaleToLang (device locale → UI language)", () => {
     for (const probe of ["xx", "ZH-tw", "JA", "en-GB", "pt-BR", "PT-br", "es-MX", ""]) {
       assert.ok(enumVals.has(prefs.mapLocaleToLang(probe)), `${probe} mapped outside enum`);
     }
-  });
-});
-
-describe("prefs.disableHardwareAcceleration (#1183)", () => {
-  it("defaults to off and round-trips through load", () => {
-    assert.strictEqual(prefs.getDefaults().disableHardwareAcceleration, false);
-    const p = makeTempPath();
-    fs.writeFileSync(p, JSON.stringify({ disableHardwareAcceleration: true }));
-    assert.strictEqual(prefs.load(p).snapshot.disableHardwareAcceleration, true);
-  });
-
-  it("is applied before app ready on Windows only", () => {
-    const mainSource = fs.readFileSync(path.join(__dirname, "../src/main.js"), "utf8");
-    const call = mainSource.indexOf("app.disableHardwareAcceleration()");
-    assert.ok(call > 0, "main.js must call app.disableHardwareAcceleration()");
-    assert.ok(call < mainSource.indexOf("app.whenReady()"), "the call must precede app.whenReady()");
-    assert.match(
-      mainSource,
-      /const _hardwareAccelerationDisabledAtStartup = isWin\s*&& !!_initialPrefsLoad\.snapshot\s*&& _initialPrefsLoad\.snapshot\.disableHardwareAcceleration === true;\s*if \(_hardwareAccelerationDisabledAtStartup\) \{\s*app\.disableHardwareAcceleration\(\);/
-    );
   });
 });
 

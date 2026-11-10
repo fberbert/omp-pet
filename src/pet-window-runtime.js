@@ -22,7 +22,6 @@ const {
   materializeVirtualBounds: materializeVirtualBoundsRaw,
 } = require("./drag-position");
 const { resolveHorizontalEdgeContext } = require("./display-edge");
-const { classifyCloakState } = require("./win-cloak-recovery");
 
 const noop = () => {};
 const DEFAULT_CRASH_RELOAD_LIMIT = 5;
@@ -44,10 +43,6 @@ const NON_RELOADABLE_RENDER_GONE_REASONS = new Set([
 const RECONCILE_QUIET_MS = 100;
 const SETTLE_MS = 400;
 const HIT_QUIET_MS = 250;
-// Topology events and AppKit's window moves need not arrive in the same
-// order. These are bounded verification passes, not a permanent poll.
-const HIT_TOPOLOGY_CHECK_DELAYS_MS = [250, 500, 1000];
-const MAC_HIT_REPAIR_LIMIT = 2;
 
 // I5: below this width/height the hit rect is degenerate (menu mini-entry's
 // fully-offscreen preload stage, or a 1-5px transition sliver) — don't try to
@@ -114,20 +109,12 @@ function reloadWindowWebContents(win) {
 
 function createPetWindowRuntime(options = {}) {
   const screen = options.screen || {};
-  const isWin = !!options.isWin;
-  const isMac = !!options.isMac;
-  const isLinux = !!options.isLinux;
-  const windowsHitWindowFocusable = isWin && options.windowsHitWindowFocusable === true;
   const linuxWindowType = options.linuxWindowType;
-  const topmostLevel = options.topmostLevel;
-  // #1275: master always-on-top preference. Gates the creation-time topmost
-  // writes and the size-preview restore so a pref-off pet is born (and
-  // stays) in the normal band; the runtime-level reassert paths gate
-  // themselves in topmost-runtime.js.
+  // #1275: master always-on-top preference for the creation-time window
+  // level; main.js applies later changes to the live windows.
   const getAlwaysOnTop = options.getAlwaysOnTop || (() => true);
   const getRenderWindow = options.getRenderWindow || (() => null);
   const getHitWindow = options.getHitWindow || (() => null);
-  const getSettingsWindow = options.getSettingsWindow || (() => null);
   const getPrimaryWorkAreaSafe = options.getPrimaryWorkAreaSafe || (() => null);
   const getNearestWorkArea = options.getNearestWorkArea || (() => getPrimaryWorkAreaSafe() || SYNTHETIC_WORK_AREA);
   const getActiveTheme = options.getActiveTheme || (() => null);
@@ -152,41 +139,22 @@ function createPetWindowRuntime(options = {}) {
   const repositionFloatingBubbles = options.repositionFloatingBubbles || noop;
   const showFloatingSurfacesForPet = options.showFloatingSurfacesForPet || noop;
   const hideFloatingSurfacesForPet = options.hideFloatingSurfacesForPet || noop;
-  const setFloatingSurfacesFullscreenSuppressed = options.setFloatingSurfacesFullscreenSuppressed || noop;
-  // #935: every manual show (setPetHidden(false)) reports user intent here so
-  // topmost-runtime's fullscreen auto-hide sync can latch its override — even
-  // when the show lands as a visible no-op (a stale menu item clicked after
-  // the sync already auto-restored the pet).
-  const noteManualPetShow = options.noteManualPetShow || noop;
   const syncSessionHudVisibilityAndBubbles = options.syncSessionHudVisibilityAndBubbles || noop;
-  const syncPermissionShortcuts = options.syncPermissionShortcuts || noop;
   const buildTrayMenu = options.buildTrayMenu || noop;
   const buildContextMenu = options.buildContextMenu || noop;
-  const reapplyMacVisibility = options.reapplyMacVisibility || noop;
 
-  // #979: on macOS reapplyMacVisibility() keeps the pet on every Space, but
-  // nothing pinned the pet windows on Linux, so the pet disappeared as soon as
-  // the user switched workspace. On X11/XWayland, Electron's
-  // setVisibleOnAllWorkspaces() sets _NET_WM_STATE_STICKY, which is the
-  // missing piece. No options: visibleOnFullScreen / skipTransformProcessType
-  // are macOS-only. The try also covers a missing method, so neither that nor
-  // a throwing native call can break window setup.
-  function applyLinuxAllWorkspaces(win) {
-    if (!isLinux || !win) return;
+  // #979: pin the pet windows to every workspace, or the pet disappears as
+  // soon as the user switches workspace. On X11/XWayland, Electron's
+  // setVisibleOnAllWorkspaces() sets _NET_WM_STATE_STICKY. The try also
+  // covers a missing method, so neither that nor a throwing native call can
+  // break window setup.
+  function applyAllWorkspaces(win) {
+    if (!win) return;
     try {
       win.setVisibleOnAllWorkspaces(true);
     } catch {}
   }
 
-  // #640: re-run the editing-overlap dodge whenever the hit geometry syncs —
-  // the hitbox can change without the window moving (state switches between
-  // hitboxes, theme reload), which changes the overlap answer.
-  const syncImeEditingPetDodge = options.syncImeEditingPetDodge || noop;
-  const reassertWinTopmost = options.reassertWinTopmost || noop;
-  const scheduleHwndRecovery = options.scheduleHwndRecovery || noop;
-  // #525: DWM cloak probe + un-cloak primitives (win-cloak-recovery.js).
-  // Absent/unavailable inspector degrades every cloak path to a no-op.
-  const cloakInspector = options.cloakInspector || null;
   const isMiniAnimating = options.isMiniAnimating || (() => false);
   // Issue #690 plan §4.3.10's fourth protection period. roam.js's per-frame
   // applyPetWindowBounds() (ROAM_FRAME_MS=16) is a continuous native-write
@@ -201,7 +169,6 @@ function createPetWindowRuntime(options = {}) {
   // timing).
   const setTimeoutFn = options.setTimeout || setTimeout;
   const clearTimeoutFn = options.clearTimeout || clearTimeout;
-  const isNearWorkAreaEdge = options.isNearWorkAreaEdge || (() => false);
   // Low-noise diagnostics for the I2 offset legal-domain backstop and the
   // assertNoYOffset guard (plan §3 I2, §4.3.2). Production logging is opt-in
   // exactly as plan §8 specifies: ordinary `npm start` must not turn expected
@@ -213,8 +180,7 @@ function createPetWindowRuntime(options = {}) {
   // Phase 2 item 8's escape hatch (plan §4.3 point 12 / §11.11). A live
   // function (not a value captured once) so tests can flip it and so a
   // real CLAWD_DISABLE_EDGE_VIRTUALIZATION env change take effect without a
-  // restart being architecturally required, matching how isLinux/isWin etc.
-  // are otherwise treated as fixed per-process facts but env vars are not.
+  // restart being architecturally required.
   const isEdgeVirtualizationDisabled = options.isEdgeVirtualizationDisabled
     || (() => process.env.CLAWD_DISABLE_EDGE_VIRTUALIZATION === "1");
   const flushRuntimeStateToPrefs = options.flushRuntimeStateToPrefs || noop;
@@ -362,24 +328,12 @@ function createPetWindowRuntime(options = {}) {
   // forever (write derived -> WM clamps -> adopt -> next sync re-derives the
   // same target -> write derived again -> ...).
   let lastAdoptedHitOutcome = null;
-  let macHitRepairTarget = null;
-  let macHitRepairAttempts = 0;
-  let macHitRepairLimitLogged = false;
-  let hitReconcileDirty = false;
-  let hitTopologyTimer = null;
 
   // I5 applyHitInputState() single-writer state.
   let hitGeometrySuppressed = false;
-  let settingsSizePreviewIgnoringHit = false;
-  let imeEditingPetDodge = false;
   let hitInputIgnoreApplied = null; // null = never explicitly applied yet
 
   let petHidden = false;
-  // #935: second visibility layer under topmost-runtime's fullscreen auto-hide
-  // sync. Runtime-only (never persisted — a crash while auto-hidden must not
-  // strand the pet invisible on relaunch). Effective visibility is
-  // petHidden || fullscreenAutoHidden; the manual flag stays the user's.
-  let fullscreenAutoHidden = false;
   let dragLocked = false;
   let dragSnapshot = null;
   let hitShapeWidth = 0;
@@ -462,48 +416,18 @@ function createPetWindowRuntime(options = {}) {
     return getDisplayInsets(display).bottom;
   }
 
-  function getNearestDisplayPhysicalBounds(cx, cy) {
-    // Do not fall back to primary here: callers may be mapping a forced
-    // secondary work area (mini exit). A failed lookup must preserve that
-    // work area, never jump the pet to another display.
-    const display = getDisplayNearestPoint(cx, cy);
-    return display && isValidWorkArea(display.bounds) ? display.bounds : null;
-  }
-
-  function getPrimaryDisplayPhysicalBounds() {
-    const display = getPrimaryDisplaySafe();
-    return display && isValidWorkArea(display.bounds) ? display.bounds : null;
-  }
-
-  function projectDisplaysToPhysicalBounds(displays) {
-    if (!Array.isArray(displays)) return displays;
-    return displays.map((display) => {
-      if (!display || !isValidWorkArea(display.bounds)) return display;
-      return { ...display, workArea: display.bounds };
-    });
-  }
-
-  function hasCompletePhysicalDisplayTopology(displays, primaryBounds) {
-    if (!Array.isArray(displays) || displays.length === 0) return !!primaryBounds;
-    return displays.every((display) => display && isValidWorkArea(display.bounds));
-  }
-
   function getClampDisplaysSafe() {
     let rawDisplays;
     try {
       rawDisplays = getAllDisplays();
     } catch {
-      return { displays: [], physicalTopologyComplete: false };
+      return { displays: [] };
     }
     if (!Array.isArray(rawDisplays)) {
-      return { displays: [], physicalTopologyComplete: false };
+      return { displays: [] };
     }
-    const displays = rawDisplays.filter(
-      (display) => display && isValidWorkArea(display.workArea)
-    );
     return {
-      displays,
-      physicalTopologyComplete: displays.length === rawDisplays.length,
+      displays: rawDisplays.filter((display) => display && isValidWorkArea(display.workArea)),
     };
   }
 
@@ -733,7 +657,7 @@ function createPetWindowRuntime(options = {}) {
   // applyPetWindowBounds() can fold it straight into expectedWrite's
   // snapshot without a second findDisplayIdForPoint() call.
   function resolveHorizontalClampBounds(bounds, workArea, providedEdgeContext) {
-    if (!isLinux || isEdgeVirtualizationDisabled()) return { leftBound: null, rightBound: null, displayId: null };
+    if (isEdgeVirtualizationDisabled()) return { leftBound: null, rightBound: null, displayId: null };
     const edge = providedEdgeContext || resolveEdgeContextForBounds(bounds, workArea);
     if (!edge) return { leftBound: null, rightBound: null, displayId: null };
     const displayId = isValidWorkArea(workArea)
@@ -755,28 +679,9 @@ function createPetWindowRuntime(options = {}) {
   // resolveStartupPlacement() call this exact function so a Linux outer-edge
   // window can never be constructed off-screen and then reconciled — the
   // startup bounds are already correct on the first native write.
-  function resolveMaterializationWorkArea(bounds, workArea, opts = {}) {
-    const requestedWorkArea = isValidWorkArea(workArea)
-      ? workArea
-      : resolveWorkAreaFor(bounds);
-    const allowEdgePinning = "allowEdgePinning" in opts
-      ? !!opts.allowEdgePinning
-      : getAllowEdgePinning();
-    if (!isMac || !allowEdgePinning || getMiniMode()) return requestedWorkArea;
-
-    const probeArea = isValidWorkArea(workArea) ? workArea : null;
-    const probeX = probeArea
-      ? probeArea.x + probeArea.width / 2
-      : bounds.x + bounds.width / 2;
-    const probeY = probeArea
-      ? probeArea.y + probeArea.height / 2
-      : bounds.y + bounds.height / 2;
-    return getNearestDisplayPhysicalBounds(probeX, probeY) || requestedWorkArea;
-  }
-
   function materializeVirtualBounds(bounds, workArea, opts = {}) {
     if (!bounds) return null;
-    const resolvedWorkArea = resolveMaterializationWorkArea(bounds, workArea, opts);
+    const resolvedWorkArea = isValidWorkArea(workArea) ? workArea : resolveWorkAreaFor(bounds);
     const clampBounds = resolveHorizontalClampBounds(bounds, resolvedWorkArea, opts.edgeContext);
     const raw = materializeVirtualBoundsRaw(bounds, resolvedWorkArea, clampBounds);
     if (!raw) return null;
@@ -792,27 +697,6 @@ function createPetWindowRuntime(options = {}) {
     return !!a && !!b
       && a.x === b.x && a.y === b.y
       && a.width === b.width && a.height === b.height;
-  }
-
-  // Electron's DIP <-> physical-pixel conversion can read a Windows window
-  // back one DIP wider/taller than the exact rect just requested (commonly at
-  // 125% display scale). This is not an external move: x/y are unchanged and
-  // the native size differs by at most one. Rebasing such a readback into the
-  // logical size makes the next write grow again (206 -> 207 -> 208) and also
-  // sends the hit window through the external-grab candidate path.
-  //
-  // Keep this deliberately narrow: position differences are always real, a
-  // size delta larger than one is still a resize, and Linux clamp evidence
-  // continues to use exact rectangles.
-  function isWindowsNativeSizeRounding(expected, actual) {
-    if (!isWin || !expected || !actual) return false;
-    const widthDelta = actual.width - expected.width;
-    const heightDelta = actual.height - expected.height;
-    return expected.x === actual.x
-      && expected.y === actual.y
-      && Math.abs(widthDelta) <= 1
-      && Math.abs(heightDelta) <= 1
-      && (widthDelta !== 0 || heightDelta !== 0);
   }
 
   // §4.3.2's recomputeOffsetsFrom: rederives both offsets from a known-good
@@ -965,10 +849,6 @@ function createPetWindowRuntime(options = {}) {
   // synchronous reconcile here would read geometry that hasn't landed yet);
   // it just requeues the normal debounced quiet-point path.
   function releaseReconcileProtection() {
-    if (hitReconcileDirty) {
-      hitReconcileDirty = false;
-      scheduleHitReconcile();
-    }
     if (!reconcileDirty && deferredSweepGen < 0) return;
     reconcileDirty = false;
     scheduleReconcile();
@@ -1084,17 +964,6 @@ function createPetWindowRuntime(options = {}) {
     // stale echo, indefinitely" to "an echo landing inside one specific,
     // already-short window", not eliminated outright.
     if (sameRect(actual, expected)) {
-      nativeEventSeenThisGen = false;
-      syncDerivedSurfaces();
-      return;
-    }
-
-    // A Windows-only native size-rounding readback is self-write evidence,
-    // not a user/compositor move. Preserve the logical dimensions, accept the
-    // measured physical rect for this write generation, and consume the
-    // resize echo so a later mismatch cannot borrow it as external evidence.
-    if (isWindowsNativeSizeRounding(expected, actual)) {
-      expectedWrite = { ...expectedWrite, physical: { ...actual } };
       nativeEventSeenThisGen = false;
       syncDerivedSurfaces();
       return;
@@ -1363,91 +1232,24 @@ function createPetWindowRuntime(options = {}) {
     return petHidden;
   }
 
-  // #525: clear an abnormal DWM cloak before showing. showInactive() alone
-  // does NOT un-cloak (hide/show cycling is unreliable for that — plan §1.2-B);
-  // DwmSetWindowAttribute(DWMWA_CLOAK, FALSE) is the direct primitive. Windows
-  // parked on another virtual desktop are deliberately left alone.
-  function uncloakIfAbnormal(win) {
-    if (!cloakInspector || !cloakInspector.available || !isLiveWindow(win)) return false;
-    const flag = cloakInspector.readCloakState(win);
-    const verdict = classifyCloakState(flag, flag === 0 ? true : cloakInspector.isOnCurrentVirtualDesktop(win));
-    if (verdict !== "recover") return false;
-    return cloakInspector.uncloak(win);
-  }
-
   function showPetWindows() {
-    // #1275: these windows stayed shown; showInactive would raise the pet
-    // above the ordinary window that was covering it.
-    if (isMac && !getAlwaysOnTop()) {
-      const win = getRenderWindow();
-      if (isLiveWindow(win)) win.setOpacity(1);
-      return;
-    }
     const win = getRenderWindow();
     if (isLiveWindow(win)) {
-      uncloakIfAbnormal(win);
       win.showInactive();
       keepOutOfTaskbar(win);
     }
     const hitWin = getHitWindow();
     if (isLiveWindow(hitWin)) {
-      uncloakIfAbnormal(hitWin);
       hitWin.showInactive();
       keepOutOfTaskbar(hitWin);
     }
   }
 
   function hidePetWindows() {
-    // #1275: hiding a non-topmost Mac window leaves it on just one Space
-    // after fullscreen exits (observed on-device). Keep both windows shown;
-    // opacity hides the body and applyHitInputState makes the input pass through.
-    if (isMac && !getAlwaysOnTop()) {
-      const win = getRenderWindow();
-      if (isLiveWindow(win)) win.setOpacity(0);
-      return;
-    }
     const win = getRenderWindow();
     if (isLiveWindow(win)) win.hide();
     const hitWin = getHitWindow();
     if (isLiveWindow(hitWin)) hitWin.hide();
-  }
-
-  function isPetEffectivelyHidden() {
-    return petHidden || fullscreenAutoHidden;
-  }
-
-  function isFullscreenAutoHidden() {
-    return fullscreenAutoHidden;
-  }
-
-  // Shared tail of both visibility setters. Window show/hide fires only when
-  // the EFFECTIVE state crossed an edge (so stacking a second hide reason on
-  // an already-hidden pet is a visible no-op, and removing one reason while
-  // the other still holds keeps the pet hidden); the downstream syncs run on
-  // any layer change — applyHitInputState and the HUD/menu rebuilds all read
-  // the effective state themselves and dedupe internally.
-  function applyVisibilityLayerChange(prevEffective, options = {}) {
-    const nextEffective = isPetEffectivelyHidden();
-    const crossedEdge = nextEffective !== prevEffective;
-    if (crossedEdge) {
-      // Sent before the window shows, so the page can start painting first.
-      sendToRenderer("pet-hidden-change", nextEffective);
-      if (nextEffective) {
-        hidePetWindows();
-        if (options.syncFloatingSurfaces !== false) hideFloatingSurfacesForPet();
-      } else {
-        showPetWindows();
-        if (options.syncFloatingSurfaces !== false) showFloatingSurfacesForPet();
-        reapplyMacVisibility();
-      }
-    }
-    // I5: effective hidden is one of applyHitInputState()'s OR-ed reasons.
-    applyHitInputState();
-    syncSessionHudVisibilityAndBubbles();
-    syncPermissionShortcuts();
-    buildTrayMenu();
-    buildContextMenu();
-    return crossedEdge;
   }
 
   // Idempotent visibility setter. Returns { applied, deferred, changed }:
@@ -1455,194 +1257,36 @@ function createPetWindowRuntime(options = {}) {
   //  - mini transitioning -> { applied:false, deferred:true,  changed:false } (petHidden untouched)
   //  - already in target  -> { applied:true,  deferred:false, changed:false }
   //  - state flipped      -> { applied:true,  deferred:false, changed:true  }
-  // `changed` reports whether the pet's on-screen visibility actually flipped,
-  // which with the #935 auto-hide layer stacked on top is not always the same
-  // as the manual flag flipping.
   function setPetHidden(hidden) {
     const target = !!hidden;
     const win = getRenderWindow();
     if (!isLiveWindow(win)) return { applied: false, deferred: false, changed: false };
-    // Preserve the user's explicit Show intent even if a mini transition makes
-    // the visibility write wait for a later fullscreen poll. In the common
-    // auto-hidden case the manual layer is already visible, so the retry only
-    // needs to lift the fullscreen layer once the transition completes.
-    if (!target) noteManualPetShow();
     if (getMiniTransitioning()) return { applied: false, deferred: true, changed: false };
-    // #935: a manual show also clears the fullscreen auto-hide — "show" must
-    // mean show NOW, not "show once the fullscreen app exits". topmost-
-    // runtime's sync observes the cleared flag and holds off re-hiding for the
-    // rest of that fullscreen episode.
-    const clearAutoHide = !target && fullscreenAutoHidden;
-    if (target === petHidden && !clearAutoHide) {
-      if (!target) reassertWinTopmost();
-      return { applied: true, deferred: false, changed: false };
-    }
-    const prevEffective = isPetEffectivelyHidden();
+    if (target === petHidden) return { applied: true, deferred: false, changed: false };
     petHidden = target;
-    if (clearAutoHide) {
-      fullscreenAutoHidden = false;
-      setFloatingSurfacesFullscreenSuppressed(false);
+    // Sent before the window shows, so the page can start painting first.
+    sendToRenderer("pet-hidden-change", target);
+    if (target) {
+      hidePetWindows();
+      hideFloatingSurfacesForPet();
+    } else {
+      showPetWindows();
+      showFloatingSurfacesForPet();
     }
-    const changed = applyVisibilityLayerChange(prevEffective);
+    // I5: hidden is one of applyHitInputState()'s OR-ed reasons.
+    applyHitInputState();
+    syncSessionHudVisibilityAndBubbles();
+    buildTrayMenu();
+    buildContextMenu();
     // Manual hide is a user-invoked recovery action: a lock stranded while the
     // pet was hidden would keep syncHitWin() deferred after it is shown again.
     // Nothing meaningful can be dragged while hidden, so release on the flip.
-    if (target && changed) releaseStrandedDragLock();
-    // showInactive restores native visibility but not necessarily the topmost
-    // band an exclusive fullscreen HWND displaced. The override is already
-    // armed above, so reassert can surface the pet immediately even when the
-    // legacy fullscreenOverlay pref is off; do not wait for the 5s watchdog.
-    if (!target && !isPetEffectivelyHidden()) reassertWinTopmost();
-    // A manual hide placed while the fullscreen layer already owns effective
-    // visibility still needs to capture its own permission cutoff and suspend
-    // ordinary floating notices. That manual state survives fullscreen exit.
-    if (target && !changed) hideFloatingSurfacesForPet();
-    return { applied: true, deferred: false, changed };
-  }
-
-  // #935: topmost-runtime's fullscreen auto-hide writer. Same contract and
-  // guards as setPetHidden, acting on the auto layer only — it never touches
-  // the manual flag, so a pet the user hid stays hidden when the auto-hide
-  // lifts, and the tray/context menus keep reflecting the user's choice.
-  function setFullscreenAutoHidden(hidden, fullscreenObservation) {
-    const target = !!hidden;
-    const win = getRenderWindow();
-    if (!isLiveWindow(win)) return { applied: false, deferred: false, changed: false };
-    if (getMiniTransitioning()) return { applied: false, deferred: true, changed: false };
-    if (target === fullscreenAutoHidden) return { applied: true, deferred: false, changed: false };
-    const prevEffective = isPetEffectivelyHidden();
-    fullscreenAutoHidden = target;
-    const changed = applyVisibilityLayerChange(prevEffective, { syncFloatingSurfaces: false });
-    setFloatingSurfacesFullscreenSuppressed(target);
-    // Exiting fullscreen can leave showInactive windows visible but displaced
-    // from the topmost band until the 5s watchdog runs. Restore the band now,
-    // using the focus poll's already-known observation so this path does not
-    // perform a second native foreground probe in the same tick.
-    if (!target && changed && !isPetEffectivelyHidden()) {
-      if (fullscreenObservation !== undefined) reassertWinTopmost(fullscreenObservation);
-      else reassertWinTopmost();
-    }
-    return { applied: true, deferred: false, changed };
+    if (target) releaseStrandedDragLock();
+    return { applied: true, deferred: false, changed: true };
   }
 
   function togglePetVisibility() {
-    // #935: toggle what the user SEES. From an auto-hidden pet one toggle
-    // shows it (setPetHidden(false) clears the auto layer); without the auto
-    // layer this is the pre-#935 manual flip.
-    return setPetHidden(!isPetEffectivelyHidden());
-  }
-
-  // ── #525: self-healing for cloaked-yet-supposedly-visible windows ──
-  //
-  // Called from the 5s topmost watchdog, powerMonitor resume/unlock, and the
-  // second-instance handler. Deliberately NOT wired into togglePetVisibility:
-  // hide must always mean hide (a cloak-aware toggle polarity degenerates into
-  // "can never hide" on machines whose cloak flag reads permanently non-zero —
-  // the exact regression review round 2026-07-16 blocked in the external
-  // patch). Recovery failures back off exponentially so a stubborn cloak never
-  // turns the watchdog into a 5s hide/show strobe.
-  const CLOAK_BACKOFF_BASE_MS = 5_000;
-  const CLOAK_BACKOFF_MAX_MS = 300_000;
-  let cloakFailStreak = 0;
-  let cloakCooldownUntil = 0;
-
-  function recoverIfCloaked() {
-    if (!cloakInspector || !cloakInspector.available) return "unavailable";
-    if (isPetEffectivelyHidden()) return "hidden";
-    if (getMiniTransitioning() || isMiniAnimating() || dragLocked) return "busy";
-    if (settingsSizePreviewSyncFrozen) return "frozen";
-    if (now() < cloakCooldownUntil) return "backoff";
-
-    const targets = [getRenderWindow(), getHitWindow()].filter(isLiveWindow);
-    if (!targets.length) return "no-window";
-
-    let attempted = false;
-    let touched = false;
-    let stillCloaked = false;
-    for (const win of targets) {
-      const flag = cloakInspector.readCloakState(win);
-      if (flag === 0) continue;
-      const verdict = classifyCloakState(flag, cloakInspector.isOnCurrentVirtualDesktop(win));
-      if (verdict !== "recover") continue;
-      attempted = true;
-      // Fail-open contract: if the DWM un-cloak call itself fails, do NOT go
-      // on to touch the window (show/taskbar/topmost would be a behavior
-      // change over the pre-#525 no-op, and a fail-open re-read of 0 could
-      // then mislabel the round "recovered"). Count it as a failure and let
-      // the backoff decide when to try again.
-      if (!cloakInspector.uncloak(win)) {
-        stillCloaked = true;
-        continue;
-      }
-      win.showInactive();
-      keepOutOfTaskbar(win);
-      touched = true;
-      if (cloakInspector.readCloakState(win) !== 0) stillCloaked = true;
-    }
-    if (!attempted) {
-      // Nothing abnormal this round: the previous fault (if any) resolved on
-      // its own, so the NEXT independent fault must start from a fresh 10s
-      // backoff instead of inheriting an escalated cooldown.
-      cloakFailStreak = 0;
-      cloakCooldownUntil = 0;
-      return "clean";
-    }
-
-    // Same fail-open contract as above, second exit: a round where every
-    // un-cloak call failed must not re-assert topmost either — that would
-    // setAlwaysOnTop both windows on a path where native calls are failing.
-    if (touched) reassertWinTopmost();
-    if (!stillCloaked) {
-      cloakFailStreak = 0;
-      cloakCooldownUntil = 0;
-      scheduleHwndRecovery();
-      return "recovered";
-    }
-    cloakFailStreak += 1;
-    const backoff = Math.min(
-      CLOAK_BACKOFF_BASE_MS * 2 ** cloakFailStreak,
-      CLOAK_BACKOFF_MAX_MS
-    );
-    cloakCooldownUntil = now() + backoff;
-    return "failed";
-  }
-
-  // A transparent Windows BrowserWindow can finish its first load while the
-  // native HWND is nominally visible but still parked below the useful z-order
-  // or waiting for a compositor refresh. The manual "bring to primary display"
-  // action heals that state because it replays bounds, shows both layers, and
-  // re-asserts topmost. Run the same non-relocating sequence after the renderer
-  // finishes loading so startup/crash recovery does not require that menu
-  // action. Intentional hiding and in-flight geometry transitions remain
-  // authoritative.
-  function recoverVisiblePetAfterRendererLoad() {
-    if (!isWin) return "unsupported";
-    const win = getRenderWindow();
-    if (!isLiveWindow(win)) return "no-window";
-    if (isPetEffectivelyHidden()) return "hidden";
-    if (getMiniTransitioning() || isMiniAnimating() || dragLocked) return "busy";
-    if (settingsSizePreviewSyncFrozen) return "frozen";
-
-    // Replaying the exact virtual bounds is intentional: setBounds() gives a
-    // transparent HWND a compositor refresh without discarding the user's
-    // saved display/edge position. applyPetWindowBounds also preserves a
-    // virtual negative-Y offset used by top-edge pinning. force:true is
-    // required here (plan §4.3 point 3 / §12.12): the materialized physical
-    // rect is normally identical to what's already live, and
-    // applyPetWindowBounds() now skips the native write in that case unless
-    // told not to — but the whole point of this path is the compositor
-    // refresh from a real setBounds() call.
-    const bounds = getPetWindowBounds();
-    if (bounds) {
-      applyPetWindowBounds(bounds, { force: true });
-      syncHitWin();
-      repositionAnchoredSurfaces();
-    }
-    showPetWindows();
-    reapplyMacVisibility();
-    reassertWinTopmost();
-    scheduleHwndRecovery();
-    return "recovered";
+    return setPetHidden(!petHidden);
   }
 
   function bringPetToPrimaryDisplay() {
@@ -1668,15 +1312,12 @@ function createPetWindowRuntime(options = {}) {
     syncHitWin();
     repositionFloatingBubbles();
 
-    if (isPetEffectivelyHidden()) {
+    if (petHidden) {
       togglePetVisibility();
     } else {
       showPetWindows();
     }
 
-    reapplyMacVisibility();
-    reassertWinTopmost();
-    scheduleHwndRecovery();
     flushRuntimeStateToPrefs();
   }
 
@@ -1719,25 +1360,12 @@ function createPetWindowRuntime(options = {}) {
 
   function looseClampPetToDisplays(x, y, w, h) {
     const allowEdgePinning = getAllowEdgePinning();
-    const { displays, physicalTopologyComplete } = getClampDisplaysSafe();
-    // #241: macOS workArea excludes the Dock/menu bar. Edge pinning is visual,
-    // so its clamp topology must follow the physical display rectangle instead.
-    const physicalPrimaryBounds = isMac && allowEdgePinning
-      ? getPrimaryDisplayPhysicalBounds()
-      : null;
-    const usePhysicalBounds = isMac
-      && allowEdgePinning
-      && physicalTopologyComplete
-      && hasCompletePhysicalDisplayTopology(displays, physicalPrimaryBounds);
+    const { displays } = getClampDisplaysSafe();
     const margins = getVisibleContentMargins({ x, y, width: w, height: h });
-    const bottomInset = usePhysicalBounds
-      ? 0
-      : getNearestDisplayBottomInset(x + w / 2, y + h / 2);
+    const bottomInset = getNearestDisplayBottomInset(x + w / 2, y + h / 2);
     return computeLooseClamp(
-      usePhysicalBounds ? projectDisplaysToPhysicalBounds(displays) : displays,
-      usePhysicalBounds
-        ? (physicalPrimaryBounds || getPrimaryWorkAreaSafe())
-        : getPrimaryWorkAreaSafe(),
+      displays,
+      getPrimaryWorkAreaSafe(),
       x,
       y,
       w,
@@ -1782,15 +1410,8 @@ function createPetWindowRuntime(options = {}) {
     const allowEdgePinning = "allowEdgePinning" in optionsArg
       ? !!optionsArg.allowEdgePinning
       : getAllowEdgePinning();
-    // A forced work area (for example, mini-mode exit) still identifies the
-    // display; when pinning is enabled, clamp against that display's bounds.
-    const physicalBounds = isMac && allowEdgePinning
-      ? getNearestDisplayPhysicalBounds(insetProbeX, insetProbeY)
-      : null;
-    const clampArea = physicalBounds || nearestWorkArea;
-    const bottomInset = physicalBounds
-      ? 0
-      : getNearestDisplayBottomInset(insetProbeX, insetProbeY);
+    const clampArea = nearestWorkArea;
+    const bottomInset = getNearestDisplayBottomInset(insetProbeX, insetProbeY);
     const mLeft = Math.round(w * 0.25);
     const mRight = Math.round(w * 0.25);
     const clampMargins = getRestClampMargins({
@@ -1915,21 +1536,10 @@ function createPetWindowRuntime(options = {}) {
   function applyHitInputState(hitWinOverride) {
     const hitWin = hitWinOverride || getHitWindow();
     if (!isLiveWindow(hitWin) || typeof hitWin.setIgnoreMouseEvents !== "function") return;
-    const ignore = hitGeometrySuppressed || isPetEffectivelyHidden()
-      || settingsSizePreviewIgnoringHit || imeEditingPetDodge;
+    const ignore = hitGeometrySuppressed || petHidden;
     if (ignore === hitInputIgnoreApplied) return;
     hitWin.setIgnoreMouseEvents(ignore);
     hitInputIgnoreApplied = ignore;
-  }
-
-  // The fourth applyHitInputState() reason, fed by topmost-runtime.js's macOS
-  // editing-overlap dodge (#640) instead of that module reaching into
-  // hitWin.setIgnoreMouseEvents() directly (I5's single-writer requirement).
-  function setImeEditingPetDodge(value) {
-    const next = !!value;
-    if (next === imeEditingPetDodge) return;
-    imeEditingPetDodge = next;
-    applyHitInputState();
   }
 
   function resetHitReconcileObservation() {
@@ -1958,28 +1568,12 @@ function createPetWindowRuntime(options = {}) {
     lastAdoptedHitOutcome = null;
     if (hitQuietTimer) { clearTimeoutFn(hitQuietTimer); hitQuietTimer = null; }
     resetHitReconcileObservation();
-    macHitRepairTarget = null;
-    macHitRepairAttempts = 0;
-    macHitRepairLimitLogged = false;
-    if (hitTopologyTimer) { clearTimeoutFn(hitTopologyTimer); hitTopologyTimer = null; }
-    if (isMac) scheduleHitTopologyCheck(0);
-  }
-
-  function scheduleHitTopologyCheck(index) {
-    if (index >= HIT_TOPOLOGY_CHECK_DELAYS_MS.length) return;
-    hitTopologyTimer = setTimeoutFn(() => {
-      hitTopologyTimer = null;
-      if (!isLiveWindow(getHitWindow()) || !isLiveWindow(getRenderWindow())) return;
-      runHitReconcile();
-      scheduleHitTopologyCheck(index + 1);
-    }, HIT_TOPOLOGY_CHECK_DELAYS_MS[index]);
   }
 
   // What syncHitWin() reports back. "deferred" is a normal outcome — a drag is
   // holding the pointer, the windows are not up yet, or the rect is a
   // transient sliver — and callers that care about the new geometry should
-  // retry rather than warn. "failed" means no rect could be resolved, or
-  // macOS kept a mismatched native rect after the bounded repair budget.
+  // retry rather than warn. "failed" means no rect could be resolved.
   const APPLIED_HIT_SYNC = Object.freeze({ applied: true, deferred: false });
   const DEFERRED_HIT_SYNC = Object.freeze({ applied: false, deferred: true });
   const FAILED_HIT_SYNC = Object.freeze({ applied: false, deferred: false });
@@ -2007,7 +1601,7 @@ function createPetWindowRuntime(options = {}) {
     // PR #751 Codex review #5/#4c (rework batch B-2): the escape hatch must
     // revert hit to pre-#690 behavior entirely — no workArea intersection,
     // no HIT_MIN suppression below — not just skip the X offset itself.
-    const edgeVirtualizationActive = isLinux && !isEdgeVirtualizationDisabled();
+    const edgeVirtualizationActive = !isEdgeVirtualizationDisabled();
     if (edgeVirtualizationActive) {
       // Reuse render's own write-time snapshot rather than re-resolving
       // fresh from a bare displayId lookup.
@@ -2029,16 +1623,10 @@ function createPetWindowRuntime(options = {}) {
     if (edgeVirtualizationActive && (w < HIT_MIN_PX || h < HIT_MIN_PX)) {
       // Degenerate (menu mini-entry's fully-offscreen preload, or a 1-7px
       // transition sliver): don't write a sliver BrowserWindow, and don't
-      // leave the OLD rect sitting there interactive either. Suppress FIRST
-      // — before the syncImeEditingPetDodge() tail call below — so the
-      // OR-composition in applyHitInputState() can never be flipped back to
-      // interactive by a different reason's writer while this rect is
-      // invalid (I5's ordering requirement: today's `return` here would hide
-      // that bug only because it happens to run before the dodge call).
+      // leave the OLD rect sitting there interactive either.
       hitGeometrySuppressed = true;
       applyHitInputState();
       repositionSessionHud();
-      syncImeEditingPetDodge();
       // Nothing was written: this rect is a transient sliver. Callers that
       // need the new geometry should retry, not warn.
       return DEFERRED_HIT_SYNC;
@@ -2046,44 +1634,15 @@ function createPetWindowRuntime(options = {}) {
 
     const target = { x, y, width: w, height: h };
     const wasSuppressed = hitGeometrySuppressed;
-    // A cached request is not proof that AppKit kept the native window
-    // there. Read back on macOS even when the derived target is unchanged.
-    // The repair budget belongs to a target/topology, NOT a move event or a
-    // successful readback: write echoes must not re-arm a rejected write.
-    let repairNativeDrift = false;
-    let nativeRepairFailed = false;
-    if (isMac) {
-      if (!sameRect(macHitRepairTarget, target)) {
-        macHitRepairTarget = { ...target };
-        macHitRepairAttempts = 0;
-        macHitRepairLimitLogged = false;
-      }
-      const settled = lastAdoptedHitOutcome && sameRect(target, lastAdoptedHitOutcome.derived)
-        ? lastAdoptedHitOutcome.actual : target;
-      if (sameRect(lastRequestedHitRect, settled) && !sameRect(hitWin.getBounds(), settled)) {
-        if (macHitRepairAttempts < MAC_HIT_REPAIR_LIMIT) {
-          macHitRepairAttempts += 1;
-          repairNativeDrift = true;
-          logReconcileEvent("hit", settled, hitWin.getBounds(), "repair-mac-drift", "n/a", "n/a",
-            `attempt=${macHitRepairAttempts}`);
-        } else {
-          nativeRepairFailed = true;
-          if (!macHitRepairLimitLogged) {
-            macHitRepairLimitLogged = true;
-            logReconcileEvent("hit", settled, hitWin.getBounds(), "mac-repair-limit", "n/a", "n/a");
-          }
-        }
-      }
-    }
     // PR #751 Codex review #6 (rework batch B-3): if this derived target
     // matches whatever derivation last led to an adopted WM-clamped outcome,
     // keep that outcome as settled fact rather than re-initiating a write to
     // the derived value runHitReconcile() already established gets clamped
     // away — recovering from suppression always needs a real write, so that
     // still takes the normal path even if the derivation happens to match.
-    if (!wasSuppressed && !repairNativeDrift && lastAdoptedHitOutcome && sameRect(target, lastAdoptedHitOutcome.derived)) {
+    if (!wasSuppressed && lastAdoptedHitOutcome && sameRect(target, lastAdoptedHitOutcome.derived)) {
       lastRequestedHitRect = { ...lastAdoptedHitOutcome.actual };
-    } else if (wasSuppressed || repairNativeDrift || !sameRect(lastRequestedHitRect, target)) {
+    } else if (wasSuppressed || !sameRect(lastRequestedHitRect, target)) {
       // PR #751 second-review C-3 (Codex B3): lastHitWorkArea/lastHitClampBounds
       // are the write basis runHitReconcile() judges THIS rect against later
       // (A-2's own point: judge against what was true when written, not
@@ -2103,8 +1662,6 @@ function createPetWindowRuntime(options = {}) {
       hitRetriedRect = null;
       lastAdoptedHitOutcome = null;
       resetHitReconcileObservation();
-      // Also verify a repair when AppKit emits no move/resize event.
-      if (isMac) scheduleHitReconcile();
     }
     // Update shape if hitbox dimensions changed (e.g. after resize).
     if (w !== hitShapeWidth || h !== hitShapeHeight) {
@@ -2119,11 +1676,7 @@ function createPetWindowRuntime(options = {}) {
       applyHitInputState();
     }
     repositionSessionHud();
-    // #640: the hit rect just (re)resolved — state switches and theme reloads
-    // change hitboxes without moving the window, so the overlap answer can
-    // flip right here. Cheap + edge-triggered inside.
-    syncImeEditingPetDodge();
-    return nativeRepairFailed ? FAILED_HIT_SYNC : APPLIED_HIT_SYNC;
+    return APPLIED_HIT_SYNC;
   }
 
   // §4.3.11's hit-side reconcile. Debounced on its own (longer) quiet period
@@ -2179,38 +1732,10 @@ function createPetWindowRuntime(options = {}) {
   //     hitRetriedRect comment below.
   function runHitReconcile() {
     const hitWin = getHitWindow();
-    if (isMac) {
-      if (!isLiveWindow(hitWin) || !isLiveWindow(getRenderWindow())) return;
-      if (dragLocked || getMiniTransitioning() || isMiniAnimating()
-        || settingsSizePreviewSyncFrozen || isRoamAnimating()) {
-        hitReconcileDirty = true;
-        return;
-      }
-      hitReconcileDirty = false;
-      // Derive from the current visual geometry, never replay the stale
-      // pre-drag/pre-theme target. Linux keeps its separate WM grab policy.
-      syncHitWin();
-      return;
-    }
     if (!isLiveWindow(hitWin) || !lastRequestedHitRect) return;
     const actual = hitWin.getBounds();
 
     if (sameRect(actual, lastRequestedHitRect)) {
-      hitRetriedRect = null;
-      resetHitReconcileObservation();
-      return;
-    }
-
-    // Same Windows DIP rounding as the render window. Remember the derived
-    // target alongside its accepted native outcome so the next syncHitWin()
-    // reuses the settled rect instead of rewriting it and starting the cycle
-    // again. Pure x/y movement never enters this branch.
-    if (isWindowsNativeSizeRounding(lastRequestedHitRect, actual)) {
-      lastAdoptedHitOutcome = {
-        derived: { ...lastRequestedHitRect },
-        actual: { ...actual },
-      };
-      lastRequestedHitRect = { ...actual };
       hitRetriedRect = null;
       resetHitReconcileObservation();
       return;
@@ -2307,17 +1832,6 @@ function createPetWindowRuntime(options = {}) {
     };
   }
 
-  // Pet windows have no recreation path (#1335), so ignore close requests on Windows.
-  // before-quit sets isQuitting before normal shutdown closes the windows.
-  // macOS must allow close because MacUpdater's native quitAndInstall closes
-  // windows before before-quit, while isQuitting is still false.
-  function ignoreWindowsPetWindowClose(win, isQuitting) {
-    if (!isWin) return;
-    win.on("close", (event) => {
-      if (!isQuitting()) event.preventDefault();
-    });
-  }
-
   function createRenderWindow(optionsArg = {}) {
     const BrowserWindow = optionsArg.BrowserWindow;
     if (typeof BrowserWindow !== "function") {
@@ -2326,10 +1840,8 @@ function createPetWindowRuntime(options = {}) {
     const isQuitting = typeof optionsArg.isQuitting === "function" ? optionsArg.isQuitting : () => false;
     const size = optionsArg.size;
     const initialWindowBounds = optionsArg.initialWindowBounds;
-    // The theme JSON used to ride in additionalArguments, but Windows caps a
-    // process command line at 32,767 characters and a large theme crosses it.
-    // The sandboxed preload reads the current config over synchronous IPC
-    // instead, which also refreshes on reload.
+    // The sandboxed preload reads the theme config over synchronous IPC
+    // instead of additionalArguments, which also refreshes on reload.
     if (optionsArg.rendererConfigChannel) {
       optionsArg.rendererConfigChannel.setPetConfig(optionsArg.themeConfig);
     }
@@ -2346,77 +1858,58 @@ function createPetWindowRuntime(options = {}) {
       hasShadow: false,
       fullscreenable: false,
       enableLargerThanScreen: true,
-      ...(isLinux ? { type: linuxWindowType } : {}),
-      ...(isMac ? { type: "panel", roundedCorners: false } : {}),
+      type: linuxWindowType,
       webPreferences: {
         preload: optionsArg.preloadPath,
         backgroundThrottling: false,
       },
     });
 
-    ignoreWindowsPetWindowClose(renderWin, isQuitting);
     if (typeof optionsArg.setRenderWindow === "function") {
       optionsArg.setRenderWindow(renderWin);
     }
     renderWin.setFocusable(false);
 
-    if (isLinux) {
-      // Native window updates can reset the input region. Restore the
-      // output-only window's click-through after those updates have finished.
-      let clickThroughPending = false;
-      const restoreRenderClickThrough = () => {
-        if (clickThroughPending) return;
-        clickThroughPending = true;
-        setImmediate(() => {
-          clickThroughPending = false;
-          if (isLiveWindow(renderWin)) renderWin.setIgnoreMouseEvents(true);
-        });
-      };
-      for (const event of ["move", "resize", "show"]) {
-        renderWin.on(event, restoreRenderClickThrough);
-      }
-      restoreRenderClickThrough();
-
-      applyLinuxAllWorkspaces(renderWin);
-      // Output-only window: keep WM keyboard focus off it, or the sticky pet
-      // wins mutter's MRU focus on every workspace switch (see
-      // src/linux-x11-input-hint.js). Best-effort, like the sticky hint.
-      if (typeof optionsArg.applyNoInputHint === "function") {
-        try {
-          optionsArg.applyNoInputHint(renderWin);
-        } catch {}
-      }
-      renderWin.on("close", (event) => {
-        if (!isQuitting()) {
-          event.preventDefault();
-          if (!renderWin.isVisible()) {
-            renderWin.showInactive();
-            keepOutOfTaskbar(renderWin);
-          }
-        }
+    // Native window updates can reset the input region. Restore the
+    // output-only window's click-through after those updates have finished.
+    let clickThroughPending = false;
+    const restoreRenderClickThrough = () => {
+      if (clickThroughPending) return;
+      clickThroughPending = true;
+      setImmediate(() => {
+        clickThroughPending = false;
+        if (isLiveWindow(renderWin)) renderWin.setIgnoreMouseEvents(true);
       });
-      renderWin.on("unresponsive", () => {
-        if (isQuitting()) return;
-        console.warn("Clawd: renderer unresponsive — reloading");
-        reloadWindowWebContents(renderWin);
-      });
+    };
+    for (const event of ["move", "resize", "show"]) {
+      renderWin.on(event, restoreRenderClickThrough);
     }
+    restoreRenderClickThrough();
 
-    if (isWin && getAlwaysOnTop()) renderWin.setAlwaysOnTop(true, topmostLevel);
-    if (isWin) {
-      let sessionEndFlushed = false;
-      const flushForSessionEnd = () => {
-        if (sessionEndFlushed) return;
-        sessionEndFlushed = true;
-        try {
-          flushRuntimeStateToPrefs();
-        } catch (err) {
-          console.warn("Clawd: failed to persist prefs during Windows session end:", err && err.message);
-        }
-      };
-      renderWin.on("query-session-end", flushForSessionEnd);
-      renderWin.on("session-end", flushForSessionEnd);
+    applyAllWorkspaces(renderWin);
+    // Output-only window: keep WM keyboard focus off it, or the sticky pet
+    // wins mutter's MRU focus on every workspace switch (see
+    // src/linux-x11-input-hint.js). Best-effort, like the sticky hint.
+    if (typeof optionsArg.applyNoInputHint === "function") {
+      try {
+        optionsArg.applyNoInputHint(renderWin);
+      } catch {}
     }
+    renderWin.on("close", (event) => {
+      if (!isQuitting()) {
+        event.preventDefault();
+        if (!renderWin.isVisible()) {
+          renderWin.showInactive();
+          keepOutOfTaskbar(renderWin);
+        }
+      }
+    });
+    renderWin.on("unresponsive", () => {
+      if (isQuitting()) return;
+      console.warn("omp-pet: renderer unresponsive - reloading");
+      reloadWindowWebContents(renderWin);
+    });
+
     renderWin.loadFile(optionsArg.loadFilePath);
     // file:// zoom propagates partition-wide and persists across restarts;
     // builds that briefly used setZoomFactor for textScale may have left a
@@ -2438,14 +1931,6 @@ function createPetWindowRuntime(options = {}) {
     applyPetWindowBounds(optionsArg.initialVirtualBounds, { force: true });
     renderWin.showInactive();
     keepOutOfTaskbar(renderWin);
-    reapplyMacVisibility();
-
-    if (isMac && typeof optionsArg.applyDockVisibility === "function") {
-      setTimeout(() => {
-        if (!isLiveWindow(renderWin)) return;
-        optionsArg.applyDockVisibility();
-      }, 0);
-    }
 
     return renderWin;
   }
@@ -2455,15 +1940,12 @@ function createPetWindowRuntime(options = {}) {
     if (typeof BrowserWindow !== "function") {
       throw new Error("createHitWindow requires BrowserWindow");
     }
-    const isQuitting = typeof optionsArg.isQuitting === "function" ? optionsArg.isQuitting : () => false;
     const initialHitWindowBounds = getInitialHitWindowBounds();
-    // Same Windows command-line limit as the pet window: keep the hit-renderer
-    // theme JSON out of argv and let its preload read the latest value over IPC.
+    // Like the pet window, the hit-renderer preload reads its theme over IPC.
     if (optionsArg.rendererConfigChannel) {
       optionsArg.rendererConfigChannel.setHitConfig(optionsArg.hitThemeConfig);
     }
     const hitWin = new BrowserWindow({
-      ...(isWin ? { show: false } : {}),
       width: initialHitWindowBounds.width,
       height: initialHitWindowBounds.height,
       x: initialHitWindowBounds.x,
@@ -2476,22 +1958,13 @@ function createPetWindowRuntime(options = {}) {
       hasShadow: false,
       fullscreenable: false,
       enableLargerThanScreen: true,
-      ...(isLinux ? { type: linuxWindowType } : {}),
-      ...(isMac ? { type: "panel", roundedCorners: false } : {}),
-      // Windows normally starts with Electron activation disabled. The native
-      // controller installs the click-delivery guard and toggles only
-      // WS_EX_NOACTIVATE. If setup is unavailable, retain the legacy focusable
-      // path so desktop click/drag still works.
-      focusable: isWin ? windowsHitWindowFocusable : !isLinux,
+      type: linuxWindowType,
+      focusable: false,
       webPreferences: {
         preload: optionsArg.preloadPath,
         backgroundThrottling: false,
-        additionalArguments: [
-          "--hit-platform=" + process.platform,
-        ],
       },
     });
-    ignoreWindowsPetWindowClose(hitWin, isQuitting);
     // setShape: native hit region, no per-pixel alpha dependency.
     // hitWin has no visual content, so clipping is irrelevant.
     hitWin.setShape([{ x: 0, y: 0, width: initialHitWindowBounds.width, height: initialHitWindowBounds.height }]);
@@ -2500,20 +1973,10 @@ function createPetWindowRuntime(options = {}) {
     // false. Passed explicitly because getHitWindow() can't resolve to this
     // window until createHitWindow() returns and the caller assigns it.
     applyHitInputState(hitWin);
-    if (isMac) hitWin.setFocusable(false);
-    if (isWin && typeof optionsArg.prepareActivation === "function") {
-      const prepared = optionsArg.prepareActivation(hitWin);
-      if (prepared === false && !windowsHitWindowFocusable) hitWin.setFocusable(true);
-    }
-    applyLinuxAllWorkspaces(hitWin);
+    applyAllWorkspaces(hitWin);
     hitWin.showInactive();
     keepOutOfTaskbar(hitWin);
-    if (isWin && getAlwaysOnTop()) hitWin.setAlwaysOnTop(true, topmostLevel);
-    reapplyMacVisibility();
     hitWin.loadFile(optionsArg.loadFilePath);
-    if (isWin && typeof optionsArg.guardAlwaysOnTop === "function") {
-      optionsArg.guardAlwaysOnTop(hitWin);
-    }
     if (typeof optionsArg.onDidFinishLoad === "function") {
       hitWin.webContents.on("did-finish-load", () => optionsArg.onDidFinishLoad(hitWin));
     }
@@ -2599,7 +2062,6 @@ function createPetWindowRuntime(options = {}) {
     if (!bounds) return;
 
     applyPetWindowBounds(bounds);
-    if (isWin && isNearWorkAreaEdge(bounds)) reassertWinTopmost();
     syncHitWin();
     repositionAnchoredSurfaces();
   }
@@ -2663,23 +2125,8 @@ function createPetWindowRuntime(options = {}) {
 
   function beginSettingsSizePreviewProtection() {
     // settingsSizePreviewSyncFrozen gates the reconcile protection period
-    // (§4.3.10) and is set BEFORE the Windows-only early return below on
-    // purpose — that protection is effective on Linux too, even though the
-    // rest of this function's topmost/hit-ignore behavior is Windows-only.
+    // (§4.3.10).
     settingsSizePreviewSyncFrozen = true;
-    if (!isWin) return;
-    const settingsWindow = getSettingsWindow();
-    if (
-      isLiveWindow(settingsWindow)
-      && typeof settingsWindow.setAlwaysOnTop === "function"
-    ) {
-      settingsWindow.setAlwaysOnTop(true, topmostLevel);
-      if (typeof settingsWindow.moveTop === "function") settingsWindow.moveTop();
-    }
-    // I5: route through the single ignore-mouse writer instead of writing
-    // hitWin.setIgnoreMouseEvents() directly.
-    settingsSizePreviewIgnoringHit = true;
-    applyHitInputState();
   }
 
   function isSettingsSizePreviewActive() {
@@ -2688,31 +2135,8 @@ function createPetWindowRuntime(options = {}) {
 
   function endSettingsSizePreviewProtection() {
     settingsSizePreviewSyncFrozen = false;
-    // §4.3.10's protection-period release point. Called BEFORE the
-    // Windows-only early return below, mirroring beginSettingsSizePreview
-    // Protection()'s freeze flag being set before its own early return —
-    // §12.15 flags this exact ordering as the trap: the freeze (and
-    // therefore its release) is Linux-effective even though the
-    // topmost/hit-ignore behavior past this point is Windows-only.
+    // §4.3.10's protection-period release point.
     releaseReconcileProtection();
-    if (!isWin) return;
-    const settingsWindow = getSettingsWindow();
-    if (
-      isLiveWindow(settingsWindow)
-      && typeof settingsWindow.setAlwaysOnTop === "function"
-    ) {
-      settingsWindow.setAlwaysOnTop(false);
-    }
-    settingsSizePreviewIgnoringHit = false;
-    applyHitInputState();
-    const hitWin = getHitWindow();
-    // #1275: with the master pref off, reassertWinTopmost below demotes
-    // instead of re-topping — don't fight it with a direct level write here.
-    if (isLiveWindow(hitWin) && getAlwaysOnTop() && typeof hitWin.setAlwaysOnTop === "function") {
-      hitWin.setAlwaysOnTop(true, topmostLevel);
-    }
-    reassertWinTopmost();
-    scheduleHwndRecovery();
   }
 
   function syncFloatingWindowsAfterPetBoundsChange() {
@@ -2754,7 +2178,6 @@ function createPetWindowRuntime(options = {}) {
     // fire promptly for metrics; this call is a self-contained backstop for
     // any caller that invokes this function directly, e.g. tests).
     clearObservedClampInsets();
-    reapplyMacVisibility();
     const win = getRenderWindow();
     if (!isLiveWindow(win)) return;
     // §4.5 point 4.5-4: a topology change mid-mini-transition (enter/exit
@@ -2798,7 +2221,6 @@ function createPetWindowRuntime(options = {}) {
     // own comment above — display-removed used to leave the inset table
     // untouched entirely, unlike metrics-changed.
     clearObservedClampInsets();
-    reapplyMacVisibility();
     const win = getRenderWindow();
     if (!isLiveWindow(win)) return;
     // §4.5 point 4.5-4 (coordinator-directed follow-up, batch 3): the same
@@ -2829,7 +2251,6 @@ function createPetWindowRuntime(options = {}) {
     // own comment above — display-added used to leave the inset table
     // untouched entirely, unlike metrics-changed.
     clearObservedClampInsets();
-    reapplyMacVisibility();
     const win = getRenderWindow();
     if (isLiveWindow(win)) {
       // §4.5 point 4.5-4 (coordinator-directed follow-up, batch 3): same
@@ -2859,13 +2280,8 @@ function createPetWindowRuntime(options = {}) {
     applyPetWindowBounds,
     applyPetWindowPosition,
     isPetHidden,
-    isPetEffectivelyHidden,
     setPetHidden,
-    setFullscreenAutoHidden,
-    isFullscreenAutoHidden,
     togglePetVisibility,
-    recoverIfCloaked,
-    recoverVisiblePetAfterRendererLoad,
     bringPetToPrimaryDisplay,
     getViewportOffsetY,
     setViewportOffsetY,
@@ -2900,7 +2316,6 @@ function createPetWindowRuntime(options = {}) {
     handleDisplayAdded,
     // Issue #690 Phase 2 items 5-8 (batch 2)
     getPhysicalRenderBounds,
-    setImeEditingPetDodge,
     onNativeGeometryEvent,
     onHitNativeGeometryEvent,
     releaseReconcileProtection,

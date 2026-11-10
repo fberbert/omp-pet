@@ -4,19 +4,6 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert");
 
 const core = require("../hooks/omp-extension-core");
-const NESTED_TERMINAL_ENV = [
-  "WT_SESSION",
-  "ALACRITTY_WINDOW_ID",
-  "WEZTERM_PANE",
-  "KITTY_WINDOW_ID",
-  "KONSOLE_VERSION",
-  "GNOME_TERMINAL_SCREEN",
-  "ConEmuPID",
-  "TMUX",
-  "STY",
-  "ZELLIJ",
-];
-
 function makeCtx(overrides = {}) {
   return {
     hasUI: true,
@@ -85,7 +72,7 @@ describe("omp-extension-core", () => {
         state: "working",
         event: "PreToolUse",
         ctx: makeCtx(),
-        metadata: { cwd: "/work/project", sourcePid: 4242, pidChain: [1, 2, 3], editor: "cursor" },
+        metadata: { cwd: "/work/project", sourcePid: 4242, pidChain: [1, 2, 3] },
         agentPid: 99,
         nativeEvent: { toolName: "Bash", toolCallId: "call-7" },
         env: {},
@@ -97,7 +84,6 @@ describe("omp-extension-core", () => {
       assert.strictEqual(payload.agent_pid, 99);
       assert.strictEqual(payload.source_pid, 4242);
       assert.deepStrictEqual(payload.pid_chain, [1, 2, 3]);
-      assert.strictEqual(payload.editor, "cursor");
       assert.strictEqual(payload.tool_name, "Bash");
       assert.strictEqual(payload.tool_use_id, "call-7");
     });
@@ -110,24 +96,6 @@ describe("omp-extension-core", () => {
         env: {},
       });
       assert.strictEqual(payload.session_id, "omp:default");
-    });
-
-    it("carries the Orca pane key from the injected env, and vetoes an inherited one", () => {
-      const base = { state: "idle", event: "SessionStart", ctx: makeCtx() };
-      const owned = core.buildPayload({
-        ...base,
-        env: { TERM_PROGRAM: "Orca", ORCA_PANE_KEY: "win-1:pane-2" },
-      });
-      assert.strictEqual(owned.orca_pane_key, "win-1:pane-2");
-
-      // A nested terminal inherited the key; the pane no longer owns the window.
-      for (const key of NESTED_TERMINAL_ENV) {
-        const inherited = core.buildPayload({
-          ...base,
-          env: { TERM_PROGRAM: "Orca", ORCA_PANE_KEY: "win-1:pane-2", [key]: "1" },
-        });
-        assert.strictEqual(inherited.orca_pane_key, undefined, key);
-      }
     });
   });
 

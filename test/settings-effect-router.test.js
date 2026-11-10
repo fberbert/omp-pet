@@ -91,46 +91,6 @@ function makeWindow(name, calls, options = {}) {
 }
 
 describe("settings-effect-router", () => {
-  it("updates mirrors before tray and dock side effects", () => {
-    const calls = [];
-    const mirror = {};
-    const { controller, emit } = createFakeSettingsController();
-    const router = createSettingsEffectRouter({
-      settingsController: controller,
-      BrowserWindow: { getAllWindows: () => [] },
-      updateMirrors: (changes) => {
-        calls.push(["updateMirrors"]);
-        Object.assign(mirror, changes);
-      },
-      createTray: () => calls.push(["createTray", mirror.showTray]),
-      destroyTray: () => calls.push(["destroyTray", mirror.showTray]),
-      applyDockVisibility: () => calls.push(["applyDockVisibility", mirror.showDock]),
-      rebuildAllMenus: () => calls.push(["rebuildAllMenus"]),
-      logWarn: () => {},
-    });
-
-    router.start();
-    emit({ showTray: true, showDock: false });
-
-    assert.deepStrictEqual(calls, [
-      ["updateMirrors"],
-      ["createTray", true],
-      ["applyDockVisibility", false],
-      ["rebuildAllMenus"],
-    ]);
-  });
-
-  it("destroys the tray when showTray is committed false", () => {
-    const { calls, emit } = createHarness();
-
-    emit({ showTray: false });
-
-    assert.deepStrictEqual(calls, [
-      ["updateMirrors", { showTray: false }],
-      ["destroyTray"],
-      ["rebuildAllMenus"],
-    ]);
-  });
 
   it("routes textScale and textScaleByDisplay changes to applyTextScale without a menu rebuild", () => {
     const { calls, emit } = createHarness();

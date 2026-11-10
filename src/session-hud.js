@@ -5,10 +5,6 @@ const path = require("path");
 const { keepOutOfTaskbar } = require("./taskbar");
 const { clampTextScale, scaleHeight, applyZoomToWindow } = require("./text-scale");
 
-const isLinux = process.platform === "linux";
-const isMac = process.platform === "darwin";
-const isWin = process.platform === "win32";
-
 const HUD_BORDER_Y = 2;
 const HUD_WIDTH = 240;
 const HUD_WIDTH_COMPACT = 190;
@@ -28,9 +24,7 @@ const HUD_WINDOW_SHELL = Object.freeze({
 const HUD_PET_GAP = 4;
 const BUBBLE_GAP = 6;
 const EDGE_MARGIN = 8;
-const WIN_TOPMOST_LEVEL = "pop-up-menu";
 const LINUX_WINDOW_TYPE = "toolbar";
-const MAC_FLOATING_TOPMOST_DELAY_MS = 120;
 const HOT_ZONE_PAD = 24;
 const AUTO_HIDE_POLL_MS = 200;
 const HIDE_GRACE_MS = 500;
@@ -265,19 +259,6 @@ function getHudWidth(showElapsed = true, showStateLabels = true) {
   return showStateLabels !== false
     ? Math.max(HUD_WIDTH_COMPACT, base - HUD_LABELS_ONLY_WIDTH_TRIM)
     : base;
-}
-
-function deferMacFloatingVisibility(ctx, win) {
-  if (!isMac || !win || win.isDestroyed()) return;
-  const deferUntil = Date.now() + MAC_FLOATING_TOPMOST_DELAY_MS;
-  win.__clawdMacDeferredVisibilityUntil = deferUntil;
-  setTimeout(() => {
-    if (!win || win.isDestroyed()) return;
-    if (win.__clawdMacDeferredVisibilityUntil === deferUntil) {
-      delete win.__clawdMacDeferredVisibilityUntil;
-    }
-    if (typeof ctx.reapplyMacVisibility === "function") ctx.reapplyMacVisibility();
-  }, MAC_FLOATING_TOPMOST_DELAY_MS);
 }
 
 module.exports = function initSessionHud(ctx) {
@@ -577,21 +558,17 @@ module.exports = function initSessionHud(ctx) {
       maximizable: false,
       fullscreenable: false,
       skipTaskbar: true,
-      alwaysOnTop: !isMac,
+      alwaysOnTop: true,
       focusable: false,
       hasShadow: false,
       backgroundColor: "#00000000",
-      ...(isLinux ? { type: LINUX_WINDOW_TYPE } : {}),
-      ...(isMac ? { type: "panel" } : {}),
+      type: LINUX_WINDOW_TYPE,
       webPreferences: {
         preload: path.join(__dirname, "preload-session-hud.js"),
         nodeIntegration: false,
         contextIsolation: true,
       },
     });
-
-    if (isWin) hudWindow.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
-    if (typeof ctx.guardAlwaysOnTop === "function") ctx.guardAlwaysOnTop(hudWindow);
 
     hudWindow.loadFile(path.join(__dirname, "session-hud.html"));
     hudWindow.webContents.once("did-finish-load", () => {
@@ -652,8 +629,6 @@ module.exports = function initSessionHud(ctx) {
     if (!win.isVisible()) {
       win.showInactive();
       keepOutOfTaskbar(win);
-      if (isMac) deferMacFloatingVisibility(ctx, win);
-      else if (typeof ctx.reapplyMacVisibility === "function") ctx.reapplyMacVisibility();
     }
     notifyReservedOffsetIfChanged();
   }

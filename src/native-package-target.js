@@ -2,42 +2,6 @@
 
 const RELEASE_TARGETS = Object.freeze([
   Object.freeze({
-    id: "windows-x64",
-    runtimePlatform: "win32",
-    runtimeArch: "x64",
-    koffiTriplet: "win32_x64",
-    format: "PE",
-    architecture: "x64",
-    artifactArchAliases: Object.freeze(["x64"]),
-  }),
-  Object.freeze({
-    id: "windows-arm64",
-    runtimePlatform: "win32",
-    runtimeArch: "arm64",
-    koffiTriplet: "win32_arm64",
-    format: "PE",
-    architecture: "arm64",
-    artifactArchAliases: Object.freeze(["arm64"]),
-  }),
-  Object.freeze({
-    id: "darwin-x64",
-    runtimePlatform: "darwin",
-    runtimeArch: "x64",
-    koffiTriplet: "darwin_x64",
-    format: "Mach-O",
-    architecture: "x86_64",
-    artifactArchAliases: Object.freeze(["x64"]),
-  }),
-  Object.freeze({
-    id: "darwin-arm64",
-    runtimePlatform: "darwin",
-    runtimeArch: "arm64",
-    koffiTriplet: "darwin_arm64",
-    format: "Mach-O",
-    architecture: "arm64",
-    artifactArchAliases: Object.freeze(["arm64"]),
-  }),
-  Object.freeze({
     id: "linux-x64",
     runtimePlatform: "linux",
     runtimeArch: "x64",
@@ -59,10 +23,7 @@ const BUILDER_ARCH_BY_NUMBER = Object.freeze({
 });
 
 function normalizePlatform(value) {
-  const platform = String(value == null ? "" : value).trim().toLowerCase();
-  if (platform === "windows" || platform === "win") return "win32";
-  if (platform === "mac" || platform === "macos" || platform === "osx") return "darwin";
-  return platform;
+  return String(value == null ? "" : value).trim().toLowerCase();
 }
 
 function normalizeBuilderArch(value) {

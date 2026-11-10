@@ -37,14 +37,6 @@ function normalizeTmuxClient(value) {
     : null;
 }
 
-function normalizeOrcaPaneKey(value) {
-  return typeof value === "string"
-    && value.length <= 256
-    && /^[\w-]+:[\w-]+$/.test(value)
-    ? value
-    : null;
-}
-
 function reply(res, status, body) {
   res.writeHead(status, { [CLAWD_SERVER_HEADER]: CLAWD_SERVER_ID });
   res.end(body);
@@ -148,10 +140,8 @@ function handleStatePost(req, res, options) {
           ? data.pid_chain.filter((n) => Number.isFinite(n) && n > 0).slice(0, 12)
           : null,
         cwd: typeof data.cwd === "string" ? data.cwd : "",
-        editor: data.editor === "code" || data.editor === "cursor" ? data.editor : null,
         tmuxSocket: normalizeTmuxSocket(data.tmux_socket),
         tmuxClient: normalizeTmuxClient(data.tmux_client),
-        orcaPaneKey: normalizeOrcaPaneKey(data.orca_pane_key),
         headless: data.headless === true,
         model: nonEmptyString(data.model),
         displayHint,

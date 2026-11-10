@@ -57,7 +57,6 @@ function createRoamFenceSettings(options = {}) {
   const filePath = options.filePath
     || loader.filePath
     || path.join((options.os || defaultOs).homedir(), ".omp-pet", "roam-area.json");
-  const platform = options.platform || process.platform;
   let writeSerial = Promise.resolve();
 
   async function refreshStatus() {
@@ -79,11 +78,11 @@ function createRoamFenceSettings(options = {}) {
         mode: 0o600,
         flag: "wx",
       });
-      if (platform !== "win32" && typeof fs.promises.chmod === "function") {
+      if (typeof fs.promises.chmod === "function") {
         await fs.promises.chmod(tmpPath, 0o600).catch(() => {});
       }
       await fs.promises.rename(tmpPath, filePath);
-      if (platform !== "win32" && typeof fs.promises.chmod === "function") {
+      if (typeof fs.promises.chmod === "function") {
         await fs.promises.chmod(filePath, 0o600).catch(() => {});
       }
     } catch (err) {

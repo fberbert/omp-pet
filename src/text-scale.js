@@ -48,9 +48,8 @@ function applyZoomToWindow(win, scale) {
   return applyZoomToWebContents(win.webContents, scale);
 }
 
-// The Dashboard page lives in a WebContentsView on darwin/win32, so its
-// WebContents belongs to no window. Take the contents directly instead of
-// inventing a window-shaped object with a `.webContents` property.
+// Takes the WebContents directly so callers that only hold the page (not its
+// window) can apply the zoom too.
 function applyZoomToWebContents(wc, scale) {
   if (!wc) return false;
   if (typeof wc.isDestroyed === "function" && wc.isDestroyed()) return false;

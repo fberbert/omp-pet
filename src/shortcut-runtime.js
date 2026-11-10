@@ -3,7 +3,6 @@
 const {
   SHORTCUT_ACTIONS,
   SHORTCUT_ACTION_IDS,
-  isShortcutActionSupported,
 } = require("./shortcut-actions");
 
 function requiredDependency(value, name) {
@@ -26,14 +25,9 @@ function createShortcutRuntime(options = {}) {
   const getSettingsWindow = requiredDependency(options.getSettingsWindow, "getSettingsWindow");
   const shortcutHandlers = requiredDependency(options.shortcutHandlers, "shortcutHandlers");
   const ipcMain = options.ipcMain || null;
-  const platform = typeof options.platform === "string" && options.platform
-    ? options.platform
-    : process.platform;
   const failures = new Map();
   const disposers = [];
   let recording = null;
-
-  const supportsAction = (actionId) => isShortcutActionSupported(actionId, platform);
 
   function getFailures() {
     return Object.fromEntries(failures);
@@ -77,13 +71,6 @@ function createShortcutRuntime(options = {}) {
     for (const actionId of SHORTCUT_ACTION_IDS) {
       const meta = SHORTCUT_ACTIONS[actionId];
       if (!meta || !meta.persistent) continue;
-      // Unsupported on this platform: never claim the accelerator and never
-      // bind the OS hotkey to a handler that would do nothing. A leftover
-      // preview value stays in prefs untouched.
-      if (!supportsAction(actionId)) {
-        clearFailure(actionId);
-        continue;
-      }
       const accelerator = shortcuts[actionId];
       if (!accelerator) {
         clearFailure(actionId);
@@ -121,7 +108,6 @@ function createShortcutRuntime(options = {}) {
     const { tempUnregistered } = recording;
     const currentShortcuts = getSnapshotShortcuts();
     for (const entry of tempUnregistered) {
-      if (!supportsAction(entry.actionId)) continue;
       if (currentShortcuts[entry.actionId] === entry.accelerator) {
         const handler = getPersistentHandler(entry.actionId);
         if (handler) {
@@ -137,9 +123,6 @@ function createShortcutRuntime(options = {}) {
     if (!SHORTCUT_ACTIONS[actionId]) {
       return { status: "error", message: "unknown shortcut action" };
     }
-    if (!supportsAction(actionId)) {
-      return { status: "error", message: "shortcut action unsupported on this platform" };
-    }
     const settingsWindow = getSettingsWindow();
     if (!hasLiveWebContents(settingsWindow)) {
       return { status: "error", message: "settings window unavailable" };
@@ -152,7 +135,6 @@ function createShortcutRuntime(options = {}) {
     for (const persistentActionId of SHORTCUT_ACTION_IDS) {
       const meta = SHORTCUT_ACTIONS[persistentActionId];
       if (!meta || !meta.persistent) continue;
-      if (!supportsAction(persistentActionId)) continue;
       const current = shortcuts[persistentActionId];
       if (current) {
         try {

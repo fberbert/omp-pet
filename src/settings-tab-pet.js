@@ -16,18 +16,12 @@
     "roamConstrainAxis",
     "idleActivities",
     "idleActivityFrequency",
-    "fullscreenAutoHide",
   ]);
 
   let state = null;
   let readers = null;
   let helpers = null;
   let ops = null;
-  let i18n = null;
-  // #1275: Mac windows keep their launch level until restart (null until known).
-  let petAlwaysOnTopAtStartup = null;
-  let startupRenderStateRequested = false;
-  let mountedPetAlwaysOnTopRestartPending = false;
 
   const ROAM_MOVEMENT_NATURAL = "natural";
   const ROAM_MOVEMENT_AXIS = "axis";
@@ -38,42 +32,11 @@
     return helpers.t(key);
   }
 
-  function requestStartupRenderState() {
-    if (startupRenderStateRequested) return;
-    if (!window.settingsAPI || typeof window.settingsAPI.getStartupRenderState !== "function") return;
-    startupRenderStateRequested = true;
-    window.settingsAPI.getStartupRenderState()
-      .then((result) => {
-        const v = result && result.petAlwaysOnTop;
-        petAlwaysOnTopAtStartup = typeof v === "boolean" ? v : null;
-        if (state.activeTab === "pet") ops.requestRender({ content: true });
-      })
-      .catch(() => {});
-  }
-
-  function isPetAlwaysOnTopRestartPending() {
-    const saved = !!(state.snapshot && state.snapshot.petAlwaysOnTop);
-    return !!(i18n && i18n.IS_MAC)
-      && petAlwaysOnTopAtStartup !== null
-      && saved !== petAlwaysOnTopAtStartup;
-  }
-
   function buildPetAlwaysOnTopRow() {
-    const isMac = !!(i18n && i18n.IS_MAC);
-    if (isMac) requestStartupRenderState();
-    const restartPending = isPetAlwaysOnTopRestartPending();
-    mountedPetAlwaysOnTopRestartPending = restartPending;
     return helpers.buildSwitchRow({
       key: "petAlwaysOnTop",
       labelKey: "rowPetAlwaysOnTop",
-      descKey: isMac ? "rowPetAlwaysOnTopDescMac" : "rowPetAlwaysOnTopDesc",
-      descExtraKey: restartPending ? "rowDisableHardwareAccelerationRestartPending" : null,
-      actionButton: restartPending
-        ? {
-          labelKey: "doctorRestartButton",
-          invoke: () => window.settingsAPI.command("restartClawd", { confirmed: true }),
-        }
-        : null,
+      descKey: "rowPetAlwaysOnTopDesc",
     });
   }
 
@@ -568,18 +531,7 @@
     return row;
   }
 
-  function getMountedGeneralSwitch(key) {
-    const meta = state.mountedControls.generalSwitches.get(key);
-    if (!meta || !document.body.contains(meta.element)) return null;
-    return meta;
-  }
 
-  function setGeneralSwitchDisabled(key, disabled) {
-    const meta = getMountedGeneralSwitch(key);
-    if (!meta) return false;
-    meta.control.setState({ disabled: !!disabled });
-    return true;
-  }
 
   function getMountedRoamMovementStyle() {
     const control = state.mountedControls.roamMovementStyle;
@@ -639,11 +591,6 @@
         labelKey: "rowDisableMiniMode",
         descKey: "rowDisableMiniModeDesc",
       }),
-      ...(i18n && (i18n.IS_WIN || i18n.IS_MAC) ? [helpers.buildSwitchRow({
-        key: "fullscreenAutoHide",
-        labelKey: "rowFullscreenAutoHide",
-        descKey: "rowFullscreenAutoHideDesc",
-      })] : []),
     ]));
 
     // #1275: master always-on-top switch. Cross-platform — the pet body's
@@ -686,11 +633,6 @@
     const idleBehavior = state.mountedControls.idleBehavior;
     const behaviorChanged = keys.includes("freeRoam") || keys.includes("idleActivities");
     if (behaviorChanged && (!idleBehavior || !document.body.contains(idleBehavior.element))) return false;
-    // #1275: adding or removing the restart note/button needs a new row.
-    if (keys.includes("petAlwaysOnTop")
-      && isPetAlwaysOnTopRestartPending() !== mountedPetAlwaysOnTopRestartPending) {
-      return false;
-    }
     for (const key of keys) {
       if (key === "size" || key === "roamConstrainAxis") continue;
       if (key === "idleActivityFrequency" || key === "freeRoam" || key === "idleActivities") continue;
@@ -725,7 +667,6 @@
     readers = core.readers;
     helpers = core.helpers;
     ops = core.ops;
-    i18n = core.i18n;
     core.tabs.pet = {
       render,
       patchInPlace,

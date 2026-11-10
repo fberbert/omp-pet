@@ -86,7 +86,7 @@ test("CI test report: workflow uploads the TAP report only on failure", () => {
   const fullSuiteSteps = steps.filter(
     (step) => step.run === "npm test" || step.run === "xvfb-run -a npm test",
   );
-  assert.strictEqual(fullSuiteSteps.length, 2, "both Linux and non-Linux full-suite steps must exist");
+  assert.strictEqual(fullSuiteSteps.length, 1, "the xvfb full-suite step must exist");
   for (const step of fullSuiteSteps) {
     assert.strictEqual(step.env?.[REPORT_VAR], REPORT_DESTINATION);
   }
@@ -96,8 +96,7 @@ test("CI test report: workflow uploads the TAP report only on failure", () => {
   assert.strictEqual(unwrapExpression(uploadStep.if), "failure()");
   assert.strictEqual(uploadStep.with?.path, REPORT_DESTINATION);
   assert.strictEqual(uploadStep.with?.["retention-days"], 14);
-  // Without the matrix suffix all three platforms collide on one artifact name.
-  assert.strictEqual(uploadStep.with?.name, "node-test-report-${{ matrix.os }}");
+  assert.strictEqual(uploadStep.with?.name, "node-test-report");
   assert.strictEqual(uploadStep.with?.["if-no-files-found"], "ignore");
   assert.ok(
     steps.indexOf(uploadStep) > steps.indexOf(fullSuiteSteps[fullSuiteSteps.length - 1]),

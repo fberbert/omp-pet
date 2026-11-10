@@ -9,84 +9,18 @@
     "textScaleByDisplay",
     "lowPowerIdleMode",
     "keepAwakeWhileWorking",
-    "showTray",
-    "showDock",
     "openAtLogin",
-    "disableHardwareAcceleration",
   ]);
 
   let state = null;
   let readers = null;
   let helpers = null;
   let ops = null;
-  let i18n = null;
-  // #1183: what this process launched with (null until main answers).
-  let hardwareAccelerationDisabledAtStartup = null;
-  let startupRenderStateRequested = false;
-  let mountedHardwareAccelerationRestartPending = false;
 
   const LANGUAGE_OPTIONS = ["en", "zh", "zh-TW", "ko", "ja", "pt-BR", "es"];
 
   function t(key) {
     return helpers.t(key);
-  }
-
-  function buildMacAppPresenceRows() {
-    if (!i18n || !i18n.IS_MAC) return [];
-    const showTray = !!(state.snapshot && state.snapshot.showTray);
-    const showDock = !!(state.snapshot && state.snapshot.showDock);
-    const definitions = [
-      {
-        key: "showTray",
-        labelKey: "rowShowInMenuBar",
-        descKey: "rowShowInMenuBarDesc",
-        disabled: showTray && !showDock,
-      },
-      {
-        key: "showDock",
-        labelKey: "rowShowInDock",
-        descKey: "rowShowInDockDesc",
-        disabled: showDock && !showTray,
-      },
-    ];
-    return definitions.map((definition) => helpers.buildSwitchRow(definition));
-  }
-
-
-  function requestStartupRenderState() {
-    if (startupRenderStateRequested) return;
-    if (!window.settingsAPI || typeof window.settingsAPI.getStartupRenderState !== "function") return;
-    startupRenderStateRequested = true;
-    window.settingsAPI.getStartupRenderState()
-      .then((result) => {
-        hardwareAccelerationDisabledAtStartup = !!(result && result.hardwareAccelerationDisabled === true);
-        if (state.activeTab === "general") ops.requestRender({ content: true });
-      })
-      .catch(() => {});
-  }
-
-  function isHardwareAccelerationRestartPending() {
-    const saved = !!(state.snapshot && state.snapshot.disableHardwareAcceleration);
-    return hardwareAccelerationDisabledAtStartup !== null
-      && saved !== hardwareAccelerationDisabledAtStartup;
-  }
-
-  function buildHardwareAccelerationRow() {
-    requestStartupRenderState();
-    const restartPending = isHardwareAccelerationRestartPending();
-    mountedHardwareAccelerationRestartPending = restartPending;
-    return helpers.buildSwitchRow({
-      key: "disableHardwareAcceleration",
-      labelKey: "rowDisableHardwareAcceleration",
-      descKey: "rowDisableHardwareAccelerationDesc",
-      descExtraKey: restartPending ? "rowDisableHardwareAccelerationRestartPending" : null,
-      actionButton: restartPending
-        ? {
-          labelKey: "doctorRestartButton",
-          invoke: () => window.settingsAPI.command("restartClawd", { confirmed: true }),
-        }
-        : null,
-    });
   }
 
   function buildTutorialReplayHint() {
@@ -458,30 +392,6 @@
     return row;
   }
 
-  function getMountedGeneralSwitch(key) {
-    const meta = state.mountedControls.generalSwitches.get(key);
-    if (!meta || !document.body.contains(meta.element)) return null;
-    return meta;
-  }
-
-  function setGeneralSwitchDisabled(key, disabled) {
-    const meta = getMountedGeneralSwitch(key);
-    if (!meta) return false;
-    meta.control.setState({ disabled: !!disabled });
-    return true;
-  }
-
-  function syncMacAppPresenceSwitchesDisabled() {
-    if (!i18n || !i18n.IS_MAC) return false;
-    const tray = getMountedGeneralSwitch("showTray");
-    const dock = getMountedGeneralSwitch("showDock");
-    if (!tray || !dock) return false;
-    const showTray = !!(state.snapshot && state.snapshot.showTray);
-    const showDock = !!(state.snapshot && state.snapshot.showDock);
-    return setGeneralSwitchDisabled("showTray", showTray && !showDock)
-      && setGeneralSwitchDisabled("showDock", showDock && !showTray);
-  }
-
 
   function render(parent) {
     const h1 = document.createElement("h1");
@@ -505,7 +415,6 @@
         labelKey: "rowOpenAtLogin",
         descKey: "rowOpenAtLoginDesc",
       }),
-      ...buildMacAppPresenceRows(),
       helpers.buildSwitchRow({
         key: "lowPowerIdleMode",
         labelKey: "rowLowPowerIdleMode",
@@ -516,9 +425,6 @@
         labelKey: "rowKeepAwakeWhileWorking",
         descKey: "rowKeepAwakeWhileWorkingDesc",
       }),
-      // #1183: Windows-only, like the switch it backs (main.js reads it at
-      // startup only on win32).
-      ...(i18n && i18n.IS_WIN ? [buildHardwareAccelerationRow()] : []),
     ]));
   }
 
@@ -529,18 +435,6 @@
     if (keys.includes("textScale") || keys.includes("textScaleByDisplay")) {
       const tc = state.mountedControls.textScale;
       if (!tc || !document.body.contains(tc.row)) return false;
-    }
-    // The restart button and note live inside the row; adding or removing
-    // them needs a re-render.
-    if (keys.includes("disableHardwareAcceleration")
-      && isHardwareAccelerationRestartPending() !== mountedHardwareAccelerationRestartPending) {
-      return false;
-    }
-    if (keys.some((key) => key === "showTray" || key === "showDock")
-      && (!i18n || !i18n.IS_MAC
-        || !getMountedGeneralSwitch("showTray")
-        || !getMountedGeneralSwitch("showDock"))) {
-      return false;
     }
     for (const key of keys) {
       if (key === "textScale" || key === "textScaleByDisplay") continue;
@@ -559,8 +453,6 @@
         pending: false,
       });
     }
-    if (keys.some((key) => key === "showTray" || key === "showDock")
-      && !syncMacAppPresenceSwitchesDisabled()) return false;
     return true;
   }
 
@@ -569,7 +461,6 @@
     readers = core.readers;
     helpers = core.helpers;
     ops = core.ops;
-    i18n = core.i18n;
     core.tabs.general = {
       render,
       patchInPlace,

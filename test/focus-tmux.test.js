@@ -1,9 +1,7 @@
 // test/focus-tmux.test.js — Mocked unit tests for scheduleTmuxPaneFocus().
 //
-// The reviewer flagged that focus-cmux's "no ps -o comm= on non-macOS" check
-// was a brittle proxy for "no tmux work happened." We now exercise the tmux
-// helper directly through __test.__setTmuxBin so a host with or without tmux
-// installed produces the same behavior in CI.
+// Exercises the tmux helper directly through __test.setTmuxBin so a host with
+// or without tmux installed produces the same behavior in CI.
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert");
@@ -42,9 +40,9 @@ describe("scheduleTmuxPaneFocus", () => {
         cb(null, "", "");
       },
     });
-    const { initFocus, cleanup } = loadFocusWithMock(mock, { platform: "linux" });
+    const { initFocus, cleanup } = loadFocusWithMock(mock);
     const focusInstance = initFocus({});
-    focusInstance.__test.__setTmuxBin("/usr/bin/tmux");
+    focusInstance.__test.setTmuxBin("/usr/bin/tmux");
     focusInstance.__test.scheduleTmuxPaneFocus([100, 200, 300], "/tmp/tmux-1000/default", "/dev/pts/7");
 
     setTimeout(() => {
@@ -83,9 +81,9 @@ describe("scheduleTmuxPaneFocus", () => {
         cb(null, "", "");
       },
     });
-    const { initFocus, cleanup } = loadFocusWithMock(mock, { platform: "linux" });
+    const { initFocus, cleanup } = loadFocusWithMock(mock);
     const focusInstance = initFocus({});
-    focusInstance.__test.__setTmuxBin("/usr/bin/tmux");
+    focusInstance.__test.setTmuxBin("/usr/bin/tmux");
     focusInstance.__test.scheduleTmuxPaneFocus([100, 200, 300], "/tmp/tmux-1000/default", "/dev/pts/7");
 
     setTimeout(() => {
@@ -107,7 +105,7 @@ describe("scheduleTmuxPaneFocus", () => {
     }, 700);
   });
 
-  it("macOS tmux path: issues switch-client + select-window + select-pane with an indented ps row", (t, done) => {
+  it("parses an indented ps row before issuing switch-client + select-window + select-pane", (t, done) => {
     const { calls, mock } = makeMock({
       ps: (args, cb) => {
         if (args.join(" ").includes("pid=,comm=")) {
@@ -124,9 +122,9 @@ describe("scheduleTmuxPaneFocus", () => {
         cb(null, "", "");
       },
     });
-    const { initFocus, cleanup } = loadFocusWithMock(mock, { platform: "darwin" });
+    const { initFocus, cleanup } = loadFocusWithMock(mock);
     const focusInstance = initFocus({});
-    focusInstance.__test.__setTmuxBin("/opt/homebrew/bin/tmux");
+    focusInstance.__test.setTmuxBin("/opt/homebrew/bin/tmux");
     focusInstance.__test.scheduleTmuxPaneFocus([100, 200, 300], "/tmp/tmux-1000/default", "/dev/ttys007");
 
     setTimeout(() => {
@@ -152,9 +150,9 @@ describe("scheduleTmuxPaneFocus", () => {
     const { calls, mock } = makeMock({
       ps: (args, cb) => cb(null, "100 zsh\n200 tmuxinator\n300 not-tmux: x\n", ""),
     });
-    const { initFocus, cleanup } = loadFocusWithMock(mock, { platform: "linux" });
+    const { initFocus, cleanup } = loadFocusWithMock(mock);
     const focusInstance = initFocus({});
-    focusInstance.__test.__setTmuxBin("/usr/bin/tmux");
+    focusInstance.__test.setTmuxBin("/usr/bin/tmux");
     focusInstance.__test.scheduleTmuxPaneFocus([100, 200, 300]);
 
     setTimeout(() => {
@@ -169,9 +167,9 @@ describe("scheduleTmuxPaneFocus", () => {
     const { calls, mock } = makeMock({
       ps: (args, cb) => cb(null, "100 zsh\n200 bash\n", ""),
     });
-    const { initFocus, cleanup } = loadFocusWithMock(mock, { platform: "linux" });
+    const { initFocus, cleanup } = loadFocusWithMock(mock);
     const focusInstance = initFocus({});
-    focusInstance.__test.__setTmuxBin("/usr/bin/tmux");
+    focusInstance.__test.setTmuxBin("/usr/bin/tmux");
     focusInstance.__test.scheduleTmuxPaneFocus([100, 200]);
 
     setTimeout(() => {
@@ -193,9 +191,9 @@ describe("scheduleTmuxPaneFocus", () => {
         cb(null, "", "");
       },
     });
-    const { initFocus, cleanup } = loadFocusWithMock(mock, { platform: "linux" });
+    const { initFocus, cleanup } = loadFocusWithMock(mock);
     const focusInstance = initFocus({});
-    focusInstance.__test.__setTmuxBin("/usr/bin/tmux");
+    focusInstance.__test.setTmuxBin("/usr/bin/tmux");
     focusInstance.__test.scheduleTmuxPaneFocus([100, 200]);
 
     setTimeout(() => {
@@ -211,9 +209,9 @@ describe("scheduleTmuxPaneFocus", () => {
 
   it("is a no-op when tmux binary is not resolved", (t, done) => {
     const { calls, mock } = makeMock({});
-    const { initFocus, cleanup } = loadFocusWithMock(mock, { platform: "linux" });
+    const { initFocus, cleanup } = loadFocusWithMock(mock);
     const focusInstance = initFocus({});
-    focusInstance.__test.__setTmuxBin("");
+    focusInstance.__test.setTmuxBin("");
     focusInstance.__test.scheduleTmuxPaneFocus([100, 200]);
 
     setTimeout(() => {
@@ -234,9 +232,9 @@ describe("scheduleTmuxPaneFocus", () => {
         cb(null, "", "");
       },
     });
-    const { initFocus, cleanup } = loadFocusWithMock(mock, { platform: "linux" });
+    const { initFocus, cleanup } = loadFocusWithMock(mock);
     const focusInstance = initFocus({});
-    focusInstance.__test.__setTmuxBin("/usr/bin/tmux");
+    focusInstance.__test.setTmuxBin("/usr/bin/tmux");
     focusInstance.__test.scheduleTmuxPaneFocus([100, 200], "/tmp/custom/work.sock");
 
     setTimeout(() => {
@@ -262,9 +260,9 @@ describe("scheduleTmuxPaneFocus", () => {
         cb(null, "", "");
       },
     });
-    const { initFocus, cleanup } = loadFocusWithMock(mock, { platform: "linux" });
+    const { initFocus, cleanup } = loadFocusWithMock(mock);
     const focusInstance = initFocus({});
-    focusInstance.__test.__setTmuxBin("/usr/bin/tmux");
+    focusInstance.__test.setTmuxBin("/usr/bin/tmux");
     focusInstance.__test.scheduleTmuxPaneFocus([100, 200], "work-socket");
 
     setTimeout(() => {

@@ -800,33 +800,6 @@ describe("shortcut commands", () => {
   });
 });
 
-describe("updateRegistry cross-field validators (showTray/showDock)", () => {
-  it("rejects disabling tray when dock is already off", () => {
-    const snap = { ...prefs.getDefaults(), showTray: true, showDock: false };
-    const r = updateRegistry.showTray(false, { snapshot: snap });
-    assert.strictEqual(r.status, "error");
-    assert.match(r.message, /unquittable/);
-  });
-
-  it("rejects disabling dock when tray is already off", () => {
-    const snap = { ...prefs.getDefaults(), showTray: false, showDock: true };
-    const r = updateRegistry.showDock(false, { snapshot: snap });
-    assert.strictEqual(r.status, "error");
-    assert.match(r.message, /unquittable/);
-  });
-
-  it("allows disabling tray when dock is on", () => {
-    const snap = { ...prefs.getDefaults(), showTray: true, showDock: true };
-    assert.strictEqual(updateRegistry.showTray(false, { snapshot: snap }).status, "ok");
-  });
-
-  it("allows enabling either at any time", () => {
-    const snap = { ...prefs.getDefaults(), showTray: false, showDock: false };
-    assert.strictEqual(updateRegistry.showTray(true, { snapshot: snap }).status, "ok");
-    assert.strictEqual(updateRegistry.showDock(true, { snapshot: snap }).status, "ok");
-  });
-});
-
 describe("removeTheme command", () => {
   const baseSnapshot = { ...prefs.getDefaults(), themeOverrides: {} };
 

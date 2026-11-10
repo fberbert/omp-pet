@@ -25,21 +25,11 @@ function assertDirectory(filename, label) {
 function locateAppRoot(appOutDir, target) {
   const resolved = path.resolve(appOutDir);
   assertDirectory(resolved, "afterPack appOutDir");
-  if (target.runtimePlatform !== "darwin") return resolved;
-  if (resolved.toLowerCase().endsWith(".app")) return resolved;
-  const apps = fs.readdirSync(resolved, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && entry.name.toLowerCase().endsWith(".app"))
-    .map((entry) => path.join(resolved, entry.name));
-  if (apps.length !== 1) {
-    throw new Error(`Expected exactly one macOS .app under ${resolved}, found ${apps.length}`);
-  }
-  return apps[0];
+  return resolved;
 }
 
-function locateResourcesRoot(appRoot, target) {
-  return target.runtimePlatform === "darwin"
-    ? path.join(appRoot, "Contents", "Resources")
-    : path.join(appRoot, "resources");
+function locateResourcesRoot(appRoot) {
+  return path.join(appRoot, "resources");
 }
 
 function walkTreeNoLinks(rootDir) {

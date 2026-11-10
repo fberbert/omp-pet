@@ -767,17 +767,6 @@ function updateSessionMetadata(sessionId, opts = {}) {
   return true;
 }
 
-// Later events legitimately omit the pane key, so it has to be sticky - but a
-// session start means the agent just (re)attached to a terminal, and then the
-// key must come from that event's own environment or not at all. A changed
-// terminal identity likewise means the session moved to another terminal.
-function mergeOrcaPaneKey(orcaPaneKey, existing, event, sourcePid) {
-  if (orcaPaneKey) return orcaPaneKey;
-  if (event === "SessionStart") return null;
-  if (existing && existing.sourcePid && sourcePid && String(existing.sourcePid) !== String(sourcePid)) return null;
-  return (existing && existing.orcaPaneKey) || null;
-}
-
 function updateSession(sessionId, state, event, opts = {}) {
   const recapOccurredAt = Date.now();
   let recapPendingInput = null;
@@ -785,11 +774,9 @@ function updateSession(sessionId, state, event, opts = {}) {
     const {
       sourcePid = null,
       cwd = null,
-      editor = null,
       pidChain = null,
       tmuxSocket = null,
       tmuxClient = null,
-      orcaPaneKey = null,
       agentPid = null,
       agentId = null,
       profileId = "local",
@@ -847,11 +834,9 @@ function updateSession(sessionId, state, event, opts = {}) {
     const base = {
       sourcePid: srcPid,
       cwd: cwd || (existing && existing.cwd) || "",
-      editor: editor || (existing && existing.editor) || null,
       pidChain: srcPidChain,
       tmuxSocket: tmuxSocket || (existing && existing.tmuxSocket) || null,
       tmuxClient: tmuxClient || (existing && existing.tmuxClient) || null,
-      orcaPaneKey: mergeOrcaPaneKey(orcaPaneKey, existing, event, sourcePid),
       agentPid: srcAgentPid,
       agentId: srcAgentId,
       profileId: (existing && existing.profileId) || profileId || "local",

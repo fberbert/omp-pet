@@ -1,6 +1,5 @@
 const assert = require("node:assert");
 const Module = require("node:module");
-const path = require("node:path");
 const { describe, it } = require("node:test");
 
 const MENU_MODULE_PATH = require.resolve("../src/menu");
@@ -245,116 +244,6 @@ describe("macOS visibility toggles live in the tray, not the right-click menu", 
   });
 });
 
-describe("macOS runtime Dock visibility", () => {
-  it("installs the padded Clawd icon before showing Dock after a tray-only launch", async () => {
-    const calls = [];
-    const electron = fakeElectron();
-    electron.app = {
-      quit() {},
-      setActivationPolicy(policy) { calls.push(["activation", policy]); },
-      dock: {
-        setIcon(iconPath) { calls.push(["setIcon", iconPath]); },
-        show() { calls.push(["show"]); return Promise.resolve(); },
-        hide() { calls.push(["hide"]); },
-      },
-    };
-    const initMenu = loadMenuWithElectron(electron, null, "darwin");
-    const ctx = buildBaseCtx({
-      showDock: true,
-      reapplyMacVisibility() { calls.push(["reapplyMacVisibility"]); },
-    });
-
-    await initMenu(ctx).applyDockVisibility();
-
-    assert.deepStrictEqual(calls, [
-      ["setIcon", path.join(__dirname, "../assets/dock-icon.png")],
-      ["activation", "regular"],
-      ["setIcon", path.join(__dirname, "../assets/dock-icon.png")],
-      ["reapplyMacVisibility"],
-    ]);
-  });
-
-  it("hides Dock through accessory policy without redundant icon writes", async () => {
-    const calls = [];
-    const electron = fakeElectron();
-    electron.app = {
-      quit() {},
-      setActivationPolicy(policy) { calls.push(["activation", policy]); },
-      dock: {
-        setIcon(iconPath) { calls.push(["setIcon", iconPath]); },
-        show() { calls.push(["show"]); },
-        hide() { calls.push(["hide"]); },
-      },
-    };
-    const initMenu = loadMenuWithElectron(electron, null, "darwin");
-    const ctx = buildBaseCtx({
-      showDock: false,
-      reapplyMacVisibility() { calls.push(["reapplyMacVisibility"]); },
-    });
-
-    await initMenu(ctx).applyDockVisibility();
-
-    assert.deepStrictEqual(calls, [
-      ["activation", "accessory"],
-      ["reapplyMacVisibility"],
-    ]);
-  });
-
-  it("lets packaged Tahoe render the bundle icon during Dock promotion", async () => {
-    const calls = [];
-    const electron = fakeElectron();
-    electron.app = {
-      isPackaged: true,
-      quit() {},
-      setActivationPolicy(policy) { calls.push(["activation", policy]); },
-      dock: {
-        setIcon(iconPath) { calls.push(["setIcon", iconPath]); },
-      },
-    };
-    const initMenu = loadMenuWithElectron(electron, null, "darwin");
-    const ctx = buildBaseCtx({
-      showDock: true,
-      getSystemVersion: () => "26.5.2",
-      reapplyMacVisibility() { calls.push(["reapplyMacVisibility"]); },
-    });
-
-    await initMenu(ctx).applyDockVisibility();
-
-    assert.deepStrictEqual(calls, [
-      ["activation", "regular"],
-      ["reapplyMacVisibility"],
-    ]);
-  });
-
-  it("retains the padded icon for packaged pre-Tahoe Dock promotion", async () => {
-    const calls = [];
-    const electron = fakeElectron();
-    electron.app = {
-      isPackaged: true,
-      quit() {},
-      setActivationPolicy(policy) { calls.push(["activation", policy]); },
-      dock: {
-        setIcon(iconPath) { calls.push(["setIcon", iconPath]); },
-      },
-    };
-    const initMenu = loadMenuWithElectron(electron, null, "darwin");
-    const ctx = buildBaseCtx({
-      showDock: true,
-      getSystemVersion: () => "25.9",
-      reapplyMacVisibility() { calls.push(["reapplyMacVisibility"]); },
-    });
-
-    await initMenu(ctx).applyDockVisibility();
-
-    assert.deepStrictEqual(calls, [
-      ["setIcon", path.join(__dirname, "../assets/dock-icon.png")],
-      ["activation", "regular"],
-      ["setIcon", path.join(__dirname, "../assets/dock-icon.png")],
-      ["reapplyMacVisibility"],
-    ]);
-  });
-});
-
 // The Show/Hide Pet items carry their intent from BUILD time. The fullscreen
 // auto-hide sync can restore (or hide) the pet from a background timer while a
 // built menu is still on screen — most easily on the tray: right-clicking the
@@ -422,31 +311,3 @@ describe("show/hide pet intent is captured at menu build time", () => {
   });
 });
 
-describe("#1275: Windows menu close respects pet topmost", () => {
-  for (const pref of [false, true, undefined]) {
-    it(`#1275: Windows menu close with petAlwaysOnTop=${pref}`, () => {
-      const electron = fakeElectron();
-      electron.BrowserWindow = function BrowserWindow() {
-        return {
-          isDestroyed: () => false,
-          loadURL() {}, on() {}, setBounds() {}, show() {}, focus() {}, hide() {},
-        };
-      };
-      const initMenu = loadMenuWithElectron(electron, { keepOutOfTaskbar() {} }, "win32");
-      const calls = [];
-      const ctx = buildBaseCtx({
-        petAlwaysOnTop: pref,
-        raisePetWindows: () => calls.push(["raise"]),
-        win: {
-          isDestroyed: () => false,
-          showInactive: () => calls.push(["show"]),
-          setAlwaysOnTop: (...args) => calls.push(["topmost", ...args]),
-        },
-      });
-      initMenu(ctx).popupMenuAt({ popup: ({ callback }) => callback() });
-      assert.deepStrictEqual(calls, pref === false
-        ? [["show"], ["raise"]]
-        : [["show"], ["topmost", true, "pop-up-menu"]]);
-    });
-  }
-});

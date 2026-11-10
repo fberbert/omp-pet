@@ -131,35 +131,3 @@ test("settings shortcut actions treat an alias-only non-macOS rebind as a no-op"
   assert.deepStrictEqual([...registered], ["Control+Shift+K"]);
 });
 
-test("reset all rolls back an earlier persistent shortcut when a later one fails", () => {
-  const snapshot = prefs.validate({
-    shortcuts: {
-      togglePet: "CommandOrControl+J",
-      quickSelectSession: "CommandOrControl+Shift+J",
-    },
-  });
-  const { deps, calls, registered } = makeDeps({
-    snapshot,
-    platform: "win32",
-    registered: [snapshot.shortcuts.togglePet, snapshot.shortcuts.quickSelectSession],
-    failUnregister: new Set([snapshot.shortcuts.quickSelectSession]),
-  });
-
-  const result = shortcutCommands.resetAllShortcuts(null, deps);
-
-  assert.strictEqual(result.status, "error");
-  assert.match(result.message, /quickSelectSession/);
-  assert.deepStrictEqual([...registered].sort(), [
-    "CommandOrControl+J",
-    "CommandOrControl+Shift+J",
-  ]);
-  assert.deepStrictEqual(calls.register.map((call) => call.accelerator), [
-    "CommandOrControl+Shift+Alt+C",
-    "CommandOrControl+J",
-  ]);
-  assert.deepStrictEqual(calls.unregister, [
-    "CommandOrControl+J",
-    "CommandOrControl+Shift+J",
-    "CommandOrControl+Shift+Alt+C",
-  ]);
-});

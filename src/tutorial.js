@@ -73,7 +73,6 @@ module.exports = function initTutorial(ctx = {}) {
       langs: typeof ctx.getLangs === "function" ? ctx.getLangs() : [],
       heroSrc: typeof ctx.getHeroSrc === "function" ? ctx.getHeroSrc() : "",
       doneHeroSvg: typeof ctx.getDoneHeroSvg === "function" ? ctx.getDoneHeroSvg() : "",
-      platform: process.platform,
       shortcuts: typeof ctx.getShortcutsSummary === "function" ? ctx.getShortcutsSummary() : [],
       agents,
     };

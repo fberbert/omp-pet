@@ -35,15 +35,6 @@ const PATHS = {
   flashTemplatePath: "/assets/tray-icon-flashTemplate.png",
 };
 
-test("mac normal icon is loaded as a template image at its natural point size", () => {
-  const nativeImage = makeNativeImage();
-  const icon = loadTrayNormalIcon({ nativeImage, platform: "darwin", ...PATHS });
-
-  assert.strictEqual(icon.template, true);
-  assert.deepStrictEqual(nativeImage.calls.created, [PATHS.templatePath]);
-  assert.deepStrictEqual(nativeImage.calls.resizes, [], "no resize — @2x sibling handles retina");
-});
-
 test("non-mac normal icon is normalised to 32px", () => {
   const nativeImage = makeNativeImage();
   loadTrayNormalIcon({ nativeImage, platform: "win32", ...PATHS });
@@ -54,19 +45,6 @@ test("non-mac normal icon is normalised to 32px", () => {
 
 // #722/#941: macOS uses a natural 18pt Template pair. The @2x sibling is
 // discovered by Electron/macOS, so no runtime representation or resize occurs.
-test("mac flash icon uses the dedicated Template pair at its natural point size", () => {
-  const nativeImage = makeNativeImage();
-  const icon = loadTrayFlashIcon({
-    nativeImage,
-    platform: "darwin",
-    ...PATHS,
-    fileExists: () => true,
-  });
-
-  assert.strictEqual(icon.template, true);
-  assert.deepStrictEqual(nativeImage.calls.created, [PATHS.flashTemplatePath]);
-  assert.deepStrictEqual(nativeImage.calls.resizes, []);
-});
 
 test("non-mac flash icon matches the 32px normal icon", () => {
   const nativeImage = makeNativeImage();

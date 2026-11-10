@@ -273,7 +273,7 @@ describe("linux-x11-input-hint", () => {
     const mainSource = fs.readFileSync(path.join(__dirname, "..", "src", "main.js"), "utf8");
     assert.match(
       mainSource,
-      /createLinuxX11InputHint\(\{\s*isLinuxX11:\s*isLinux && app\.commandLine\.getSwitchValue\("ozone-platform"\) === "x11",\s*displayName:\s*app\.commandLine\.getSwitchValue\("display"\),\s*onError:/,
+      /createLinuxX11InputHint\(\{\s*isLinuxX11:\s*app\.commandLine\.getSwitchValue\("ozone-platform"\) === "x11",\s*displayName:\s*app\.commandLine\.getSwitchValue\("display"\),\s*onError:/,
     );
     const start = mainSource.indexOf("petWindowRuntime.createRenderWindow({");
     const end = mainSource.indexOf("});", start);

@@ -87,23 +87,6 @@ module.exports = function initRoam(ctx) {
       ctx.isSizePreviewActive()
     )
       return false;
-    // #640: while the user is typing into a bubble's text field (macOS IME
-    // editing), the pet must hold still — a wandering pet either drags the
-    // bubble along (followPet anchoring) or walks over the box being typed
-    // into. Checked per-frame like the state gate, so an editing start
-    // cancels a walk mid-stride.
-    if (
-      typeof ctx.isImeEditingActive === "function" &&
-      ctx.isImeEditingActive()
-    )
-      return false;
-    // #1282: precaution only — walking did not interrupt capture on the tested
-    // machine. The latest cached probe result can lag the foreground by ~1s.
-    if (
-      typeof ctx.isScreenCaptureOverlayForeground === "function" &&
-      ctx.isScreenCaptureOverlayForeground()
-    )
-      return false;
     // Walking while hidden only relocates the pet and wastes window writes.
     if (
       typeof ctx.isPetHidden === "function" &&

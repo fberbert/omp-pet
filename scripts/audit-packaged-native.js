@@ -193,10 +193,8 @@ function getException(policy, targetId, relativePath, parsed) {
   )) || null;
 }
 
-function resourcesRootForTarget(appRoot, target) {
-  return target.runtimePlatform === "darwin"
-    ? path.join(appRoot, "Contents", "Resources")
-    : path.join(appRoot, "resources");
+function resourcesRootForTarget(appRoot) {
+  return path.join(appRoot, "resources");
 }
 
 function listLogicalNativeEntries(appRoot, target, asarModule = asar) {
@@ -328,12 +326,11 @@ function auditPackagedNative({ appRoot, targetId, policy = defaultPolicy, asarMo
   }
 
   const exceptionBinaries = binaries.filter((entry) => entry.disposition === "exception");
-  const expectedExceptionCount = target.runtimePlatform === "win32" ? 1 : 0;
-  if (exceptionBinaries.length !== expectedExceptionCount) {
+  if (exceptionBinaries.length !== 0) {
     errors.push({
       code: "unexpected-native-exception-count",
-      path: "resources/elevate.exe",
-      expected: expectedExceptionCount,
+      path: exceptionBinaries[0].path,
+      expected: 0,
       actual: exceptionBinaries.length,
     });
   }

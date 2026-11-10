@@ -46,6 +46,8 @@ function sessionFolderName(session) {
   const source = Object.prototype.hasOwnProperty.call(session, "displayFolder")
     ? session.displayFolder
     : session.cwd;
+  // win32.basename splits on both \ and /, so no path form can leak more
+  // than the folder name.
   return source ? path.win32.basename(String(source)) : "";
 }
 
@@ -179,8 +181,6 @@ function buildPresencePayload(session, cfg = {}, visual = null, runtime = {}) {
   };
   const folder = sessionFolderName(session);
   if (cfg.privacyShowProject && folder) {
-    // win32.basename splits on both \ and /, so a Windows cwd seen on a POSIX
-    // host yields just the folder name instead of leaking the whole path.
     const state = `${label} · ${folder}`;
     // Truncate by code point: a long folder name would otherwise make Discord
     // silently drop the whole activity update.
@@ -215,9 +215,6 @@ function decodeFrames(buf) {
 }
 
 function ipcCandidatePaths() {
-  if (process.platform === "win32") {
-    return Array.from({ length: 10 }, (_, n) => `\\\\?\\pipe\\discord-ipc-${n}`);
-  }
   const base = process.env.XDG_RUNTIME_DIR || process.env.TMPDIR || process.env.TMP || process.env.TEMP || "/tmp";
   const roots = [base, path.join(base, "app", "com.discordapp.Discord"), path.join(base, "snap.discord")];
   const out = [];

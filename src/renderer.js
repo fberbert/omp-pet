@@ -1904,15 +1904,7 @@ let pendingSvgFile = null; // tracks the SVG currently being loaded (for dedup)
 let pendingAssetUrl = null;
 let activeSwapToken = 0;
 let swapVisibilityRescueTimer = null;
-let petVisualReadyNotified = false;
 currentIdleSvg = currentDisplayedSvg;
-
-function notifyPetVisualReadyOnce() {
-  if (petVisualReadyNotified) return;
-  if (!window.electronAPI || typeof window.electronAPI.notifyPetVisualReady !== "function") return;
-  petVisualReadyNotified = true;
-  window.electronAPI.notifyPetVisualReady();
-}
 
 function normalizeVisualRequest(value) {
   if (!value || typeof value !== "object") return null;
@@ -2418,7 +2410,6 @@ function swapToFile(file, state, useObjectChannel, options = {}) {
     applyPetTintToElement(clawdEl);
     applyMiniFlip(clawdEl, state);
     refreshAccessoryLayout();
-    notifyPetVisualReadyOnce();
     settleSuccessfulVisual(visualRequest, file, "bridge", {
       fallback: options.fallbackFromObject === true,
     });
@@ -2498,7 +2489,6 @@ function swapToFile(file, state, useObjectChannel, options = {}) {
       currentDisplayedAssetUrl = url;
       applyMiniFlip(next, commitState);
       refreshAccessoryLayout();
-      notifyPetVisualReadyOnce();
       settleSuccessfulVisual(next.__clawdVisualRequest, file, "object", {
         fallback: next.__clawdFallbackFromObject === true,
       });
@@ -2617,7 +2607,6 @@ function swapToFile(file, state, useObjectChannel, options = {}) {
       currentDisplayedAssetUrl = url;
       applyMiniFlip(next, commitState);
       refreshAccessoryLayout();
-      notifyPetVisualReadyOnce();
       settleSuccessfulVisual(next.__clawdVisualRequest, file, "img", {
         fallback: next.__clawdFallbackFromObject === true,
       });

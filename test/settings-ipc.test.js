@@ -378,22 +378,6 @@ test("settings IPC opens the tutorial from Settings", async () => {
   runtime.dispose();
 });
 
-test("settings IPC reports the GPU mode this process launched with (#1183)", async () => {
-  const off = createHarness();
-  assert.deepStrictEqual(
-    await off.ipcMain.invoke("settings:get-startup-render-state"),
-    { hardwareAccelerationDisabled: false, petAlwaysOnTop: true },
-  );
-  off.runtime.dispose();
-
-  const on = createHarness({ getHardwareAccelerationDisabledAtStartup: () => true });
-  assert.deepStrictEqual(
-    await on.ipcMain.invoke("settings:get-startup-render-state"),
-    { hardwareAccelerationDisabled: true, petAlwaysOnTop: true },
-  );
-  on.runtime.dispose();
-});
-
 test("settings IPC opens the user themes directory", async () => {
   const openCalls = [];
   const { ipcMain } = createHarness({
@@ -549,13 +533,3 @@ test("settings IPC exposes read-only agent installation detection", async () => 
 // previously withheld both, and the catalog then labelled the ones it had never
 // examined as "not detected locally".
 
-test("#1275: startup render state reports both pet topmost launch values", async () => {
-  for (const launch of [false, true]) {
-    const h = createHarness({ getPetAlwaysOnTopAtStartup: () => launch });
-    assert.deepStrictEqual(await h.ipcMain.invoke("settings:get-startup-render-state"), {
-      hardwareAccelerationDisabled: false,
-      petAlwaysOnTop: launch,
-    });
-    h.runtime.dispose();
-  }
-});

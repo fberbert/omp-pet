@@ -79,16 +79,6 @@ describe("main default idle visual wiring", () => {
     assert.ok(mainSource.includes("holidayAccessoryRuntime.dispose();"));
   });
 
-  it("accepts visual settlement only from the live renderer main frame", () => {
-    const registration = sectionBetween(
-      mainSource,
-      "settleVisual: (event, payload) => {",
-      "recoverVisiblePetAfterRendererLoad:"
-    );
-    assert.ok(registration.includes("isTrustedMainFrameEvent(event, win.webContents)"));
-    assert.ok(registration.includes("displayedVisualProjection.settle(payload)"));
-  });
-
   it("re-rests the pet through the effect-router hook only while idle", () => {
     const hookIndex = mainSource.indexOf("refreshIdleVisual: () => {");
     assert.ok(hookIndex !== -1, "main should wire the refreshIdleVisual router option");

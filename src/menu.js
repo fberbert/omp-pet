@@ -4,21 +4,13 @@ const { app, BrowserWindow, screen, Menu, Tray, nativeImage } = require("electro
 const path = require("path");
 const { keepOutOfTaskbar } = require("./taskbar");
 const { loadTrayNormalIcon } = require("./tray-flash-icon");
-const { createMacDockVisibilityCoordinator } = require("./mac-dock-visibility");
-const { resolveRuntimeDockIconPolicy } = require("./mac-dock-icon-runtime");
 
-const platform = process.platform;
-const isMac = platform === "darwin";
-const isWin = platform === "win32";
-const isLinux = platform === "linux";
 const MENU_FOCUS_WAIT_MS = 200;
 const MENU_OWNER_HIDE_DELAY_MS = 500;
 
 // Login-item / autostart helpers and the openAtLogin write path live in
 // src/login-item.js + main.js's settings-actions effect. menu.js used to
 // inline them but now just renders a checkbox bound to ctx.openAtLogin.
-
-const WIN_TOPMOST_LEVEL = "pop-up-menu"; // above taskbar-level UI
 
 // ── Window size presets (mirrored from main.js for resizeWindow) ──
 const SIZES = {
@@ -51,23 +43,6 @@ function joinGroups(groups) {
 module.exports = function initMenu(ctx) {
   // ── Translation helper (bound to ctx.lang via the shared i18n module) ──
   const t = createTranslator(() => ctx.lang);
-  const macDockVisibility = isMac ? createMacDockVisibilityCoordinator({
-    app,
-    dock: app.dock,
-    dockIconPath: path.join(__dirname, "../assets/dock-icon.png"),
-    shouldInstallDockIcon: () => resolveRuntimeDockIconPolicy({
-      platform,
-      isPackaged: app.isPackaged === true,
-      getSystemVersion: () => {
-        if (typeof ctx.getSystemVersion === "function") return ctx.getSystemVersion();
-        if (typeof process.getSystemVersion === "function") return process.getSystemVersion();
-        return "";
-      },
-    }),
-    getSettingsWindow: ctx.getSettingsWindow,
-    reapplyMacVisibility: ctx.reapplyMacVisibility,
-  }) : null;
-
   function isMiniSupported() {
     const caps = typeof ctx.getActiveThemeCapabilities === "function"
       ? ctx.getActiveThemeCapabilities()
@@ -112,24 +87,11 @@ module.exports = function initMenu(ctx) {
     // Shared with the completion flash so both frames keep the same size (#722).
     const icon = loadTrayNormalIcon({
       nativeImage,
-      platform: process.platform,
-      templatePath: path.join(__dirname, "../assets/tray-iconTemplate.png"),
       iconPath: path.join(__dirname, "../assets/icon.png"),
     });
     ctx.tray = new Tray(icon);
-    ctx.tray.setToolTip("Clawd Desktop Pet");
+    ctx.tray.setToolTip("OMP Pet");
     buildTrayMenu();
-  }
-
-  function destroyTray() {
-    if (!ctx.tray) return;
-    ctx.tray.destroy();
-    ctx.tray = null;
-  }
-
-  function applyDockVisibility() {
-    if (!isMac) return;
-    return macDockVisibility.apply(ctx.showDock);
   }
 
   function buildTrayMenu() {
@@ -166,29 +128,10 @@ module.exports = function initMenu(ctx) {
       },
     ];
 
-    // OS-integration / placement group: bring-to-primary, mac dock/menu-bar,
-    // start-on-login.
+    // OS-integration / placement group: bring-to-primary, start-on-login.
     const systemGroup = [
       buildBringToPrimaryDisplayMenuItem(),
     ];
-    if (isMac) {
-      systemGroup.push(
-        {
-          label: t("showInMenuBar"),
-          type: "checkbox",
-          checked: ctx.showTray,
-          enabled: ctx.showTray ? ctx.showDock : true, // can't uncheck if Dock is already hidden
-          click: (menuItem) => { ctx.showTray = menuItem.checked; },
-        },
-        {
-          label: t("showInDock"),
-          type: "checkbox",
-          checked: ctx.showDock,
-          enabled: ctx.showDock ? ctx.showTray : true, // can't uncheck if Menu Bar is already hidden
-          click: (menuItem) => { ctx.showDock = menuItem.checked; },
-        },
-      );
-    }
     systemGroup.push({
       label: t("startOnLogin"),
       type: "checkbox",
@@ -206,13 +149,8 @@ module.exports = function initMenu(ctx) {
         click: () => ctx.openSettingsWindow(),
       },
     ];
-    // Intent is captured at build time: the fullscreen auto-hide sync can
-    // restore or hide the pet from its background poll while this menu is
-    // still on screen (the tray is the easy case — right-clicking the tray
-    // icon takes the foreground off the fullscreen app, so the auto-restore
-    // fires under the open menu). A live toggle would invert the labeled
-    // action then; applying the captured intent makes the worst case an
-    // idempotent no-op that matches what the user read.
+    // Intent is captured at build time so a click applies the action the
+    // user read, even if visibility changed while the menu was open.
     const petHiddenAtBuild = ctx.petHidden;
     appGroup.push({
       label: petHiddenAtBuild ? t("showPet") : t("hidePet"),
@@ -266,9 +204,6 @@ module.exports = function initMenu(ctx) {
     // renderer has a real document and stays alive across menu invocations.
     ctx.contextMenuOwner.loadURL("data:text/html,%3C!doctype%20html%3E");
 
-    // macOS: ensure owner can appear on fullscreen Spaces
-    ctx.reapplyMacVisibility();
-
     ctx.contextMenuOwner.on("close", (event) => {
       if (!ctx.isQuitting) {
         event.preventDefault();
@@ -290,7 +225,7 @@ module.exports = function initMenu(ctx) {
   // Wait for the focus just requested; the timeout keeps the menu working if
   // it never arrives.
   function whenOwnerFocused(owner, open) {
-    if (!isLinux || typeof owner.isFocused !== "function" || owner.isFocused()) {
+    if (typeof owner.isFocused !== "function" || owner.isFocused()) {
       open();
       return;
     }
@@ -322,10 +257,6 @@ module.exports = function initMenu(ctx) {
   }
 
   function hideOwnerAfterMenu(owner) {
-    if (!isLinux) {
-      owner.hide();
-      return;
-    }
     cancelOwnerHide();
     ownerHideTimer = setTimeout(() => {
       ownerHideTimer = null;
@@ -364,21 +295,10 @@ module.exports = function initMenu(ctx) {
         // the pet, and the click handler can fire on either side of this close
         // callback — an unconditional showInactive() would resurrect a window
         // setPetHidden() just hid. Skipping is safe: showPetWindows() re-asserts
-        // taskbar/mac flags on the next show, and Windows topmost is held by
-        // the window's alwaysOnTop flag plus the topmost-runtime watchdog, not
-        // by this callback.
+        // the taskbar flag on the next show.
         if (ctx.win && !ctx.win.isDestroyed() && !ctx.petHidden) {
           ctx.win.showInactive();
           keepOutOfTaskbar(ctx.win);
-          if (isMac) {
-            ctx.reapplyMacVisibility();
-          } else if (isWin) {
-            if (ctx.petAlwaysOnTop === false) {
-              ctx.raisePetWindows();
-            } else {
-              ctx.win.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
-            }
-          }
         }
       },
     }));
@@ -450,10 +370,8 @@ module.exports = function initMenu(ctx) {
       },
     ];
 
-    // Display group: just the multi-display "send to display" entry. The mac
-    // dock / menu-bar visibility toggles deliberately do NOT live here — they
-    // are set-once OS-integration prefs and live in the tray menu + Settings
-    // instead. On a single display this group is empty and joinGroups drops it.
+    // Display group: just the multi-display "send to display" entry. On a
+    // single display this group is empty and joinGroups drops it.
     const displayGroup = [];
     const displays = screen.getAllDisplays();
     if (displays.length > 1 && !ctx.getMiniMode()) {
@@ -469,13 +387,8 @@ module.exports = function initMenu(ctx) {
         click: () => ctx.openSettingsWindow(),
       },
     ];
-    // Intent is captured at build time: the fullscreen auto-hide sync can
-    // restore or hide the pet from its background poll while this menu is
-    // still on screen (the tray is the easy case — right-clicking the tray
-    // icon takes the foreground off the fullscreen app, so the auto-restore
-    // fires under the open menu). A live toggle would invert the labeled
-    // action then; applying the captured intent makes the worst case an
-    // idempotent no-op that matches what the user read.
+    // Intent is captured at build time so a click applies the action the
+    // user read, even if visibility changed while the menu was open.
     const petHiddenAtBuild = ctx.petHidden;
     appGroup.push({
       label: petHiddenAtBuild ? t("showPet") : t("hidePet"),
@@ -537,9 +450,7 @@ module.exports = function initMenu(ctx) {
     buildTrayMenu,
     rebuildAllMenus,
     createTray,
-    destroyTray,
     getTray: () => ctx.tray,
-    applyDockVisibility,
     ensureContextMenuOwner,
     popupMenuAt,
     showPetContextMenu,

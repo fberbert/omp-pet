@@ -61,25 +61,13 @@ describe("dangerous accelerator blacklist", () => {
     assert.strictEqual(isDangerousAccelerator("CommandOrControl+Shift+Y"), false);
   });
 
-  it("folds equivalent Control tokens before checking non-macOS shortcuts", () => {
-    assert.strictEqual(
-      isDangerousAccelerator("CommandOrControl+Control+C", { isMac: false }),
-      true
-    );
-    assert.strictEqual(
-      isDangerousAccelerator("CommandOrControl+Control+C", { isMac: true }),
-      false
-    );
+  it("folds equivalent Control tokens before checking reserved shortcuts", () => {
+    assert.strictEqual(isDangerousAccelerator("CommandOrControl+Control+C"), true);
+    assert.strictEqual(isDangerousAccelerator("Control+V"), true);
   });
 });
 
 describe("accelerator conflict equivalence", () => {
-  it("keeps native Control distinct from Command on macOS", () => {
-    assert.strictEqual(
-      acceleratorsConflict("Control+Shift+K", "CommandOrControl+Shift+K", { isMac: true }),
-      false
-    );
-  });
 
   it("treats Control and CommandOrControl as the same key off macOS", () => {
     assert.strictEqual(
@@ -129,15 +117,6 @@ describe("buildAcceleratorFromEvent", () => {
       { action: "pending", modifiers: ["CommandOrControl", "Shift"] }
     );
     assert.deepStrictEqual(
-      buildAcceleratorFromEvent({
-        key: "Control",
-        code: "ControlLeft",
-        ctrlKey: true,
-        shiftKey: true,
-      }, { isMac: true }),
-      { action: "pending", modifiers: ["Control", "Shift"] }
-    );
-    assert.deepStrictEqual(
       buildAcceleratorFromEvent({ key: "Alt", code: "AltLeft" }),
       { action: "pending", modifiers: [] }
     );
@@ -158,19 +137,11 @@ describe("buildAcceleratorFromEvent", () => {
       "Ctrl+Shift+…"
     );
     assert.strictEqual(
-      formatAcceleratorPartial(["CommandOrControl", "Shift"], { isMac: true }),
-      "⌘⇧…"
-    );
-    assert.strictEqual(
       formatAcceleratorPartial(["CommandOrControl", "Alt"]),
       "Ctrl+Alt+…"
     );
     assert.strictEqual(
-      formatAcceleratorPartial(["Control", "Shift"], { isMac: true }),
-      "⌃⇧…"
-    );
-    assert.strictEqual(
-      formatAcceleratorPartial(["CommandOrControl", "Control", "Shift"], { isMac: false }),
+      formatAcceleratorPartial(["CommandOrControl", "Control", "Shift"]),
       "Ctrl+Shift+…"
     );
   });
@@ -185,64 +156,29 @@ describe("buildAcceleratorFromEvent", () => {
       }),
       { action: "commit", accelerator: "CommandOrControl+Shift+Y" }
     );
-    assert.deepStrictEqual(
-      buildAcceleratorFromEvent({
-        key: "c",
-        code: "KeyC",
-        metaKey: true,
-        shiftKey: true,
-        altKey: true,
-      }, { isMac: true }),
-      { action: "commit", accelerator: "CommandOrControl+Shift+Alt+C" }
-    );
-    assert.deepStrictEqual(
-      buildAcceleratorFromEvent({
-        key: "k",
-        code: "KeyK",
-        ctrlKey: true,
-        shiftKey: true,
-      }, { isMac: true }),
-      { action: "commit", accelerator: "Control+Shift+K" }
-    );
+    // The Super key is not a shortcut modifier on Linux.
     assert.deepStrictEqual(
       buildAcceleratorFromEvent({
         key: "k",
         code: "KeyK",
         ctrlKey: true,
         metaKey: true,
-      }, { isMac: true }),
-      { action: "commit", accelerator: "CommandOrControl+Control+K" }
+      }),
+      { action: "commit", accelerator: "CommandOrControl+K" }
     );
   });
 });
 
 describe("formatAcceleratorLabel", () => {
-  it("formats labels for Windows/Linux", () => {
+  it("formats labels", () => {
     assert.strictEqual(
       formatAcceleratorLabel("CommandOrControl+Shift+Alt+C"),
       "Ctrl+Shift+Alt+C"
     );
-    assert.strictEqual(
-      formatAcceleratorLabel("CommandOrControl+Control+K", { isMac: false }),
-      "Ctrl+K"
-    );
-    assert.strictEqual(formatAcceleratorLabel(null), "— unassigned —");
+    assert.strictEqual(formatAcceleratorLabel("CommandOrControl+Control+K"), "Ctrl+K");
+    assert.strictEqual(formatAcceleratorLabel(null), "- unassigned -");
   });
 
-  it("formats labels for macOS", () => {
-    assert.strictEqual(
-      formatAcceleratorLabel("CommandOrControl+Shift+Alt+C", { isMac: true }),
-      "⌘⇧⌥C"
-    );
-    assert.strictEqual(
-      formatAcceleratorLabel("Shift+ArrowUp", { isMac: true }),
-      "⇧↑"
-    );
-    assert.strictEqual(
-      formatAcceleratorLabel("Control+Shift+K", { isMac: true }),
-      "⌃⇧K"
-    );
-  });
 });
 
 describe("normalizeShortcuts", () => {
