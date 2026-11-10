@@ -50,15 +50,6 @@ function loadSettingsI18nStrings() {
   return context.ClawdSettingsI18n.STRINGS;
 }
 
-function loadBubbleStrings() {
-  const source = fs.readFileSync(path.join(ROOT, "src", "bubble-renderer.js"), "utf8");
-  const match = source.match(/const BUBBLE_STRINGS = (\{[\s\S]*?\n\});/);
-  assert.ok(match, "bubble-renderer.js should define BUBBLE_STRINGS");
-  const context = {};
-  vm.runInNewContext(`result = ${match[1]};`, context);
-  return context.result;
-}
-
 // Renderers outside the settings window resolve t() against src/i18n.js, and t() falls
 // back to returning the key itself, so a string filed under settings-i18n.js by mistake
 // renders its own name into the UI instead of failing loudly.
@@ -423,33 +414,6 @@ describe("i18n locales", () => {
     }
   });
 
-  it("keeps permission bubble locale keysets aligned with English", () => {
-    assertLocaleObjectParity(loadBubbleStrings(), "bubble");
-  });
-
-  it("keeps main-process Settings dialog strings available for every supported language", () => {
-    const settingsIpcSource = fs.readFileSync(path.join(ROOT, "src", "settings-ipc.js"), "utf8");
-    const animationOverridesSource = fs.readFileSync(
-      path.join(ROOT, "src", "settings-animation-overrides-main.js"),
-      "utf8"
-    );
-    for (const [name, source] of [
-      ["SOUND_OVERRIDE_DIALOG_STRINGS", settingsIpcSource],
-      ["ANIMATION_OVERRIDES_EXPORT_DIALOG_STRINGS", animationOverridesSource],
-      ["REMOVE_THEME_DIALOG_STRINGS", settingsIpcSource],
-    ]) {
-      const start = source.indexOf(`const ${name} = {`);
-      assert.notStrictEqual(start, -1, `missing ${name}`);
-      const end = source.indexOf("\n};", start);
-      assert.notStrictEqual(end, -1, `unterminated ${name}`);
-      const block = source.slice(start, end);
-      for (const lang of SUPPORTED_LANGS) {
-        const escapedLang = regexEscape(lang);
-        assert.match(block, new RegExp(`\\n\\s*(?:"${escapedLang}"|${escapedLang}):`), `${name} missing ${lang}`);
-      }
-    }
-  });
-
   it("keeps every renderer t(\"key\") literal resolvable in the runtime locale", () => {
     const renderers = runtimeDictRenderers();
     for (const known of ["session-hud-renderer.js", "dashboard-renderer.js"]) {
@@ -634,21 +598,6 @@ describe("i18n locales", () => {
     ]) {
       assert.match(es[key], /Desplegar \/ Reparar hooks/, `${key} should name the visible action exactly`);
       assert.doesNotMatch(es[key], /Instalar \/ reparar hooks/, `${key} should not name a missing action`);
-    }
-  });
-
-  it("keeps Codex Pet main dialog strings available for every supported language", () => {
-    const source = fs.readFileSync(path.join(ROOT, "src", "codex-pet-main.js"), "utf8");
-    for (const name of ["getImportDialogStrings", "getRemovalDialogStrings"]) {
-      const start = source.indexOf(`function ${name}()`);
-      assert.notStrictEqual(start, -1, `missing ${name}`);
-      const end = source.indexOf("\n  async function", start);
-      assert.notStrictEqual(end, -1, `unterminated ${name}`);
-      const block = source.slice(start, end);
-      for (const lang of SUPPORTED_LANGS) {
-        const escapedLang = regexEscape(lang);
-        assert.match(block, new RegExp(`\\n\\s*(?:"${escapedLang}"|${escapedLang}):`), `${name} missing ${lang}`);
-      }
     }
   });
 });

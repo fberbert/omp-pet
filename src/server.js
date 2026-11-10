@@ -1,86 +1,47 @@
-// src/server.js — HTTP server + routes (/state, /permission, /health)
-// Extracted from main.js L1337-1528
+// src/server.js - local HTTP server for the OMP extension (/state).
+//
+// Binds 127.0.0.1 on the first free port of the omp-pet range, publishes the
+// actual port in ~/.omp-pet/runtime.json for the extension, and routes state
+// events into the agent runtime. After the server listens it syncs the OMP
+// extension when the integration is installed and enabled.
 
-const fs = require("fs");
-const path = require("path");
 const http = require("http");
-const crypto = require("crypto");
 const {
   DEFAULT_SERVER_PORT,
   SERVER_PORTS,
-  LOCAL_PERMISSION_PATH,
   normalizeLocalPort,
   defaultRuntimeConfigPath,
-  buildPermissionUrl,
   clearRuntimeConfig,
   getPortCandidates,
   readRuntimeIdentity,
   readRuntimePort,
-  ROUTING_NONCE_HEADER,
   writeRuntimeConfig,
-  resolveNodeBinAsync,
 } = require("../hooks/server-config");
-const { processAlive } = require("../hooks/shared-process");
-const {
-  B1A_AGENT_IDS,
-  createServerWindowsProcessMetadataResolver,
-  normalizeWindowsProcessChainMode,
-  WINDOWS_PROCESS_CHAIN_VERSION,
-} = require("./server-windows-process-metadata");
-const {
-  getClaudeHookScriptPath,
-  getClaudeAutoStartScriptPath,
-  checkClaudeMaterializationFs,
-  resolveClaudeHookPaths,
-  CLAUDE_CORE_HOOK_EVENTS,
-  resolveClaudeSettingsPath,
-} = require("../hooks/install");
-const { inspectClaudeHookHealth, isExplicitRepairVerified } = require("./claude-hook-health");
-const {
-  entriesContainCommandMarker,
-  entriesContainHttpHookUrl,
-  settingsNeedClaudeHookResync,
-  createClaudeSettingsWatcher,
-} = require("./claude-settings-watcher");
 const { createIntegrationSyncRuntime } = require("./integration-sync");
-const {
-  effectiveClaudeConfigDirs,
-  normalizeClaudeConfigDir,
-  sameClaudeConfigDir,
-} = require("../hooks/claude-config-dirs");
-const { createClaudeHookOperations } = require("./claude-hook-operations");
 const {
   sendStateHealthResponse,
   handleStatePost,
 } = require("./server-route-state");
 const {
-  handlePermissionPost,
-  shouldBypassCCBubble,
-  shouldBypassCodexBubble,
-  shouldBypassFamilyBubble,
-} = require("./server-route-permission");
-const { createRemoteSshIngress } = require("./remote-ssh-ingress");
-const { handleQuestionPost } = require("./server-route-question");
-const {
-  getCodexOfficialTurnKey,
-  resolveCodexOfficialHookState,
-} = require("./server-codex-official-turns");
-const { createDshStateSequenceFence } = require("./dsh-state-sequence");
-const createGrokTurnFence = require("./grok-turn-fence");
-const {
-  HOOK_EVENT_RING_SIZE_PER_AGENT,
   createSingleRequestHookEventRecorder,
   recordHookEventInBuffer,
   getRecentHookEventsFromBuffer,
 } = require("./server-hook-events");
-const {
-  normalizePermissionSuggestions,
-  normalizeElicitationToolInput,
-  normalizeCodexPermissionToolInput,
-  normalizeToolMatchValue,
-  buildToolInputFingerprint,
-  findPendingPermissionForStateEvent,
-} = require("./server-permission-utils");
+
+// Liveness probe without spawning: process.kill(pid, 0) is a syscall.
+// ESRCH => gone; EPERM => alive but owned by another user.
+function processAlive(pid) {
+  const n = Number(pid);
+  if (!Number.isFinite(n) || n <= 0) return false;
+  try {
+    process.kill(n, 0);
+    return true;
+  } catch (e) {
+    return !!(e && e.code === "EPERM");
+  }
+}
+
+const LOCAL_HOOK_REJECT_LOG_INTERVAL_MS = 30 * 1000;
 
 module.exports = function initServer(ctx) {
 
@@ -94,104 +55,27 @@ const writeRuntimeConfigFn = ctx.writeRuntimeConfig || writeRuntimeConfig;
 // Opt-in production IO: tests never read or overwrite the user's restart hint.
 const readPortHint = ctx.readLocalServerPortHint || (() => null);
 const writePortHint = ctx.writeLocalServerPortHint || (() => true);
-// #681. Injectable so tests never read the developer's real ~/.omp-pet/runtime.json
-// (whose contents depend on whether Clawd happens to be running right now).
+// Injectable so tests never read the developer's real ~/.omp-pet/runtime.json.
 const readRuntimeIdentityFn = ctx.readRuntimeIdentity
   || (() => readRuntimeIdentity({ runtimeConfigPath: ctx.runtimeConfigPath }));
 const isProcessAliveFn = ctx.isProcessAlive || processAlive;
-const isWindowsHost = ctx.isWinHost != null ? ctx.isWinHost === true : process.platform === "win32";
-const windowsProcessChainInstanceGeneration = typeof ctx.windowsProcessChainInstanceGeneration === "string"
-  && ctx.windowsProcessChainInstanceGeneration
-  ? ctx.windowsProcessChainInstanceGeneration
-  : crypto.randomUUID();
-const requestedWindowsProcessChainModes = Object.fromEntries(B1A_AGENT_IDS.map((agentId) => {
-  const injectedMode = ctx.windowsProcessChainModes && ctx.windowsProcessChainModes[agentId];
-  const envName = `CLAWD_WINDOWS_PROCESS_CHAIN_${agentId.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`;
-  const envMode = process.env[envName];
-  // Shadow performs both the legacy PowerShell snapshot and the synchronous
-  // server FFI walk. It is therefore an explicit diagnostics mode, never a
-  // shipped default before its observer/performance/ARM64 gates are recorded.
-  return [agentId, normalizeWindowsProcessChainMode(injectedMode || envMode || "legacy")];
-}));
-let windowsProcessMetadataResolver = ctx.windowsProcessMetadataResolver || null;
-const requestedServerResolver = isWindowsHost
-  && Object.values(requestedWindowsProcessChainModes).some((mode) => mode !== "legacy");
-if (requestedServerResolver && !windowsProcessMetadataResolver) {
-  try {
-    windowsProcessMetadataResolver = createServerWindowsProcessMetadataResolver({ isWin: true });
-  } catch {
-    windowsProcessMetadataResolver = null;
-  }
-}
-// A permanent initialization failure is different from a per-request walk
-// failure. Do not advertise a mode that makes hooks omit legacy metadata when
-// the server has no resolver capable of replacing it.
-const windowsProcessResolverAvailable = !requestedServerResolver
-  || (typeof windowsProcessMetadataResolver === "function"
-    && windowsProcessMetadataResolver.available !== false);
-const windowsProcessChainModes = Object.freeze(Object.fromEntries(
-  Object.entries(requestedWindowsProcessChainModes).map(([agentId, mode]) => [
-    agentId,
-    mode !== "legacy" && !windowsProcessResolverAvailable ? "legacy" : mode,
-  ])
-));
-const windowsProcessChainRuntime = Object.freeze({
-  version: WINDOWS_PROCESS_CHAIN_VERSION,
-  instanceGeneration: windowsProcessChainInstanceGeneration,
-  agents: windowsProcessChainModes,
-});
-function resolveWindowsProcessMetadata(request) {
-  if (!windowsProcessMetadataResolver) {
-    windowsProcessMetadataResolver = createServerWindowsProcessMetadataResolver({ isWin: isWindowsHost });
-  }
-  return windowsProcessMetadataResolver(request);
-}
+
 function writeCurrentRuntimeConfig(port) {
-  return writeRuntimeConfigFn(port, { windowsProcessChain: windowsProcessChainRuntime });
+  return writeRuntimeConfigFn(port);
 }
-// #681: where the runtime file lives is a pure expression — answering it must
-// not read the file, probe a PID, or touch any of the seams above. Callers that
-// only want the path used to reach it through getRuntimeStatus(), which costs
-// two reads, two JSON.parses and a kill() syscall to build a string that ignores
-// all of them, and which drags three throw-capable seams into the callsite.
+
 function runtimeConfigFilePath() {
   return typeof ctx.runtimeConfigPath === "string"
     ? ctx.runtimeConfigPath
     : defaultRuntimeConfigPath();
 }
-const CLAUDE_HOOK_GUARD_NOTICE_TTL_MS = 30 * 60 * 1000;
 
 let httpServer = null;
 let activeServerPort = null;
 let bindAttempts = [];
 let startupFailure = null;
-let lastClaudeHookGuardNotice = null;
-// Separate the persisted user authorization from short transactional tail
-// suppression. During Settings OFF / integration uninstall the preference or
-// agent gate is committed only after the settings.json mutation succeeds, so
-// this process-local flag closes the small pre-commit window immediately.
-let claudeStatuslineIngressSuppressed = false;
-const codexOfficialTurns = new Map();
-const dshStateSequenceFence = createDshStateSequenceFence();
-// Grok Build turn-order fence: bounded, in-memory, injected into /state.
-const grokTurnFence = createGrokTurnFence();
 const recentHookEvents = new Map();
 const localHookRejectTelemetry = new Map();
-const LOCAL_HOOK_REJECT_LOG_INTERVAL_MS = 30 * 1000;
-
-function isClaudeStatuslineMetadataAllowed() {
-  return ctx.claudeQuotaCollectionEnabled === true && !claudeStatuslineIngressSuppressed;
-}
-
-function clearLocalClaudeStatuslineAuthority() {
-  if (typeof ctx.clearClaudeStatuslineAuthority !== "function") return 0;
-  return ctx.clearClaudeStatuslineAuthority("local");
-}
-
-function clearLocalClaudeQuota() {
-  if (typeof ctx.clearLocalClaudeQuota !== "function") return 0;
-  return ctx.clearLocalClaudeQuota();
-}
 
 function shouldDropForDnd() {
   if (typeof ctx.shouldDropForDnd === "function") {
@@ -203,11 +87,7 @@ function shouldDropForDnd() {
 }
 
 function recordHookEvent(identity, data, route, outcome) {
-  const recorded = recordHookEventInBuffer(recentHookEvents, identity, data, route, outcome, { now: nowFn });
-  if (recorded && typeof ctx.onHookEventRecorded === "function") {
-    try { ctx.onHookEventRecorded(recorded); } catch {}
-  }
-  return recorded;
+  return recordHookEventInBuffer(recentHookEvents, identity, data, route, outcome, { now: nowFn });
 }
 
 function createRequestHookRecorder(identity, data, defaultRoute) {
@@ -223,26 +103,12 @@ function clearRecentHookEvents(agentId) {
   else recentHookEvents.clear();
 }
 
-function shouldManageClaudeHooks() {
-  return ctx.manageClaudeHooksAutomatically !== false;
-}
-
-function isAgentEnabled(agentId) {
-  if (typeof ctx.isAgentEnabled !== "function") return true;
-  return ctx.isAgentEnabled(agentId) !== false;
-}
-
 function shouldSyncAgentIntegration(agentId) {
   if (typeof ctx.shouldSyncAgentIntegration === "function") {
     return ctx.shouldSyncAgentIntegration(agentId) !== false;
   }
-  return isAgentEnabled(agentId);
-}
-
-function getAgentIntegrationOptions(agentId) {
-  if (typeof ctx.getAgentIntegrationOptions !== "function") return {};
-  const result = ctx.getAgentIntegrationOptions(agentId);
-  return result && typeof result === "object" ? result : {};
+  if (typeof ctx.isAgentEnabled === "function") return ctx.isAgentEnabled(agentId) !== false;
+  return true;
 }
 
 function getHookServerPort() {
@@ -263,11 +129,8 @@ function getRuntimeStatus() {
     : null;
   const port = activeServerPort && activeServerPort === addressPort ? activeServerPort : null;
   const runtimePort = readRuntimePortFn();
-  // #681: the runtime file is now the hook resolver's offline gate, so its
-  // identity — not just its port — decides whether hooks can report process
-  // metadata at all. A stale ownerPid (a crashed instance's leftover file) reads
-  // as "Clawd offline" to every hook even while this server is happily
-  // listening, which is exactly the state Doctor must surface.
+  // A stale ownerPid (a crashed instance's leftover file) means the extension
+  // may be talking to nobody even while this server listens; Doctor shows it.
   const identity = readRuntimeIdentityFn();
   const runtimeOwnerPid = identity && identity.ok ? identity.ownerPid : null;
   return {
@@ -285,775 +148,16 @@ function getRuntimeStatus() {
   };
 }
 
-function getClaudeHookGuardStatus() {
-  if (!lastClaudeHookGuardNotice) return null;
-  if (nowFn() - lastClaudeHookGuardNotice.at > CLAUDE_HOOK_GUARD_NOTICE_TTL_MS) return null;
-  return { ...lastClaudeHookGuardNotice };
-}
-
-function clearClaudeHookGuardStatus() {
-  const hadNotice = !!lastClaudeHookGuardNotice;
-  lastClaudeHookGuardNotice = null;
-  return hadNotice;
-}
-
-// Server-owned, instance-level serialization for every process-internal Claude
-// settings.json mutation (register/unregister hooks, statusline, auto-start).
-// Gate mirrors the three required conditions: automatic management on, and the
-// integration both installed and enabled. Re-checked by the queue right before
-// each automatic task actually runs — not just at enqueue time.
-function shouldRunAutomaticClaudeHookOperation() {
-  return shouldManageClaudeHooks() && shouldSyncAgentIntegration("claude-code");
-}
-
-const claudeHookOperations = createClaudeHookOperations({
-  shouldRunAutomatic: shouldRunAutomaticClaudeHookOperation,
-});
-
-// Sources whose hooks-write also takes the (best-effort, single-slot) Claude
-// statusline. Keeping this list explicit — rather than "every register call" —
-// is what keeps periodic health/Doctor repair from ever touching statusline;
-// see AGENTS.md / the #657 plan §6.4 for the full source matrix.
-const CLAUDE_STATUSLINE_REGISTER_SOURCES = new Set(["startup", "settings-agent-install", "settings-agent-enable"]);
-const CLAUDE_STATUSLINE_UNREGISTER_SOURCES = new Set(["settings-agent-uninstall", "cleanup"]);
-
-// Shared by whole-integration register tasks (startup/Settings/Doctor/watcher/
-// periodic-health) for the same two safety checks the periodic supervisor
-// already does on its own automatic path: never write toward a source script
-// that doesn't exist, and never trust the installer's own success signal —
-// re-read and re-run the same inspector to confirm the fix actually landed.
-// Without this, Doctor Fix / Settings Install could report success while
-// writing a command at a path that can never work (#657 review finding).
-const claudeFsApi = ctx.fs || fs;
-const claudeExpectedHookScriptPathOverride = typeof ctx.expectedHookScriptPath === "string"
-  ? ctx.expectedHookScriptPath
-  : null;
-const claudeExpectedAutoStartScriptPathOverride = typeof ctx.expectedAutoStartScriptPath === "string"
-  ? ctx.expectedAutoStartScriptPath
-  : null;
-const claudeCoreEventsForHealth = Array.isArray(ctx.coreEvents) ? ctx.coreEvents : CLAUDE_CORE_HOOK_EVENTS;
-const claudeHookPlatformForHealth = ctx.platform || process.platform;
-
-// The same controlled context the preflight resolver used must flow into the
-// installer mutation and the post-write verify. In production these keys are
-// undefined (ambient host defaults), so this is a no-op; injected tests get a
-// consistent platform/remote/home/root/processEnv/settingsPath instead of a
-// preflight on one target and a mutation on another.
-function claudeMutationControls() {
-  const controls = {};
-  if (ctx.platform !== undefined) controls.platform = ctx.platform;
-  if (ctx.remote !== undefined) controls.remote = ctx.remote;
-  if (ctx.homeDir !== undefined) controls.homeDir = ctx.homeDir;
-  if (ctx.materializedRoot !== undefined) controls.materializedRoot = ctx.materializedRoot;
-  if (ctx.processEnv !== undefined) controls.processEnv = ctx.processEnv;
-  if (ctx.realpathSync !== undefined) controls.realpathSync = ctx.realpathSync;
-  if (typeof ctx.claudeSettingsPath === "string") controls.settingsPath = ctx.claudeSettingsPath;
-  return controls;
-}
-
-// Verify must read the exact settings file the mutation would write. Derive it
-// from the same controls (and therefore the same homeDir) rather than the
-// ambient default, so injecting only homeDir cannot write one home and verify
-// another.
-const claudeSettingsVerifyPath = (() => {
-  const controls = claudeMutationControls();
-  if (typeof controls.settingsPath === "string") return controls.settingsPath;
-  return resolveClaudeSettingsPath(
-    controls.homeDir !== undefined ? { homeDir: controls.homeDir } : {}
-  );
-})();
-
-// fs contract: `ctx.fs` (claudeFsApi) is the read-only health/resolver seam and
-// is used consistently by the preflight resolver, plan, and post-write verify.
-// The installer mutation deliberately does NOT receive ctx.fs — it always uses
-// its own filesystem, because writing through an injected read-only fake would
-// be unsafe. To keep "preflight A / materialize B" impossible, an injected
-// ctx.fs that is not the real fs module fails closed as resolver-fs-inconsistent
-// whenever a local AppImage materialization is actually required (direct mode
-// never reads files through the seam, so it is unaffected).
-const claudeResolverOptions = {
-  platform: claudeHookPlatformForHealth,
-  remote: ctx.remote,
-  homeDir: ctx.homeDir,
-  materializedRoot: ctx.materializedRoot,
-  processEnv: ctx.processEnv,
-  realpathSync: ctx.realpathSync,
-  fs: claudeFsApi,
-};
-
-// Source/target resolution shared by the source preflight and the post-write
-// verify. AppImage mode materializes to a persistent generation; direct mode
-// keeps source === target. Explicit ctx overrides preserve the historical
-// test-injected contract.
-function resolveClaudePathsForServer() {
-  if (
-    claudeExpectedHookScriptPathOverride !== null
-    || claudeExpectedAutoStartScriptPathOverride !== null
-  ) {
-    const state = claudeExpectedHookScriptPathOverride || getClaudeHookScriptPath();
-    const autoStart = claudeExpectedAutoStartScriptPathOverride || getClaudeAutoStartScriptPath();
-    return {
-      ok: true,
-      mode: "explicit",
-      source: { state, autoStart },
-      target: { state, autoStart },
-      targetGeneration: null,
-    };
-  }
-  const fsGuard = checkClaudeMaterializationFs(claudeResolverOptions);
-  if (fsGuard.ok !== true) return { ...fsGuard, ok: false };
-  return resolveClaudeHookPaths(claudeResolverOptions, { materialize: false });
-}
-
-function claudeHookSourceMissing(resolved, { requireAutoStart = false } = {}) {
-  try {
-    if (!resolved || resolved.ok !== true) return true;
-    if (!claudeFsApi.existsSync(resolved.source.state)) return true;
-    // auto-start.js is its own packaged source script — a register call that
-    // writes a SessionStart auto-start command must not do so toward a path
-    // that doesn't exist either, same reasoning as the core script check
-    // above. Only checked when this call actually writes an auto-start
-    // command, so a plain (non-auto-start) register/repair is never blocked
-    // by an unrelated, unused script being missing.
-    if (requireAutoStart && !claudeFsApi.existsSync(resolved.source.autoStart)) return true;
-    return false;
-  } catch {
-    return true;
-  }
-}
-
-function readClaudeSettingsRawForVerify(settingsPath = claudeSettingsVerifyPath) {
-  try {
-    return claudeFsApi.readFileSync(settingsPath, "utf-8");
-  } catch {
-    return "";
-  }
-}
-
-function buildClaudeHookReportForVerify(overrides = {}) {
-  const requireAutoStart = overrides.requireAutoStart !== undefined
-    ? overrides.requireAutoStart
-    : !!ctx.autoStartWithClaude;
-  const resolved = resolveClaudePathsForServer();
-  if (!resolved || resolved.ok !== true) {
-    return {
-      status: "resolver-degraded",
-      repairable: false,
-      degradedReason: (resolved && resolved.reason) || "resolver-failed",
-      issues: [{ code: "resolver-failed", automaticRepairable: false }],
-      commandCount: 0,
-      managedCoreEventCount: 0,
-      snapshot: null,
-      message: (resolved && resolved.message) || "Claude hook path resolution failed",
-    };
-  }
-  return inspectClaudeHookHealth(readClaudeSettingsRawForVerify(overrides.settingsPath), {
-    expectedPermissionUrl: buildPermissionUrl(getHookServerPort()),
-    expectedHookScriptPath: resolved.target.state,
-    expectedAutoStartScriptPath: resolved.target.autoStart,
-    sourceHookScriptPath: resolved.source.state,
-    sourceAutoStartScriptPath: resolved.source.autoStart,
-    targetGeneration: resolved.targetGeneration,
-    requireAutoStart,
-    coreEvents: claudeCoreEventsForHealth,
-    platform: claudeHookPlatformForHealth,
-    fs: claudeFsApi,
-  });
-}
-
-// ── Extra Claude config folders (#1250) ──
-// Claude Code picks its profile folder from CLAUDE_CONFIG_DIR. The folder this
-// process resolves (claudeSettingsVerifyPath's parent) stays the primary one and
-// keeps every existing behaviour, statusline included. Folders listed in
-// prefs.agents["claude-code"].configDirs additionally get the hook set, so
-// sessions from both profiles reach the one pet. The statusline stays
-// primary-only: it carries account quota, and two profiles are usually two
-// accounts that would overwrite each other's numbers.
-const claudePrimaryConfigDir = path.dirname(claudeSettingsVerifyPath);
-// Config folders are paths on this machine, so they use the host's path
-// rules even when hook commands are rendered for another platform.
-const claudeConfigDirPlatform = process.platform;
-
-function readClaudeConfigDirEntries(meta) {
-  if (meta && Array.isArray(meta.configDirs)) return meta.configDirs;
-  if (typeof ctx.getClaudeConfigDirs !== "function") return [];
-  try {
-    const entries = ctx.getClaudeConfigDirs();
-    return Array.isArray(entries) ? entries : [];
-  } catch {
-    return [];
-  }
-}
-
-function claudeConfigDirOptions() {
-  return {
-    primaryDir: claudePrimaryConfigDir,
-    platform: claudeConfigDirPlatform,
-    homeDir: ctx.homeDir,
-    env: ctx.processEnv || process.env,
-  };
-}
-
-function getEffectiveClaudeConfigDirs(meta) {
-  return effectiveClaudeConfigDirs(readClaudeConfigDirEntries(meta), claudeConfigDirOptions());
-}
-
-function getExtraClaudeConfigDirs(meta) {
-  // Remote/WSL hook installs target one remote home; profiles there are out
-  // of scope.
-  if (ctx.remote) return [];
-  return getEffectiveClaudeConfigDirs(meta).filter((entry) => !entry.primary).map((entry) => entry.dir);
-}
-
-function claudeMutationControlsForDir(dir) {
-  const controls = claudeMutationControls();
-  delete controls.settingsPath;
-  controls.claudeHome = dir;
-  return controls;
-}
-
-function claudeSettingsPathForDir(dir) {
-  return path.join(dir, "settings.json");
-}
-
-async function registerHooksInClaudeConfigDir(dir, meta) {
-  if (!claudeFsApi.existsSync(dir)) {
-    return { dir, status: "error", reason: "config-dir-missing", message: `Claude config folder not found: ${dir}` };
-  }
-  const { registerHooksAsync } = require("../hooks/install.js");
-  try {
-    const result = await registerHooksAsync({
-      silent: true,
-      autoStart: meta.autoStart,
-      port: meta.port,
-      ...claudeMutationControlsForDir(dir),
-    });
-    const verifyReport = buildClaudeHookReportForVerify({
-      requireAutoStart: !!meta.autoStart,
-      settingsPath: claudeSettingsPathForDir(dir),
-    });
-    if (!isExplicitRepairVerified(verifyReport)) {
-      return {
-        dir,
-        status: "error",
-        message: "Claude hook repair did not verify healthy",
-        verifyIssues: verifyReport.issues,
-      };
-    }
-    const { added, updated, removed } = result;
-    if (added > 0 || updated > 0 || removed > 0) {
-      console.log(`Clawd: synced hooks in ${dir} (added ${added}, updated ${updated}, removed ${removed}) [${meta.source || "unspecified"}]`);
-    }
-    return { dir, status: "ok", added, updated, removed };
-  } catch (err) {
-    return { dir, status: "error", message: (err && err.message) || String(err) };
-  }
-}
-
-async function unregisterHooksInClaudeConfigDir(dir) {
-  const { unregisterHooksAsync } = require("../hooks/install.js");
-  try {
-    const result = await unregisterHooksAsync({ backup: true, ...claudeMutationControlsForDir(dir) });
-    return { dir, status: "ok", removed: result.removed || 0, changed: !!result.changed, backupPath: result.backupPath || null };
-  } catch (err) {
-    return { dir, status: "error", message: (err && err.message) || String(err) };
-  }
-}
-
-function registerClaudeHooksTask(meta) {
-  return async () => {
-    // Source preflight: reconcile only ever rewrites toward this path, so if
-    // it doesn't exist writing is pointless (and would just leave a command
-    // pointing nowhere). Matches the periodic supervisor's own source-missing
-    // short-circuit, now for every register source, not just the automatic one.
-    const resolvedPaths = resolveClaudePathsForServer();
-    if (!resolvedPaths || resolvedPaths.ok !== true) {
-      return {
-        status: "error",
-        reason: (resolvedPaths && resolvedPaths.reason) || "resolver-failed",
-        message: (resolvedPaths && resolvedPaths.message)
-          || "Claude hook path resolution failed",
-      };
-    }
-    if (claudeHookSourceMissing(resolvedPaths, { requireAutoStart: !!meta.autoStart })) {
-      return {
-        status: "error",
-        reason: "source-script-missing",
-        message: "Claude hook source script is missing; reinstall or re-extract Clawd",
-      };
-    }
-
-    const {
-      registerHooksAsync,
-      registerClaudeStatusline,
-      unregisterClaudeStatusline,
-      preflightClaudeRuntime,
-    } = require("../hooks/install.js");
-
-    // Atomicity: when this register source will also take the statusline, the
-    // statusline runtime (its own closure in direct mode, the full generation
-    // in AppImage mode) must be proven BEFORE registerHooksAsync writes any
-    // settings. Otherwise a missing statusline dependency would leave the 15
-    // state events installed and then fail the whole Settings Install.
-    const willRegisterStatusline = CLAUDE_STATUSLINE_REGISTER_SOURCES.has(meta.source)
-      && ctx.claudeQuotaCollectionEnabled === true;
-    if (willRegisterStatusline) {
-      if (typeof preflightClaudeRuntime !== "function") {
-        return {
-          status: "error",
-          reason: "runtime-preflight-unavailable",
-          message: "Claude statusline runtime preflight is unavailable",
-        };
-      }
-      const preflight = preflightClaudeRuntime({
-        ...claudeMutationControls(),
-        requireStatusline: true,
-      });
-      if (!preflight || preflight.ok !== true) {
-        return {
-          status: "error",
-          reason: (preflight && preflight.reason) || "runtime-preflight-failed",
-          message: (preflight && preflight.message)
-            || "Claude statusline runtime preflight failed",
-        };
-      }
-    }
-
-    const result = await registerHooksAsync({
-      silent: true,
-      autoStart: meta.autoStart,
-      port: meta.port,
-      ...claudeMutationControls(),
-    });
-    if (CLAUDE_STATUSLINE_REGISTER_SOURCES.has(meta.source)) {
-      try {
-        if (ctx.claudeQuotaCollectionEnabled === true) {
-          const statuslineResult = registerClaudeStatusline({ silent: true, ...claudeMutationControls() });
-          if (statuslineResult.error) {
-            // Materialization/preflight failed before any sidecar or settings
-            // mutation. Surface it explicitly instead of a silent "installed".
-            return {
-              status: "error",
-              reason: statuslineResult.error.reason || "statusline-materialize-failed",
-              message: statuslineResult.error.message
-                || "Failed to prepare the Claude statusline runtime",
-            };
-          }
-          if (statuslineResult.changed) {
-            console.log("Clawd: registered Claude Code statusline");
-          }
-        } else {
-          claudeStatuslineIngressSuppressed = true;
-          // Migration/startup cleanup is ownership-safe: the installer only
-          // removes a statusLine command carrying Clawd's marker.
-          unregisterClaudeStatusline({ backup: true, silent: true, ...claudeMutationControls() });
-          clearLocalClaudeStatuslineAuthority();
-          clearLocalClaudeQuota();
-        }
-      } catch (statuslineErr) {
-        console.warn("Clawd: failed to sync Claude Code statusline:", statuslineErr.message);
-      }
-    }
-    const { added, updated, removed } = result;
-    if (added > 0 || updated > 0 || removed > 0) {
-      console.log(`Clawd: synced hooks (added ${added}, updated ${updated}, removed ${removed}) [${meta.source || "unspecified"}]`);
-    }
-
-    // Never trust the installer's own success signal alone — re-read and
-    // verify with the same inspector the periodic supervisor uses, so every
-    // caller (Doctor Fix and Settings Install included, not just the
-    // automatic supervisor path) consumes a verified result instead of a
-    // blind "ok" (#657 review finding).
-    const verifyReport = buildClaudeHookReportForVerify({ requireAutoStart: !!meta.autoStart });
-    if (!isExplicitRepairVerified(verifyReport)) {
-      return {
-        status: "error",
-        message: "Claude hook repair did not verify healthy",
-        added,
-        updated,
-        removed,
-        verifyIssues: verifyReport.issues,
-      };
-    }
-
-    // Settings Install / Enable commits the agent flag only after this task
-    // returns. Once the hook repair itself verifies, lift any suppression left
-    // by a previous uninstall. A third-party local statusline may remain
-    // untouched; the user preference still authorizes independently deployed
-    // local-profile senders such as WSL.
-    if (
-      ctx.claudeQuotaCollectionEnabled === true
-      && CLAUDE_STATUSLINE_REGISTER_SOURCES.has(meta.source)
-    ) {
-      claudeStatuslineIngressSuppressed = false;
-    }
-
-    // Extra folders are best effort: a broken or deleted extra folder is
-    // reported, but never fails the primary install it rides along with.
-    // Primary watcher repairs stay local; extra folders have their own guards.
-    const configDirs = [];
-    if (meta.source !== "settings-watch" && meta.source !== "periodic-health") {
-      for (const dir of getExtraClaudeConfigDirs(meta)) {
-        configDirs.push(await registerHooksInClaudeConfigDir(dir, meta));
-      }
-    }
-
-    return configDirs.length > 0
-      ? { status: "ok", added, updated, removed, configDirs }
-      : { status: "ok", added, updated, removed };
-  };
-}
-
-function unregisterClaudeHooksTask(meta) {
-  return async () => {
-    const { unregisterHooksAsync, unregisterClaudeStatusline } = require("../hooks/install.js");
-    const removesStatusline = CLAUDE_STATUSLINE_UNREGISTER_SOURCES.has(meta.source);
-    const previousSuppression = claudeStatuslineIngressSuppressed;
-    if (removesStatusline) claudeStatuslineIngressSuppressed = true;
-    try {
-      const hooksResult = await unregisterHooksAsync({ backup: true, ...claudeMutationControls() });
-      let statuslineResult = null;
-      if (removesStatusline) {
-        statuslineResult = unregisterClaudeStatusline({ backup: true, silent: true, ...claudeMutationControls() });
-        clearLocalClaudeStatuslineAuthority();
-        clearLocalClaudeQuota();
-      }
-      const configDirs = [];
-      for (const dir of getExtraClaudeConfigDirs(meta)) {
-        configDirs.push(await unregisterHooksInClaudeConfigDir(dir));
-      }
-      const removed = (hooksResult.removed || 0)
-        + (statuslineResult ? (statuslineResult.removed || 0) : 0)
-        + configDirs.reduce((sum, entry) => sum + (entry.removed || 0), 0);
-      const changed = !!hooksResult.changed || !!(statuslineResult && statuslineResult.changed)
-        || configDirs.some((entry) => entry.changed);
-      const backupPaths = [
-        hooksResult.backupPath,
-        statuslineResult && statuslineResult.backupPath,
-        ...configDirs.map((entry) => entry.backupPath),
-      ].filter(Boolean);
-      const out = { status: "ok", removed, changed, backupPaths, hooks: hooksResult, statusline: statuslineResult };
-      if (configDirs.length > 0) out.configDirs = configDirs;
-      const failedDirs = configDirs.filter((entry) => entry.status === "error");
-      if (failedDirs.length > 0) {
-        out.status = "error";
-        out.message = `Failed to uninstall Claude hooks from: ${failedDirs.map((entry) => entry.dir).join(", ")}`;
-      }
-      return out;
-    } catch (err) {
-      if (removesStatusline) claudeStatuslineIngressSuppressed = previousSuppression;
-      throw err;
-    }
-  };
-}
-
-function syncClawdHooksQueued(implOptions = {}) {
-  const source = typeof implOptions.source === "string" ? implOptions.source : "unspecified";
-  const automatic = implOptions.automatic !== false;
-  const meta = { source, autoStart: implOptions.autoStart, port: implOptions.port };
-  if (Array.isArray(implOptions.claudeConfigDirs)) meta.configDirs = implOptions.claudeConfigDirs;
-  return claudeHookOperations.enqueue({ source, automatic }, registerClaudeHooksTask(meta));
-}
-
-function uninstallClaudeHooksQueued(callOptions = {}) {
-  const source = typeof callOptions.source === "string" ? callOptions.source : "unspecified";
-  const automatic = callOptions.automatic === true;
-  const meta = { source };
-  if (Array.isArray(callOptions.claudeConfigDirs)) meta.configDirs = callOptions.claudeConfigDirs;
-  return claudeHookOperations.enqueue({ source, automatic }, unregisterClaudeHooksTask(meta));
-}
-
-// Settings → Claude Code → Config folders. Adding a folder installs and
-// verifies hooks there before prefs record it; removing one takes Clawd's
-// hooks back out. Both act on that folder only and never on the primary.
-function installClaudeConfigDirQueued(dir, callOptions = {}) {
-  const source = typeof callOptions.source === "string" ? callOptions.source : "settings-claude-config-dir";
-  return claudeHookOperations.enqueue({ source, automatic: false }, async () => {
-    const normalized = normalizeClaudeConfigDir(dir, { platform: claudeConfigDirPlatform });
-    if (!normalized) return { status: "error", reason: "invalid-config-dir", message: "Choose an absolute folder path" };
-    if (sameClaudeConfigDir(normalized, claudePrimaryConfigDir, { platform: claudeConfigDirPlatform })) {
-      return { status: "ok", dir: normalized, primary: true };
-    }
-    const resolvedPaths = resolveClaudePathsForServer();
-    const autoStart = !!ctx.autoStartWithClaude;
-    if (claudeHookSourceMissing(resolvedPaths, { requireAutoStart: autoStart })) {
-      return {
-        status: "error",
-        reason: "source-script-missing",
-        message: "Claude hook source script is missing; reinstall or re-extract Clawd",
-      };
-    }
-    return registerHooksInClaudeConfigDir(normalized, {
-      source,
-      autoStart,
-      port: getHookServerPort(),
-    });
-  });
-}
-
-function uninstallClaudeConfigDirQueued(dir, callOptions = {}) {
-  const source = typeof callOptions.source === "string" ? callOptions.source : "settings-claude-config-dir";
-  return claudeHookOperations.enqueue({ source, automatic: false }, async () => {
-    const normalized = normalizeClaudeConfigDir(dir, { platform: claudeConfigDirPlatform });
-    if (!normalized) return { status: "error", reason: "invalid-config-dir", message: "Choose an absolute folder path" };
-    if (sameClaudeConfigDir(normalized, claudePrimaryConfigDir, { platform: claudeConfigDirPlatform })) {
-      return { status: "error", reason: "primary-config-dir", message: "The primary Claude folder cannot be removed" };
-    }
-    stopExtraClaudeSettingsWatcher(normalized);
-    const result = await unregisterHooksInClaudeConfigDir(normalized);
-    // Failed removal leaves prefs unchanged, so restore its watcher now.
-    if (result.status === "error") syncExtraClaudeSettingsWatchers();
-    return result;
-  });
-}
-
-// Watcher repair for one extra folder: shared queue and post-install verification,
-// scoped to its settings.json. Source and shrink guards live in each folder's watcher.
-function repairClaudeConfigDirQueued(dir, callOptions = {}) {
-  const source = typeof callOptions.source === "string" ? callOptions.source : "unspecified";
-  const automatic = callOptions.automatic !== false;
-  return claudeHookOperations.enqueue({ source, automatic }, () => registerHooksInClaudeConfigDir(dir, {
-    source,
-    autoStart: ctx.autoStartWithClaude,
-    port: getHookServerPort(),
-  }));
-}
-
-function setClaudeQuotaCollectionEnabled(callOptions = {}) {
-  const source = typeof callOptions.source === "string"
-    ? callOptions.source
-    : "quota-collection";
-  const enabled = callOptions.enabled === true;
-  return claudeHookOperations.enqueue({ source, automatic: false }, async () => {
-    const {
-      registerClaudeStatusline,
-      unregisterClaudeStatusline,
-    } = require("../hooks/install.js");
-    if (!enabled) {
-      const previousSuppression = claudeStatuslineIngressSuppressed;
-      claudeStatuslineIngressSuppressed = true;
-      try {
-        const result = unregisterClaudeStatusline({ backup: true, silent: true, ...claudeMutationControls() });
-        clearLocalClaudeStatuslineAuthority();
-        clearLocalClaudeQuota();
-        return { status: "ok", enabled: false, ...result };
-      } catch (err) {
-        claudeStatuslineIngressSuppressed = previousSuppression;
-        throw err;
-      }
-    }
-    if (!shouldSyncAgentIntegration("claude-code")) {
-      return {
-        status: "error",
-        message: "Enable the Claude Code integration before collecting its usage metadata",
-      };
-    }
-    if (callOptions.chainExisting === true
-      && !/^[a-f0-9]{64}$/.test(callOptions.expectedStatuslineFingerprint || "")) {
-      return { status: "error", message: "Confirm the current Claude statusline before enabling coexistence" };
-    }
-    const result = registerClaudeStatusline({
-      backup: true, silent: true,
-      ...claudeMutationControls(),
-      ...(callOptions.chainExisting === true ? {
-        chainExisting: true,
-        expectedStatuslineFingerprint: callOptions.expectedStatuslineFingerprint,
-      } : {}),
-    });
-    if (result.error) {
-      return {
-        status: "error",
-        reason: result.error.reason || "statusline-materialize-failed",
-        message: result.error.message || "Failed to prepare the Claude statusline runtime",
-      };
-    }
-    if (result.skippedExisting) {
-      return {
-        status: "error",
-        reason: "statusline-occupied",
-        statuslineFingerprint: result.statuslineFingerprint,
-        message: "Claude Code already has a custom statusline; Clawd left it unchanged",
-      };
-    }
-    if (result.installed !== true) {
-      return {
-        status: "error",
-        reason: "claude-not-installed",
-        message: "Claude Code settings were not found",
-      };
-    }
-    // The settings controller persists the true preference immediately after
-    // this successful effect returns. Until then the live preference getter
-    // still keeps ingress closed; afterwards both halves of the gate are open.
-    claudeStatuslineIngressSuppressed = false;
-    return { status: "ok", enabled: true, ...result };
-  });
-}
-
-function setClaudeAutoStart(callOptions = {}) {
-  const source = typeof callOptions.source === "string" ? callOptions.source : "auto-start";
-  const enabled = callOptions.enabled === true;
-  return claudeHookOperations.enqueue({ source, automatic: false }, async () => {
-    if (!enabled) {
-      // #657 plan §6.3 only carves out unregisterAutoStart() to keep its
-      // existing synchronous call — it still runs inside this queue task, so
-      // it's serialized against other Claude mutations without being made
-      // async itself.
-      const { unregisterAutoStart } = require("../hooks/install.js");
-      unregisterAutoStart({ ...claudeMutationControls() });
-      for (const dir of getExtraClaudeConfigDirs()) {
-        try {
-          unregisterAutoStart({ ...claudeMutationControlsForDir(dir) });
-        } catch (err) {
-          console.warn(`Clawd: failed to remove Claude auto-start from ${dir}:`, err && err.message);
-        }
-      }
-      return { status: "ok", enabled };
-    }
-
-    const resolvedPaths = resolveClaudePathsForServer();
-    if (!resolvedPaths || resolvedPaths.ok !== true) {
-      return {
-        status: "error",
-        reason: (resolvedPaths && resolvedPaths.reason) || "resolver-failed",
-        message: (resolvedPaths && resolvedPaths.message)
-          || "Claude hook path resolution failed",
-      };
-    }
-    if (claudeHookSourceMissing(resolvedPaths, { requireAutoStart: true })) {
-      return {
-        status: "error",
-        reason: "source-script-missing",
-        message: "Claude hook source script is missing; reinstall or re-extract Clawd",
-      };
-    }
-
-    // Enabling writes the full hook set (not just the auto-start entry) and
-    // must not block the Electron main thread with the synchronous Claude
-    // version probe registerHooks() performs — use the async installer, like
-    // every other register path.
-    const { registerHooksAsync } = require("../hooks/install.js");
-    await registerHooksAsync({ silent: true, autoStart: true, port: getHookServerPort(), ...claudeMutationControls() });
-
-    const verifyReport = buildClaudeHookReportForVerify({ requireAutoStart: true });
-    if (!isExplicitRepairVerified(verifyReport)) {
-      return {
-        status: "error",
-        message: "Claude auto-start did not verify healthy",
-        verifyIssues: verifyReport.issues,
-      };
-    }
-
-    const configDirs = [];
-    for (const dir of getExtraClaudeConfigDirs()) {
-      configDirs.push(await registerHooksInClaudeConfigDir(dir, {
-        source,
-        autoStart: true,
-        port: getHookServerPort(),
-      }));
-    }
-    return configDirs.length > 0 ? { status: "ok", enabled: true, configDirs } : { status: "ok", enabled: true };
-  });
-}
-
-// integration-sync.js's Claude branch delegates through the ctx.syncClawdHooksImpl
-// / ctx.uninstallIntegrationImpls seams. Only fill in the queue-backed default
-// when the caller hasn't already provided one — production (main.js) never
-// does, so it gets the real queued implementation; tests that inject their own
-// seam (e.g. test/server-hook-management.test.js) keep their exact synchronous
-// contract, unwrapped, exactly as before this PR.
-const integrationSyncCtx = {
-  ...ctx,
-  // ctx.autoStartWithClaude is a live getter on the object main.js passes in
-  // (see main.js's _serverCtx) — {...ctx} above evaluates it once and
-  // freezes the result as a plain value, so a later runtime toggle of the
-  // Settings "auto-start with Claude" switch would never be seen through
-  // this copy. Redefine the same key as its own live getter, forwarding to
-  // the original (unspread) ctx, so every read here tracks the CURRENT
-  // setting instead of whatever it was when the server started (#657
-  // follow-up review finding).
-  get autoStartWithClaude() { return ctx.autoStartWithClaude; },
-  syncClawdHooksImpl: typeof ctx.syncClawdHooksImpl === "function"
-    ? ctx.syncClawdHooksImpl
-    : (implOptions) => syncClawdHooksQueued(implOptions),
-  uninstallIntegrationImpls: {
-    "claude-code": () => uninstallClaudeHooksQueued({ source: "settings-agent-uninstall", automatic: false }),
-    ...(ctx.uninstallIntegrationImpls || {}),
-  },
-};
-
 const integrationSync = createIntegrationSyncRuntime({
-  ctx: integrationSyncCtx,
-  getHookServerPort,
-  shouldManageClaudeHooks,
-  isAgentEnabled,
+  ctx,
   shouldSyncAgentIntegration,
-  getAgentIntegrationOptions,
-  startClaudeSettingsWatcher,
-  stopClaudeSettingsWatcher,
 });
 const {
-  syncClawdHooks,
-  syncGeminiHooks,
-  syncAntigravityHooks,
-  syncCursorHooks,
-  syncCodeBuddyHooks,
-  syncKiroHooks,
-  syncKimiHooks,
-  syncCodexHooks,
-  syncOpencodePlugin,
-  syncPiExtension,
-  syncIntegrationForAgent: syncIntegrationForAgentBase,
-  repairIntegrationForAgent: repairIntegrationForAgentBase,
-  stopIntegrationForAgent,
+  syncIntegrationForAgent,
+  repairIntegrationForAgent,
   uninstallIntegrationForAgent,
   syncEnabledStartupIntegrations,
 } = integrationSync;
-
-function notifySuspiciousShrink(before, after) {
-  lastClaudeHookGuardNotice = {
-    type: "suspicious-shrink",
-    at: nowFn(),
-    before: before ? { ...before } : null,
-    after: after ? { ...after } : null,
-  };
-  if (typeof ctx.notifySuspiciousShrink === "function") {
-    ctx.notifySuspiciousShrink(before, after, lastClaudeHookGuardNotice);
-  }
-}
-
-function shouldClearClaudeHookGuardAfterSync(agentId, result) {
-  if (agentId !== "claude-code") return false;
-  if (result === false) return false;
-  if (result && typeof result === "object" && result.status === "error") return false;
-  return true;
-}
-
-function isThenableResult(value) {
-  return !!value && typeof value === "object" && typeof value.then === "function";
-}
-
-function clearClaudeHookGuardAfterClaudeSync(agentId, result) {
-  // A pending Promise is not a result yet — clearing the guard here would
-  // treat "operation enqueued" as "operation succeeded". Decide only once it
-  // actually settles; synchronous/test-injected results take the fast path.
-  if (isThenableResult(result)) {
-    return result.then((resolved) => {
-      if (shouldClearClaudeHookGuardAfterSync(agentId, resolved)) clearClaudeHookGuardStatus();
-      return resolved;
-    });
-  }
-  if (shouldClearClaudeHookGuardAfterSync(agentId, result)) clearClaudeHookGuardStatus();
-  return result;
-}
-
-function syncIntegrationForAgent(agentId, options = {}) {
-  return clearClaudeHookGuardAfterClaudeSync(agentId, syncIntegrationForAgentBase(agentId, options));
-}
-
-function repairIntegrationForAgent(agentId, options = {}) {
-  return clearClaudeHookGuardAfterClaudeSync(agentId, repairIntegrationForAgentBase(agentId, options));
-}
 
 function repairRuntimeStatus() {
   const status = getRuntimeStatus();
@@ -1069,269 +173,92 @@ function repairRuntimeStatus() {
   }
   return {
     status: "error",
-    message: "Local server is not listening; restart Clawd",
+    message: "Local server is not listening; restart omp-pet",
   };
-}
-
-function claudeSettingsWatcherCtx(overrides = {}) {
-  return {
-  ...ctx,
-  // Same live-getter fix as integrationSyncCtx above — the periodic health
-  // check's requireAutoStart (claude-settings-watcher.js's buildReport())
-  // must track the CURRENT setting, not whatever it was when the watcher
-  // was constructed at startup.
-  get autoStartWithClaude() { return ctx.autoStartWithClaude; },
-  shouldManageClaudeHooks,
-  isAgentEnabled,
-  shouldSyncAgentIntegration,
-  getHookServerPort,
-  syncClawdHooks,
-  notifySuspiciousShrink,
-  // #874: full host-Node resolver for classifying an env-indirected hook as
-  // migratable when settings.env.CLAWD_NODE_BIN is missing/bare/stale. This is
-  // the same async resolver the installer uses, so the watcher's migratable
-  // verdict matches what a repair can actually write. Running it off the health
-  // path (async, never execFileSync on the Electron main thread) keeps the
-  // periodic inspection spawn-free. ctx.resolveNodeBinAsyncImpl is a test seam.
-  resolveTrustedNodeBin: (resolverOptions) =>
-    (typeof ctx.resolveNodeBinAsyncImpl === "function" ? ctx.resolveNodeBinAsyncImpl : resolveNodeBinAsync)(
-      { ...(resolverOptions || {}) }
-    ),
-  ...overrides,
-  };
-}
-
-// The primary watcher follows the same folder the installer writes, so a
-// CLAUDE_CONFIG_DIR launch no longer watches ~/.claude while hooks live
-// elsewhere. Explicit test seams keep precedence.
-const claudeSettingsWatcher = createClaudeSettingsWatcher(claudeSettingsWatcherCtx({
-  claudeSettingsDir: typeof ctx.claudeSettingsDir === "string" ? ctx.claudeSettingsDir : claudePrimaryConfigDir,
-  claudeSettingsPath: typeof ctx.claudeSettingsPath === "string" ? ctx.claudeSettingsPath : claudeSettingsVerifyPath,
-}));
-
-// One watcher per extra config folder, keyed by folder. Each repairs only its
-// own folder; the suspicious-shrink guard and health state are per folder.
-const extraClaudeSettingsWatchers = new Map();
-let claudeSettingsWatchersRunning = false;
-
-function createExtraClaudeSettingsWatcher(dir) {
-  const factory = typeof ctx.createClaudeSettingsWatcherImpl === "function"
-    ? ctx.createClaudeSettingsWatcherImpl
-    : createClaudeSettingsWatcher;
-  return factory(claudeSettingsWatcherCtx({
-    claudeSettingsDir: dir,
-    claudeSettingsPath: claudeSettingsPathForDir(dir),
-    syncClawdHooks: (options = {}) => repairClaudeConfigDirQueued(dir, options),
-  }));
-}
-
-function stopExtraClaudeSettingsWatcher(dir) {
-  for (const [key, watcher] of extraClaudeSettingsWatchers) {
-    if (!sameClaudeConfigDir(key, dir, { platform: claudeConfigDirPlatform })) continue;
-    try { watcher.stop(); } catch {}
-    extraClaudeSettingsWatchers.delete(key);
-  }
-}
-
-// Reconcile with committed prefs when the primary watcher starts/stops, after
-// config folder changes commit, or when a failed removal needs its watcher back.
-function syncExtraClaudeSettingsWatchers() {
-  const wanted = claudeSettingsWatchersRunning ? getExtraClaudeConfigDirs() : [];
-  for (const key of [...extraClaudeSettingsWatchers.keys()]) {
-    if (!wanted.some((dir) => sameClaudeConfigDir(dir, key, { platform: claudeConfigDirPlatform }))) {
-      stopExtraClaudeSettingsWatcher(key);
-    }
-  }
-  for (const dir of wanted) {
-    if (extraClaudeSettingsWatchers.has(dir)) continue;
-    if (!claudeFsApi.existsSync(dir)) continue;
-    const watcher = createExtraClaudeSettingsWatcher(dir);
-    extraClaudeSettingsWatchers.set(dir, watcher);
-    try { watcher.start(); } catch (err) {
-      console.warn(`Clawd: failed to watch Claude config folder ${dir}:`, err && err.message);
-    }
-  }
-}
-
-// Richer runtime status (healthy/repairing/degraded/manual-fix-required/
-// guarded/stopped) from the periodic health supervisor — complements
-// getClaudeHookGuardStatus() above, which is scoped to the older
-// suspicious-shrink-only notice. Doctor uses this to explain *why* a Claude
-// hook problem hasn't self-healed (source missing, retry scheduled, stuck).
-const CLAUDE_HOOK_HEALTH_SEVERITY = {
-  healthy: 0,
-  stopped: 0,
-  repairing: 1,
-  degraded: 2,
-  guarded: 3,
-  "manual-fix-required": 4,
-};
-
-function claudeHookHealthSeverity(status) {
-  const value = CLAUDE_HOOK_HEALTH_SEVERITY[status && status.status];
-  return Number.isFinite(value) ? value : 1;
-}
-
-// The primary folder's status, overridden by the worst extra folder. Each
-// folder's own status is listed in configDirs so Doctor can say which one.
-function getClaudeHookHealthStatus() {
-  const primary = claudeSettingsWatcher.getHealthStatus();
-  if (extraClaudeSettingsWatchers.size === 0) return primary;
-  const configDirs = [{ dir: claudePrimaryConfigDir, primary: true, ...primary }];
-  let worst = primary;
-  for (const [dir, watcher] of extraClaudeSettingsWatchers) {
-    const status = watcher.getHealthStatus();
-    configDirs.push({ dir, primary: false, ...status });
-    if (claudeHookHealthSeverity(status) > claudeHookHealthSeverity(worst)) worst = { ...status, dir };
-  }
-  return { ...worst, configDirs };
-}
-
-// Watch ~/.claude/ directory for settings.json overwrites (e.g. CC-Switch)
-// that wipe our hooks. Re-register when hooks disappear.
-// Watch the directory (not the file) because atomic rename replaces the inode
-// and fs.watch on the old file silently stops firing on Windows.
-function startClaudeSettingsWatcher() {
-  const started = claudeSettingsWatcher.start();
-  claudeSettingsWatchersRunning = true;
-  syncExtraClaudeSettingsWatchers();
-  return started;
-}
-
-function stopClaudeSettingsWatcher() {
-  claudeSettingsWatchersRunning = false;
-  syncExtraClaudeSettingsWatchers();
-  return claudeSettingsWatcher.stop();
 }
 
 function recordLocalHookTransportRejection(route, reason, status) {
-    if (typeof ctx.debugLog !== "function") return;
-    const key = `${route}:${reason}:${status}`;
-    const now = nowFn();
-    const previous = localHookRejectTelemetry.get(key);
-    if (Number.isFinite(previous) && now - previous < LOCAL_HOOK_REJECT_LOG_INTERVAL_MS) return;
-    if (!localHookRejectTelemetry.has(key) && localHookRejectTelemetry.size >= 32) {
-      localHookRejectTelemetry.delete(localHookRejectTelemetry.keys().next().value);
-    }
-    localHookRejectTelemetry.set(key, now);
-    try {
-      ctx.debugLog(`local-hook-transport-reject route=${route} reason=${reason} status=${status}`);
-    } catch {}
+  if (typeof ctx.debugLog !== "function") return;
+  const key = `${route}:${reason}:${status}`;
+  const now = nowFn();
+  const previous = localHookRejectTelemetry.get(key);
+  if (Number.isFinite(previous) && now - previous < LOCAL_HOOK_REJECT_LOG_INTERVAL_MS) return;
+  if (!localHookRejectTelemetry.has(key) && localHookRejectTelemetry.size >= 32) {
+    localHookRejectTelemetry.delete(localHookRejectTelemetry.keys().next().value);
+  }
+  localHookRejectTelemetry.set(key, now);
+  try {
+    ctx.debugLog(`local-hook-transport-reject route=${route} reason=${reason} status=${status}`);
+  } catch {}
 }
 
 function rejectUnsafeLocalHookRequest(req, res, route) {
-    // These endpoints are for native hooks, not browser UI. Loopback binding and
-    // absent CORS headers alone do not stop simple cross-origin POSTs. These
-    // checks do not authenticate unrestricted processes under the same OS user.
-    const headers = req.headers || {};
-    const host = typeof headers.host === "string"
-      ? /^(?:127\.0\.0\.1|localhost|\[::1\])(?::([0-9]{1,5}))?$/i.exec(headers.host)
-      : null;
-    let status = 0;
-    let reason = "";
-    if (Object.prototype.hasOwnProperty.call(headers, "origin")) {
-      status = 403;
-      reason = "origin-present";
-    } else if (!host
-      || (host[1] !== undefined && (Number(host[1]) < 1 || Number(host[1]) > 65535))) {
-      status = 403;
-      reason = "invalid-host";
-    } else {
-      // Node discards duplicate Host / Content-Type fields by default. Reject
-      // ambiguous requests rather than validating only the retained first value.
-      const seen = new Set();
-      const raw = req.rawHeaders || [];
-      for (let i = 0; i < raw.length; i += 2) {
-        const name = String(raw[i] || "").toLowerCase();
-        if (name !== "host" && name !== "content-type") continue;
-        if (seen.has(name)) {
-          status = 400;
-          reason = name === "host" ? "duplicate-host" : "duplicate-content-type";
-          break;
-        }
-        seen.add(name);
+  // This endpoint is for the native extension, not browser UI. Loopback
+  // binding and absent CORS headers alone do not stop simple cross-origin
+  // POSTs. These checks do not authenticate processes of the same OS user.
+  const headers = req.headers || {};
+  const host = typeof headers.host === "string"
+    ? /^(?:127\.0\.0\.1|localhost|\[::1\])(?::([0-9]{1,5}))?$/i.exec(headers.host)
+    : null;
+  let status = 0;
+  let reason = "";
+  if (Object.prototype.hasOwnProperty.call(headers, "origin")) {
+    status = 403;
+    reason = "origin-present";
+  } else if (!host
+    || (host[1] !== undefined && (Number(host[1]) < 1 || Number(host[1]) > 65535))) {
+    status = 403;
+    reason = "invalid-host";
+  } else {
+    // Node discards duplicate Host / Content-Type fields by default. Reject
+    // ambiguous requests rather than validating only the retained first value.
+    const seen = new Set();
+    const raw = req.rawHeaders || [];
+    for (let i = 0; i < raw.length; i += 2) {
+      const name = String(raw[i] || "").toLowerCase();
+      if (name !== "host" && name !== "content-type") continue;
+      if (seen.has(name)) {
+        status = 400;
+        reason = name === "host" ? "duplicate-host" : "duplicate-content-type";
+        break;
       }
-      const type = typeof headers["content-type"] === "string"
-        ? headers["content-type"].split(";", 1)[0].trim().toLowerCase()
-        : "";
-      if (!status && type !== "application/json") {
-        status = 415;
-        reason = "unsupported-media-type";
-      }
+      seen.add(name);
     }
-    if (!status) return false;
-    recordLocalHookTransportRejection(route, reason, status);
-    // No agent decision or success marker on a transport rejection. Close
-    // without waiting for body bytes; native clients retain their own fallback.
-    res.writeHead(status, { "Connection": "close" });
+    const type = typeof headers["content-type"] === "string"
+      ? headers["content-type"].split(";", 1)[0].trim().toLowerCase()
+      : "";
+    if (!status && type !== "application/json") {
+      status = 415;
+      reason = "unsupported-media-type";
+    }
+  }
+  if (!status) return false;
+  recordLocalHookTransportRejection(route, reason, status);
+  // Close without waiting for body bytes; the extension keeps its own fallback.
+  res.writeHead(status, { "Connection": "close" });
+  res.end();
+  return true;
+}
+
+function routeHttpRequest(req, res) {
+  if (req.method === "GET" && req.url === "/state") {
+    sendStateHealthResponse(res, { getHookServerPort });
+  } else if (req.method === "POST" && req.url === "/state") {
+    if (rejectUnsafeLocalHookRequest(req, res, "/state")) return;
+    handleStatePost(req, res, {
+      ctx,
+      createRequestHookRecorder,
+      shouldDropForDnd,
+    });
+  } else {
+    res.writeHead(404);
     res.end();
-    return true;
-}
-
-function routeHttpRequest(req, res, remoteProfile = null) {
-    // Secure Remote SSH traffic must terminate at its profile-bound ingress,
-    // never at the compatibility-oriented local main server. Rejecting the
-    // nonce header here makes stale manual RemoteForward/proxy rules fail
-    // closed instead of silently dropping trusted profile stamping.
-    if (!remoteProfile
-      && req
-      && req.headers
-      && Object.prototype.hasOwnProperty.call(req.headers, ROUTING_NONCE_HEADER)) {
-      res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
-      res.end("not found");
-      return;
-    }
-    if (req.method === "GET" && req.url === "/state") {
-      sendStateHealthResponse(res, { getHookServerPort });
-    } else if (req.method === "POST" && req.url === "/state") {
-      if (!remoteProfile && rejectUnsafeLocalHookRequest(req, res, "/state")) return;
-      handleStatePost(req, res, {
-        ctx,
-        createRequestHookRecorder,
-        shouldDropForDnd,
-        codexOfficialTurns,
-        dshStateSequenceFence,
-        grokTurnFence,
-        captureForegroundWindowsTerminal: ctx.captureForegroundWindowsTerminal,
-        isWinHost: isWindowsHost,
-        windowsProcessChainRuntime,
-        resolveWindowsProcessMetadata,
-        recordWindowsProcessChainShadow: ctx.recordWindowsProcessChainShadow,
-        remoteProfile,
-        isClaudeStatuslineMetadataAllowed,
-      });
-    } else if (req.method === "POST" && req.url === "/question") {
-      if (!remoteProfile && rejectUnsafeLocalHookRequest(req, res, "/question")) return;
-      handleQuestionPost(req, res, { ctx, remoteProfile });
-    } else if (req.method === "POST" && (req.url === "/permission" || (!remoteProfile && req.url === LOCAL_PERMISSION_PATH))) {
-      if (!remoteProfile && rejectUnsafeLocalHookRequest(req, res, "/permission")) return;
-      handlePermissionPost(req, res, {
-        ctx,
-        createRequestHookRecorder,
-        isWinHost: isWindowsHost,
-        windowsProcessChainRuntime,
-        resolveWindowsProcessMetadata,
-        recordWindowsProcessChainShadow: ctx.recordWindowsProcessChainShadow,
-        remoteProfile,
-      });
-    } else {
-      res.writeHead(404);
-      res.end();
-    }
-}
-
-function openRemoteSshIngress({ remoteProfile, getAcceptedNonces, createServer } = {}) {
-  return createRemoteSshIngress({
-    remoteProfile,
-    getAcceptedNonces,
-    routeRequest: routeHttpRequest,
-    ...(createServer ? { createServer } : {}),
-  });
+  }
 }
 
 function startHttpServer() {
   httpServer = createHttpServer((req, res) => {
-    routeHttpRequest(req, res, null);
+    routeHttpRequest(req, res);
   });
 
   activeServerPort = null;
@@ -1346,8 +273,8 @@ function startHttpServer() {
     ...(hint ? [hint] : []), 0,
   ])];
   let listenIndex = 0;
-  // Callers (including Remote SSH connect-on-launch) must await the actual
-  // listener and, for a dynamic port, successful runtime publication.
+  // Callers must await the actual listener and, for a dynamic port,
+  // successful runtime publication.
   return new Promise((resolve) => {
     let settled = false;
     const settle = (value) => {
@@ -1372,7 +299,7 @@ function startHttpServer() {
         return;
       }
       startupFailure = failure;
-      console.warn(`Clawd local server failed (${failure.code}, port ${failure.port}): ${failure.message}`);
+      console.warn(`omp-pet local server failed (${failure.code}, port ${failure.port}): ${failure.message}`);
       settle(null);
     };
     const listen = () => {
@@ -1391,12 +318,12 @@ function startHttpServer() {
       }
       let runtimeWritten = false;
       try { runtimeWritten = writeCurrentRuntimeConfig(port) === true; }
-      catch (err) { console.warn("Failed to write the Clawd runtime file:", (err && err.message) || err); }
+      catch (err) { console.warn("Failed to write the omp-pet runtime file:", (err && err.message) || err); }
       if (!runtimeWritten) {
         const dynamic = !SERVER_PORTS.includes(port);
-        console.warn(`Clawd runtime file was not written (${runtimeConfigFilePath()}) — `
+        console.warn(`omp-pet runtime file was not written (${runtimeConfigFilePath()}) - `
           + (dynamic ? "dynamic listener closed; check Doctor → Local server"
-            : "hook process metadata will be omitted until this is repaired (see Doctor → Local server)"));
+            : "the OMP extension falls back to scanning the fixed port range"));
         if (dynamic) {
           startupFailure = { stage: "runtime", port, code: "RUNTIME_WRITE_FAILED" };
           try { httpServer.close(); } catch {}
@@ -1408,9 +335,9 @@ function startHttpServer() {
       if (runtimeWritten && !SERVER_PORTS.includes(port)) {
         let saved = false;
         try { saved = writePortHint(port) === true; } catch {}
-        if (!saved) console.warn("Clawd could not save its local server restart port hint");
+        if (!saved) console.warn("omp-pet could not save its local server restart port hint");
       }
-      console.log(`Clawd state server listening on 127.0.0.1:${port}`);
+      console.log(`omp-pet state server listening on 127.0.0.1:${port}`);
       setImmediateFn(() => { syncEnabledStartupIntegrations(); });
       settle(port);
     });
@@ -1419,14 +346,7 @@ function startHttpServer() {
 }
 
 function cleanup() {
-  // Stop the supervisor before disposing the queue: a fs-watch event firing
-  // during teardown must not enqueue new work onto a queue that is about to
-  // reject everything. Runtime status is cleared last since nothing after
-  // this point can observe it anyway.
-  stopClaudeSettingsWatcher();
-  claudeHookOperations.dispose();
   clearRuntimeConfigFn();
-  clearClaudeHookGuardStatus();
   localHookRejectTelemetry.clear();
   activeServerPort = null;
   if (httpServer) httpServer.close();
@@ -1434,60 +354,15 @@ function cleanup() {
 
 return {
   startHttpServer,
-  openRemoteSshIngress,
   getHookServerPort,
   getRuntimeStatus,
-  getClaudeHookGuardStatus,
-  clearClaudeHookGuardStatus,
-  getClaudeHookHealthStatus,
   getRecentHookEvents,
   clearRecentHookEvents,
-  syncClawdHooks,
-  uninstallClaudeHooks: uninstallClaudeHooksQueued,
-  installClaudeConfigDir: installClaudeConfigDirQueued,
-  uninstallClaudeConfigDir: uninstallClaudeConfigDirQueued,
-  syncClaudeConfigDirWatchers: syncExtraClaudeSettingsWatchers,
-  setClaudeQuotaCollectionEnabled,
-  isClaudeStatuslineMetadataAllowed,
-  setClaudeAutoStart,
-  syncGeminiHooks,
-  syncAntigravityHooks,
-  syncCursorHooks,
-  syncCodeBuddyHooks,
-  syncKiroHooks,
-  syncKimiHooks,
-  syncCodexHooks,
-  syncOpencodePlugin,
-  syncPiExtension,
   syncIntegrationForAgent,
   repairIntegrationForAgent,
   uninstallIntegrationForAgent,
   repairRuntimeStatus,
-  stopIntegrationForAgent,
-  startClaudeSettingsWatcher,
-  stopClaudeSettingsWatcher,
   cleanup,
 };
 
-};
-
-module.exports.__test = {
-  entriesContainCommandMarker,
-  entriesContainHttpHookUrl,
-  settingsNeedClaudeHookResync,
-  shouldBypassCCBubble,
-  shouldBypassCodexBubble,
-  shouldBypassFamilyBubble,
-  normalizePermissionSuggestions,
-  normalizeElicitationToolInput,
-  normalizeCodexPermissionToolInput,
-  normalizeToolMatchValue,
-  buildToolInputFingerprint,
-  findPendingPermissionForStateEvent,
-  getCodexOfficialTurnKey,
-  resolveCodexOfficialHookState,
-  recordHookEventInBuffer,
-  getRecentHookEventsFromBuffer,
-  createSingleRequestHookEventRecorder,
-  HOOK_EVENT_RING_SIZE_PER_AGENT,
 };

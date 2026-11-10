@@ -26,16 +26,6 @@
       // offered, registered, or allowed to occupy an accelerator there.
       supportedPlatforms: Object.freeze(["darwin", "win32"]),
     }),
-    permissionAllow: Object.freeze({
-      persistent: false,
-      defaultAccelerator: "CommandOrControl+Shift+Y",
-      labelKey: "shortcutLabelPermissionAllow",
-    }),
-    permissionDeny: Object.freeze({
-      persistent: false,
-      defaultAccelerator: "CommandOrControl+Shift+N",
-      labelKey: "shortcutLabelPermissionDeny",
-    }),
   });
 
   const SHORTCUT_ACTION_IDS = Object.freeze(Object.keys(SHORTCUT_ACTIONS));

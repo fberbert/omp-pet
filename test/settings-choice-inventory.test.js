@@ -26,28 +26,3 @@ test("Settings choice semantics are owned by the shared primitives", () => {
   assert.deepEqual(offenders, [], "new Settings tabs/segmented controls must use shared primitives");
 });
 
-test("the migrated choice inventory distinguishes navigation from values", () => {
-  const inventory = [
-    ["settings-renderer.js", "buildTabs", ["settings-navigation"]],
-    ["settings-tab-agents.js", "buildTabs", ["settings-agents"]],
-    ["settings-tab-anim-overrides.js", "buildTabs", ["settings-animations"]],
-    ["settings-tab-permissions.js", "buildTabs", ["settings-permissions"]],
-    ["settings-tab-pet.js", "buildSegmentedRadio", ["idle-behavior-mode", "roam-movement-style", "idle-activity-frequency"]],
-    ["settings-tab-notifications.js", "buildSegmentedRadio", ["bubble-placement-mode", "bubble-follow-preference", "bubble-fixed-corner"]],
-    ["settings-tab-sessions.js", "buildSegmentedRadio", ["quota-ring-display-mode"]],
-    ["settings-tab-permissions.js", "buildSegmentedRadio", ["permission-automation"]],
-    ["settings-tab-telegram-approval.js", "buildSegmentedRadio", ["feishu-platform", "feishu-id-type", "approval-completion-output"]],
-    ["settings-tab-recap.js", "buildSegmentedRadio", ["recap-period"]],
-  ];
-  for (const [name, helper, ids] of inventory) {
-    const source = fs.readFileSync(path.join(src, name), "utf8");
-    for (const id of ids) {
-      assert.match(source, new RegExp(`${helper}\\(\\{\\s*id: "${id}"`), `${name}: ${id}`);
-    }
-  }
-  // Intentional exceptions: Theme/asset cards and Recap row highlighting are
-  // not segmented enum controls. Select/asset listboxes retain aria-selected;
-  // Recap rows retain aria-pressed. Do not globally forbid those attributes.
-  const recap = fs.readFileSync(path.join(src, "settings-tab-recap.js"), "utf8");
-  assert.match(recap, /item\.setAttribute\("aria-pressed"/);
-});

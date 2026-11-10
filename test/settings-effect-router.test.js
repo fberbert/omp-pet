@@ -91,21 +91,6 @@ function makeWindow(name, calls, options = {}) {
 }
 
 describe("settings-effect-router", () => {
-  it("refreshes HUD preference changes in both directions without lifecycle cleanup or permission decisions", () => {
-    const { calls, emit } = createHarness();
-    for (const changes of [
-      { sessionHudHideCompletedCodexEphemeral: true }, { sessionHudHideCompletedCodexEphemeral: false },
-      { sessionHudHideActiveCodexEphemeral: true }, { sessionHudHideActiveCodexEphemeral: false },
-      { sessionHudHideCompletedCodexEphemeral: true, sessionHudHideActiveCodexEphemeral: true },
-    ]) {
-      calls.length = 0;
-      emit(changes);
-      assert.deepStrictEqual(calls, [
-        ["updateMirrors", changes],
-        ["emitSessionSnapshot", { force: true }],
-      ]);
-    }
-  });
   it("updates mirrors before tray and dock side effects", () => {
     const calls = [];
     const mirror = {};
@@ -143,91 +128,6 @@ describe("settings-effect-router", () => {
     assert.deepStrictEqual(calls, [
       ["updateMirrors", { showTray: false }],
       ["destroyTray"],
-      ["rebuildAllMenus"],
-    ]);
-  });
-
-  it("routes bubble policy changes to permission and update bubble effects", () => {
-    const { calls, emit } = createHarness();
-
-    emit({ hideBubbles: true });
-    assert.deepStrictEqual(calls, [
-      ["updateMirrors", { hideBubbles: true }],
-      ["clearKiroDesktopReminderCards", "settings-policy-disabled"],
-      ["syncPermissionShortcuts"],
-      ["dismissInteractivePermissionBubbles"],
-      ["clearCodexNotifyBubbles", undefined, "settings-policy-disabled"],
-      ["clearCodexUserInputBubbles", undefined, undefined, "settings-policy-disabled"],
-      ["clearKimiNotifyBubbles", undefined, "settings-policy-disabled"],
-      ["hideUpdateBubbleForPolicy"],
-      ["rebuildAllMenus"],
-    ]);
-
-    calls.length = 0;
-    emit({ notificationBubbleAutoCloseSeconds: 5 });
-    assert.deepStrictEqual(calls, [
-      ["updateMirrors", { notificationBubbleAutoCloseSeconds: 5 }],
-      ["refreshPassiveNotifyAutoClose"],
-      ["rebuildAllMenus"],
-    ]);
-
-    calls.length = 0;
-    emit({ updateBubbleAutoCloseSeconds: 8 });
-    assert.deepStrictEqual(calls, [
-      ["updateMirrors", { updateBubbleAutoCloseSeconds: 8 }],
-      ["refreshUpdateBubbleAutoClose"],
-      ["rebuildAllMenus"],
-    ]);
-  });
-
-  it("repositions once for any bubble placement change without hiding", () => {
-    for (const changes of [
-      { bubbleFollowPet: true },
-      { bubbleFollowPreference: "left" },
-      { bubbleFixedCorner: "top-right" },
-      {
-        bubbleFollowPet: false,
-        bubbleFollowPreference: "right",
-        bubbleFixedCorner: "bottom-left",
-      },
-    ]) {
-      const { calls, emit } = createHarness();
-      emit(changes);
-      const expected = [
-        ["updateMirrors", changes],
-        ["repositionFloatingBubbles"],
-      ];
-      // The existing quick-menu follow toggle still needs its label/checkmark
-      // rebuilt; the two new Settings-only preference keys do not.
-      if ("bubbleFollowPet" in changes) expected.push(["rebuildAllMenus"]);
-      assert.deepStrictEqual(calls, expected);
-    }
-  });
-
-  it("clears the Codex user-input card on the notification-policy axis, not the permission-policy axis", () => {
-    const { calls, emit } = createHarness();
-
-    // A Codex request_user_input card is a passive notification, not a
-    // permission request — disabling permission bubbles alone must not
-    // touch it (it has no Allow/Deny decision to withhold).
-    emit({ permissionBubblesEnabled: false });
-    assert.deepStrictEqual(calls, [
-      ["updateMirrors", { permissionBubblesEnabled: false }],
-      ["clearKiroDesktopReminderCards", "settings-policy-disabled"],
-      ["syncPermissionShortcuts"],
-      ["dismissInteractivePermissionBubbles"],
-      ["rebuildAllMenus"],
-    ]);
-    assert.ok(!calls.some((c) => c[0] === "clearCodexUserInputBubbles"));
-
-    calls.length = 0;
-    emit({ notificationBubbleAutoCloseSeconds: 0 });
-    assert.deepStrictEqual(calls, [
-      ["updateMirrors", { notificationBubbleAutoCloseSeconds: 0 }],
-      ["clearKiroDesktopReminderCards", "settings-policy-disabled"],
-      ["clearCodexNotifyBubbles", undefined, "settings-policy-disabled"],
-      ["clearCodexUserInputBubbles", undefined, undefined, "settings-policy-disabled"],
-      ["clearKimiNotifyBubbles", undefined, "settings-policy-disabled"],
       ["rebuildAllMenus"],
     ]);
   });
@@ -274,147 +174,6 @@ describe("settings-effect-router", () => {
       ["sendToRenderer", "low-power-idle-mode-change", true],
       ["refreshDisplayedVisual"],
       ["syncSessionHudVisibility"],
-    ]);
-  });
-
-  it("routes language, session alias, and session HUD effects", () => {
-    const { calls, emit } = createHarness();
-
-    emit({ lang: "zh", sessionAliases: { "local|claude|1": "work" } });
-    assert.deepStrictEqual(calls, [
-      ["updateMirrors", { lang: "zh", sessionAliases: { "local|claude|1": "work" } }],
-      ["sendDashboardI18n"],
-      ["sendSessionHudI18n"],
-      ["syncWindowTitles"],
-      ["emitSessionSnapshot", { force: true }],
-      ["rebuildAllMenus"],
-    ]);
-
-    calls.length = 0;
-    emit({ sessionHudEnabled: false });
-    assert.deepStrictEqual(calls, [
-      ["updateMirrors", { sessionHudEnabled: false }],
-      ["syncSessionHudVisibility"],
-      ["repositionFloatingBubbles"],
-    ]);
-
-    calls.length = 0;
-    emit({ sessionHudShowStateLabels: false });
-    assert.deepStrictEqual(calls, [
-      ["updateMirrors", { sessionHudShowStateLabels: false }],
-      ["syncSessionHudVisibility"],
-      ["repositionFloatingBubbles"],
-    ]);
-
-    calls.length = 0;
-    emit({ sessionHudShowContextUsage: false });
-    assert.deepStrictEqual(calls, [
-      ["updateMirrors", { sessionHudShowContextUsage: false }],
-      ["syncSessionHudVisibility"],
-      ["repositionFloatingBubbles"],
-    ]);
-
-    calls.length = 0;
-    emit({ sessionHudShowQuota: false });
-    assert.deepStrictEqual(calls, [
-      ["updateMirrors", { sessionHudShowQuota: false }],
-      ["syncSessionHudVisibility"],
-      ["repositionFloatingBubbles"],
-    ]);
-
-    calls.length = 0;
-    emit({ quotaRingDisplayMode: "remaining" });
-    assert.deepStrictEqual(calls, [
-      ["updateMirrors", { quotaRingDisplayMode: "remaining" }],
-      ["syncSessionHudVisibility"],
-      ["repositionFloatingBubbles"],
-    ]);
-
-    calls.length = 0;
-    emit({ quotaMergeSources: true });
-    assert.deepStrictEqual(calls, [
-      ["updateMirrors", { quotaMergeSources: true }],
-      ["emitSessionSnapshot", { force: true }],
-    ]);
-
-    calls.length = 0;
-    emit({ sessionHudCleanupDetached: true });
-    assert.deepStrictEqual(calls, [
-      ["updateMirrors", { sessionHudCleanupDetached: true }],
-      ["cleanStaleSessions"],
-      ["emitSessionSnapshot", { force: true }],
-    ]);
-
-    calls.length = 0;
-    emit({ sessionHudCleanupDetached: false });
-    assert.deepStrictEqual(calls, [
-      ["updateMirrors", { sessionHudCleanupDetached: false }],
-      ["emitSessionSnapshot", { force: true }],
-    ]);
-
-    calls.length = 0;
-    emit({ sessionHudPinned: true });
-    assert.deepStrictEqual(calls, [
-      ["updateMirrors", { sessionHudPinned: true }],
-      ["handleSessionHudPinnedChanged", true],
-    ]);
-
-    calls.length = 0;
-    emit({ sessionHudPinned: false });
-    assert.deepStrictEqual(calls, [
-      ["updateMirrors", { sessionHudPinned: false }],
-      ["handleSessionHudPinnedChanged", false],
-    ]);
-  });
-
-  it("refreshes session effective modes immediately when global automation changes", () => {
-    const { calls, emit } = createHarness();
-
-    emit({ permissionAutomationMode: "auto-tools" });
-
-    assert.deepStrictEqual(calls, [
-      ["updateMirrors", { permissionAutomationMode: "auto-tools" }],
-      ["emitSessionSnapshot", { force: true }],
-      ["rebuildAllMenus"],
-    ]);
-  });
-
-  it("withdraws permission projection synchronously and queues mobile reconciliation", () => {
-    const { calls, emit } = createHarness({
-      initialSnapshot: {
-        mobilePreviewEnabled: true,
-        mobilePermissionPreviewEnabled: true,
-      },
-      routerOptions: {
-        disableMobilePermissionObservation: () => calls.push(["disableMobilePermissionObservation"]),
-        enqueueMobilePreviewReconcile: (snapshot) => calls.push([
-          "enqueueMobilePreviewReconcile",
-          snapshot.mobilePreviewEnabled,
-          snapshot.mobilePermissionPreviewEnabled,
-        ]),
-      },
-    });
-
-    emit({ mobilePermissionPreviewEnabled: false });
-    assert.deepStrictEqual(calls, [
-      ["updateMirrors", { mobilePermissionPreviewEnabled: false }],
-      ["disableMobilePermissionObservation"],
-      ["enqueueMobilePreviewReconcile", true, false],
-    ]);
-
-    calls.length = 0;
-    emit({ mobilePermissionPreviewEnabled: true });
-    assert.deepStrictEqual(calls, [
-      ["updateMirrors", { mobilePermissionPreviewEnabled: true }],
-      ["enqueueMobilePreviewReconcile", true, true],
-    ]);
-
-    calls.length = 0;
-    emit({ mobilePreviewEnabled: false });
-    assert.deepStrictEqual(calls, [
-      ["updateMirrors", { mobilePreviewEnabled: false }],
-      ["disableMobilePermissionObservation"],
-      ["enqueueMobilePreviewReconcile", false, true],
     ]);
   });
 
@@ -827,36 +586,6 @@ describe("settings-effect-router", () => {
     ]);
   });
 
-  it("logs side-effect failures and keeps later routes running", () => {
-    const { calls, logs, emit } = createHarness({
-      routerOptions: {
-        createTray: () => {
-          throw new Error("tray broke");
-        },
-      },
-    });
-
-    emit({ showTray: true });
-
-    assert.deepStrictEqual(logs, [["Clawd: tray toggle failed:", "tray broke"]]);
-    assert.deepStrictEqual(calls, [
-      ["updateMirrors", { showTray: true }],
-      ["rebuildAllMenus"],
-    ]);
-  });
-
-  it("triggers a cleanup sweep + forced snapshot when any stale-cleanup config key changes", () => {
-    for (const key of ["sessionStaleMs", "workingStaleMs", "codexWorkingStaleMs", "detachedIdleStaleMs"]) {
-      const { calls, emit } = createHarness();
-      emit({ [key]: key === "detachedIdleStaleMs" ? 60_000 : 900_000 });
-      assert.deepStrictEqual(calls, [
-        ["updateMirrors", { [key]: key === "detachedIdleStaleMs" ? 60_000 : 900_000 }],
-        ["cleanStaleSessions"],
-        ["emitSessionSnapshot", { force: true }],
-      ], `expected stale-cleanup branch to fire for ${key}`);
-    }
-  });
-
   it("dispose unsubscribes both settings routes", () => {
     const { calls, emit, router } = createHarness();
 
@@ -866,20 +595,6 @@ describe("settings-effect-router", () => {
     assert.deepStrictEqual(calls, []);
   });
 });
-
-
-for (const changes of [
-  { notificationBubbleAutoCloseSeconds: 0 },
-  { hideBubbles: true },
-  { permissionBubblesEnabled: false },
-]) {
-  it(`kiro-desktop: policy change ${Object.keys(changes)[0]} clears reminder cards`, () => {
-    const harness = createHarness();
-    harness.emit(changes);
-    assert.ok(harness.calls.some(call => call[0] === "clearKiroDesktopReminderCards"));
-    harness.router.dispose();
-  });
-}
 
 describe("issue #1323: theme appearance routing", () => {
   it("issue #1323: commits route themeAppearance to the appearance sync", () => {

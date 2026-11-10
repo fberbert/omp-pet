@@ -138,7 +138,7 @@ function seedSplitAggregateJournal(store, journal, publishedCount, eventCount) {
   published.load();
   published.replaceDates(["2026-08-30"], Array.from({ length: publishedCount }, (_, index) => journal.buildRecord({
     occurredAt: Date.UTC(2026, 7, 30, 3 + index),
-    agentId: "codex",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity"],
   })));
@@ -146,7 +146,7 @@ function seedSplitAggregateJournal(store, journal, publishedCount, eventCount) {
   published.resetMemory();
   const events = Array.from({ length: eventCount }, (_, index) => journal.buildRecord({
     occurredAt: Date.UTC(2026, 7, 30, 3 + index),
-    agentId: "codex",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity"],
   }));
@@ -220,7 +220,7 @@ test("runtime writes journal before aggregate, dedupes, and exposes no HMAC iden
   f.runtime.start();
   const event = {
     occurredAt: Date.UTC(2026, 7, 29, 10, 5),
-    agentId: "codex",
+    agentId: "omp",
     scope: "remote",
     metrics: ["activity", "tool-call"],
   };
@@ -252,7 +252,7 @@ test("runtime announces only accepted durable records", (t) => {
   f.runtime.start();
   const event = {
     occurredAt: Date.UTC(2026, 7, 29, 10, 5),
-    agentId: "codex",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity", "tool-call"],
   };
@@ -284,7 +284,7 @@ test("runtime rebuilds retained aggregates from journal without double count", a
   first.runtime.start();
   first.runtime.record({
     occurredAt: Date.UTC(2026, 7, 29, 9),
-    agentId: "claude-code",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity", "turn-complete"],
   }, { sessionId: "s", dedupeId: "turn" });
@@ -308,7 +308,7 @@ test("a stable event replayed while hydration yields is not double counted", asy
   const writer = createRecapJournal({ store, now: () => now, getTimeZone: () => "UTC" });
   const event = {
     occurredAt: now,
-    agentId: "codex",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity", "tool-call"],
   };
@@ -367,7 +367,7 @@ test("hydration yields during the read without losing a later live event", async
   const writer = createRecapJournal({ store, now: () => now, getTimeZone: () => "UTC" });
   const diskRecord = writer.buildRecord({
     occurredAt: now,
-    agentId: "codex",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity"],
   });
@@ -390,7 +390,7 @@ test("hydration yields during the read without losing a later live event", async
   await pause.pausedAt;
   assert.equal(runtime.record({
     occurredAt: now + 1,
-    agentId: "codex",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity"],
   }), true);
@@ -429,7 +429,7 @@ test("dispose during the hydration read keeps a complete aggregate on the same o
   await pause.pausedAt;
   assert.equal(runtime.record({
     occurredAt: now,
-    agentId: "codex",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity"],
   }), true);
@@ -468,7 +468,7 @@ test("a final hydration flush failure keeps the complete in-memory projection re
   const journal = createRecapJournal({ store, now: () => now, getTimeZone: () => "UTC" });
   const diskRecord = journal.buildRecord({
     occurredAt: now,
-    agentId: "codex",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity"],
   });
@@ -507,7 +507,7 @@ test("hydration overflow retries without dropping live events or a partial proje
   const actualJournal = createRecapJournal({ store, now: () => now, getTimeZone: () => "UTC" });
   const diskRecord = actualJournal.buildRecord({
     occurredAt: now,
-    agentId: "codex",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity"],
   });
@@ -562,7 +562,7 @@ test("hydration overflow retries without dropping live events or a partial proje
   for (let index = 0; index < 4097; index += 1) {
     assert.equal(runtime.record({
       occurredAt: now + index + 1,
-      agentId: "codex",
+      agentId: "omp",
       scope: "local",
       metrics: ["activity"],
     }), true);
@@ -588,7 +588,7 @@ test("issue #1141: an overflow retry that hits the bound still keeps the live ev
   const actualJournal = createRecapJournal({ store, now: () => now, getTimeZone: () => "UTC" });
   const diskRecord = actualJournal.buildRecord({
     occurredAt: now,
-    agentId: "codex",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity"],
   });
@@ -638,7 +638,7 @@ test("issue #1141: an overflow retry that hits the bound still keeps the live ev
   for (let index = 0; index < 4097; index += 1) {
     assert.equal(runtime.record({
       occurredAt: now + index + 1,
-      agentId: "codex",
+      agentId: "omp",
       scope: "local",
       metrics: ["activity"],
     }), true);
@@ -664,7 +664,7 @@ test("a failed clear during hydration never overwrites the last complete aggrega
   const writer = createRecapJournal({ store: actualStore, now: () => now, getTimeZone: () => "UTC" });
   const diskRecord = writer.buildRecord({
     occurredAt: now,
-    agentId: "codex",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity"],
   });
@@ -718,7 +718,7 @@ test("dispose aborts a yielded hydration before another file-read batch", async 
   const writer = createRecapJournal({ store, now: () => now, getTimeZone: () => "UTC" });
   const record = writer.buildRecord({
     occurredAt: now,
-    agentId: "codex",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity"],
   });
@@ -769,7 +769,7 @@ test("disable closes coverage and rejects events; clear rotates all local recap 
   f.runtime.start();
   const event = {
     occurredAt: Date.UTC(2026, 7, 29, 10),
-    agentId: "codex",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity"],
   };
@@ -851,7 +851,7 @@ test("runtime fails quiet when optional storage is unavailable and can recover b
   assert.equal(f.runtime.query("today").status, "unavailable");
   assert.equal(f.runtime.record({
     occurredAt: Date.UTC(2026, 7, 29, 10),
-    agentId: "codex",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity"],
   }), false);
@@ -911,7 +911,7 @@ test("runtime recovery restarts midnight coverage and hydrates retained journal 
   const replacedDates = [];
   const projectedRows = [];
   const retained = {
-    agentId: "codex",
+    agentId: "omp",
     scope: "local",
     localDate: "2026-08-29",
     localHour: 8,
@@ -1038,7 +1038,7 @@ test("runtime automatically recovers after a transient Windows sharing violation
 
   assert.equal(runtime.record({
     occurredAt: Date.UTC(2026, 7, 29, 10),
-    agentId: "codex",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity"],
   }), true);
@@ -1078,7 +1078,7 @@ test("runtime rejects same-day events beyond the bounded clock-skew allowance", 
   const tooFar = Date.UTC(2026, 7, 29, 10) + MAX_FUTURE_SKEW_MS + 1;
   assert.equal(f.runtime.record({
     occurredAt: tooFar,
-    agentId: "codex",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity"],
   }), false);
@@ -1113,7 +1113,7 @@ test("journal-frozen metric support survives a real restart rebuild", async (t) 
   const journal = createRecapJournal({ store, getTimeZone: () => "UTC" });
   const historical = journal.buildRecord({
     occurredAt: Date.UTC(2026, 7, 29, 8),
-    agentId: "antigravity-cli",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity", "tool-call"],
   });
@@ -1152,7 +1152,7 @@ test("an overbound journal cannot postpone the aggregate privacy allowlist rewri
       "2026-08-29": {
         rows: {
           old: {
-            agentId: "codex",
+            agentId: "omp",
             scope: "remote",
             scopeKeyHash: hash,
             metrics: { sessionsStarted: null, turnsCompleted: 1, toolCalls: 1, activityEvents: 1 },
@@ -1199,7 +1199,7 @@ test("issue #1141: startup reconciliation keeps working past the old line bound"
   const journal = createRecapJournal({ store, now: () => now, getTimeZone: () => "UTC" });
   const recordValue = journal.buildRecord({
     occurredAt: now,
-    agentId: "codex",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity", "tool-call"],
   });
@@ -1241,7 +1241,7 @@ test("issue #1141: a replayed live event defers to the disk copy during hydratio
   const identity = { sessionId: "s", dedupeId: "tool-1" };
   const diskEvent = {
     occurredAt: Date.UTC(2026, 7, 30, 3),
-    agentId: "codex",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity", "tool-call"],
   };
@@ -1295,7 +1295,7 @@ test("issue #1141: a live replay older than the disk copy is not counted twice",
   const identity = { sessionId: "s", dedupeId: "tool-1" };
   const diskEvent = {
     occurredAt: Date.UTC(2026, 7, 30, 3),
-    agentId: "codex",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity", "tool-call"],
   };
@@ -1338,7 +1338,7 @@ test("issue #1141: a new day recorded during hydration is counted once", async (
   const writer = createRecapJournal({ store, now: () => clock, getTimeZone: () => "UTC" });
   assert.equal(writer.append(writer.buildRecord({
     occurredAt: Date.UTC(2026, 7, 30, 12),
-    agentId: "codex",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity"],
   })), true);
@@ -1358,7 +1358,7 @@ test("issue #1141: a new day recorded during hydration is counted once", async (
   clock = Date.UTC(2026, 7, 31, 0, 0, 0, 100);
   assert.equal(runtime.record({
     occurredAt: clock,
-    agentId: "codex",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity"],
   }), true);
@@ -1454,7 +1454,7 @@ test("issue #1141: a keyed replay across midnight is counted once", async (t) =>
   const writer = createRecapJournal({ store, now: () => clock, getTimeZone: () => "UTC" });
   const event = {
     occurredAt: Date.UTC(2026, 7, 30, 12),
-    agentId: "codex",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity", "tool-call"],
   };
@@ -1505,7 +1505,7 @@ test("issue #1141: a permanent timezone move to the previous day is counted once
   const writer = createRecapJournal({ store, now: () => now, getTimeZone: () => timeZone });
   const event = {
     occurredAt: Date.UTC(2026, 7, 30, 0),
-    agentId: "codex",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity", "tool-call"],
   };
@@ -1571,7 +1571,7 @@ test("issue #1141: the date filter still guards a timezone flip", async (t) => {
   const reader = createRecapJournal({ store, now: () => now, getTimeZone: () => timeZone });
   const diskRecord = reader.buildRecord({
     occurredAt: now,
-    agentId: "codex",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity"],
   });
@@ -1592,7 +1592,7 @@ test("issue #1141: the date filter still guards a timezone flip", async (t) => {
   timeZone = "Pacific/Kiritimati";
   assert.equal(runtime.record({
     occurredAt: now,
-    agentId: "codex",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity"],
   }), true);
@@ -1615,7 +1615,7 @@ test("issue #1141: a live replay before its disk copy is counted once", async (t
   const reader = createRecapJournal({ store, now: () => now, getTimeZone: () => "UTC" });
   const event = {
     occurredAt: Date.UTC(2026, 7, 30, 3),
-    agentId: "codex",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity", "tool-call"],
   };

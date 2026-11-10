@@ -1,9 +1,5 @@
 "use strict";
 
-const fs = require("fs");
-const path = require("path");
-const os = require("os");
-
 const DEFAULT_CONNECTION_TEST_DURATION_MS = 10000;
 const MAX_CONNECTION_TEST_DURATION_MS = 30000;
 
@@ -21,110 +17,6 @@ function uniqueSorted(values) {
   return [...new Set(values.filter(Boolean).map(String))].sort();
 }
 
-function readDirSafe(fsApi, dir) {
-  try {
-    return fsApi.readdirSync(dir, { withFileTypes: true });
-  } catch {
-    return [];
-  }
-}
-
-function statMtimeMs(fsApi, filePath) {
-  try {
-    const stat = fsApi.statSync(filePath);
-    return stat && Number.isFinite(stat.mtimeMs) ? stat.mtimeMs : null;
-  } catch {
-    return null;
-  }
-}
-
-function isDirectoryEntry(entry, fsApi, fullPath) {
-  if (entry && typeof entry.isDirectory === "function") return entry.isDirectory();
-  try {
-    const stat = fsApi.statSync(fullPath);
-    return !!(stat && stat.isDirectory && stat.isDirectory());
-  } catch {
-    return false;
-  }
-}
-
-function isFileEntry(entry, fsApi, fullPath) {
-  if (entry && typeof entry.isFile === "function") return entry.isFile();
-  try {
-    const stat = fsApi.statSync(fullPath);
-    return !!(stat && stat.isFile && stat.isFile());
-  } catch {
-    return false;
-  }
-}
-
-function findRecentMatchingFiles(options = {}) {
-  const fsApi = options.fs || fs;
-  const pathApi = options.path || path;
-  const rootDir = options.rootDir;
-  const since = Number.isFinite(options.since) ? options.since : 0;
-  const maxDepth = Number.isInteger(options.maxDepth) ? options.maxDepth : 4;
-  const maxEntries = Number.isInteger(options.maxEntries) ? options.maxEntries : 1000;
-  const predicate = typeof options.predicate === "function" ? options.predicate : () => false;
-  if (!rootDir) return [];
-
-  const out = [];
-  const stack = [{ dir: rootDir, depth: 0 }];
-  let visited = 0;
-  while (stack.length && visited < maxEntries) {
-    const current = stack.pop();
-    const entries = readDirSafe(fsApi, current.dir)
-      .slice()
-      .sort((a, b) => String(a.name).localeCompare(String(b.name)));
-    for (const entry of entries) {
-      if (visited >= maxEntries) break;
-      visited++;
-      const name = String(entry.name || "");
-      if (!name) continue;
-      const fullPath = pathApi.join(current.dir, name);
-      if (isDirectoryEntry(entry, fsApi, fullPath)) {
-        if (current.depth < maxDepth) stack.push({ dir: fullPath, depth: current.depth + 1 });
-        continue;
-      }
-      if (!isFileEntry(entry, fsApi, fullPath)) continue;
-      if (!predicate(name, fullPath, current.depth)) continue;
-      const mtimeMs = statMtimeMs(fsApi, fullPath);
-      if (Number.isFinite(mtimeMs) && mtimeMs >= since) out.push({ path: fullPath, mtimeMs });
-    }
-  }
-  return out.sort((a, b) => b.mtimeMs - a.mtimeMs);
-}
-
-function summarizeActivity(agentId, files) {
-  if (!Array.isArray(files) || !files.length) return null;
-  return {
-    agentId,
-    source: "file-mtime",
-    count: files.length,
-    latestMtime: Math.max(...files.map((file) => file.mtimeMs).filter(Number.isFinite)),
-  };
-}
-
-function scanCodexMtimeActivity(options = {}) {
-  const pathApi = options.path || path;
-  const homeDir = options.homeDir || os.homedir();
-  const rootDir = pathApi.join(homeDir, ".codex", "sessions");
-  const files = findRecentMatchingFiles({
-    ...options,
-    rootDir,
-    maxDepth: 4,
-    maxEntries: 1500,
-    predicate: (name) => name.startsWith("rollout-") && name.endsWith(".jsonl"),
-  });
-  return summarizeActivity("codex", files);
-}
-
-function scanFileMtimeActivity(options = {}) {
-  return [
-    scanCodexMtimeActivity(options),
-  ].filter(Boolean);
-}
-
 function eventSummary(events, resolveAgentDisplayName) {
   const resolve = typeof resolveAgentDisplayName === "function" ? resolveAgentDisplayName : (agentId) => agentId;
   const agents = uniqueSorted(events.map((event) => resolve(event.agentId)));
@@ -134,7 +26,6 @@ function eventSummary(events, resolveAgentDisplayName) {
 
 function evaluateConnectionTest(input = {}) {
   const events = Array.isArray(input.events) ? input.events : [];
-  const fileActivity = Array.isArray(input.fileActivity) ? input.fileActivity : [];
   const accepted = events.filter((event) => event && event.outcome === "accepted");
   const dropped = events.filter((event) => event && typeof event.outcome === "string" && event.outcome.startsWith("dropped-"));
 
@@ -156,32 +47,10 @@ function evaluateConnectionTest(input = {}) {
     };
   }
 
-  const codexActivity = fileActivity.some((entry) => entry && entry.agentId === "codex");
-  const codexHookHealth = input.codexHookHealth && typeof input.codexHookHealth === "object"
-    ? input.codexHookHealth
-    : null;
-  if (codexActivity && codexHookHealth
-    && (codexHookHealth.signature === "needs-review" || codexHookHealth.signature === "needs-review-optional")) {
-    return {
-      status: "hooks-need-review",
-      level: "warning",
-      detail: "Codex activity was detected, but Clawd cannot evaluate the HTTP path because its Codex hooks still need review. Run /hooks in Codex CLI, review the Clawd hooks, then run this test again. This result does not rule out a separate firewall or proxy issue.",
-    };
-  }
-
-  if (fileActivity.length) {
-    const agents = uniqueSorted(fileActivity.map((entry) => entry.agentId));
-    return {
-      status: "http-blocked",
-      level: "warning",
-      detail: `File activity changed for ${agents.join(", ")}, but no HTTP hook event reached Clawd. Firewall, EDR, or proxy interception is likely.`,
-    };
-  }
-
   return {
     status: "no-activity",
     level: "warning",
-    detail: "No hook HTTP event or fallback log file activity was detected during the test window.",
+    detail: "No OMP extension event reached omp-pet during the test window. Use OMP while the test runs.",
   };
 }
 
@@ -195,21 +64,8 @@ async function runConnectionTest(options = {}) {
     ? options.server.getRecentHookEvents({ since: startedAt })
     : [];
   const events = Array.isArray(options.events) ? options.events : serverEvents;
-  const fileActivity = Array.isArray(options.fileActivity)
-    ? options.fileActivity
-    : scanFileMtimeActivity({ ...options, since: startedAt });
-  let codexHookHealth = options.codexHookHealth;
-  if (typeof options.getCodexHookHealth === "function") {
-    try {
-      codexHookHealth = options.getCodexHookHealth();
-    } catch {
-      codexHookHealth = null;
-    }
-  }
   const evaluated = evaluateConnectionTest({
     events,
-    fileActivity,
-    codexHookHealth,
     resolveAgentDisplayName: options.resolveAgentDisplayName,
   });
   return {
@@ -219,7 +75,6 @@ async function runConnectionTest(options = {}) {
     durationMs,
     ...evaluated,
     events: events.slice(-20).map((event) => ({ ...event })),
-    fileActivity: fileActivity.map((entry) => ({ ...entry })),
   };
 }
 
@@ -254,7 +109,5 @@ module.exports = {
   clampDurationMs,
   createConnectionTestDeduper,
   evaluateConnectionTest,
-  findRecentMatchingFiles,
   runConnectionTest,
-  scanFileMtimeActivity,
 };

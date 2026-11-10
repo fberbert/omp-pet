@@ -1135,31 +1135,3 @@ test("a submitted jump reports submitted, never confirmed", async () => {
   assert.deepEqual(r.calls.ack, []);
 });
 
-test("open automation menus own Escape and digits in captured and empty quick rounds", async () => {
-  for (const entries of [twoEntries, []]) {
-    const r = await renderer({ modelFocus: true, entries, snapshot: {
-      sessions: [session("s1", { canConfigureSessionAutomation: true })],
-      groups: [{ host: "local", ids: ["s1"] }],
-    } });
-    await r.intent(1);
-    const picker = r.content().descendants().find(el => el.classList?.contains("session-automation-picker"));
-    const trigger = picker.querySelector(".language-picker-trigger");
-    trigger.listeners.get("click")();
-    assert.equal(picker.classList.contains("open"), true);
-    const option = r.document.activeElement;
-    const digit = await r.key("keydown", "1");
-    assert.equal(digit.prevented, false);
-    await r.key("keyup", "1");
-    await r.runTimers();
-    assert.deepEqual(r.calls.activate, []);
-    const escape = await r.key("keydown", "Escape");
-    assert.equal(escape.prevented, false);
-    assert.equal(escape.propagationStopped, false);
-    assert.deepEqual(r.calls.dismiss, []);
-    option.listeners.get("keydown")(escape);
-    assert.equal(picker.classList.contains("open"), false);
-    assert.equal(r.document.activeElement, trigger);
-    await r.key("keydown", "Escape");
-    assert.deepEqual(r.calls.dismiss, [{ revision: 1 }], "a second Escape still cancels the page round");
-  }
-});

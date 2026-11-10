@@ -3,7 +3,6 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const vm = require("node:vm");
 const { it } = require("node:test");
 
 const source = fs.readFileSync(path.join(__dirname, "..", "src", "main.js"), "utf8").replace(/\r\n/g, "\n");
@@ -63,65 +62,3 @@ it("wires idle activities to tick restoration, generation ownership and eligibil
   assert.match(controller, /\n\s+sendToRenderer,/);
 });
 
-const gateStart = source.indexOf("function canPlayIdleActivity() {");
-const gateEnd = source.indexOf('\nconst _idleActivity = require("./idle-activity")', gateStart);
-assert.ok(gateStart >= 0 && gateEnd > gateStart, "missing idle activity gate");
-const gateSource = source.slice(gateStart, gateEnd);
-
-function gateHarness() {
-  const ctx = {
-    win: { isDestroyed: () => false, isVisible: () => true },
-    doNotDisturb: false,
-    lowPowerIdlePaused: false,
-    idlePaused: false,
-    menuOpen: false,
-    petWindowRuntime: {
-      isDragLocked: () => false,
-      isSettingsSizePreviewActive: () => false,
-      isPetEffectivelyHidden: () => false,
-    },
-    _mini: { getMiniMode: () => false, getMiniTransitioning: () => false },
-    anySessionInProgress: () => false,
-    _perm: { hasVisiblePermissionBubbles: () => false },
-    _state: { isSettingsPreviewVisual: () => false },
-    pendingPermissions: [],
-    getActiveTheme: () => ({ timings: { mouseSleepTimeout: 60000 } }),
-    _tick: { _mouseStillSince: 1000 },
-    Date: { now: () => 1000 },
-  };
-  const canPlay = vm.runInNewContext(`${gateSource}\ncanPlayIdleActivity;`, ctx);
-  return { ctx, canPlay };
-}
-
-for (const [name, block] of [
-  ["missing window", (c) => { c.win = null; }],
-  ["destroyed window", (c) => { c.win.isDestroyed = () => true; }],
-  ...["doNotDisturb", "lowPowerIdlePaused", "idlePaused", "menuOpen"].map(
-    (key) => [key, (c) => { c[key] = true; }]
-  ),
-  ...["isDragLocked", "isSettingsSizePreviewActive", "isPetEffectivelyHidden"].map(
-    (key) => [key, (c) => { c.petWindowRuntime[key] = () => true; }]
-  ),
-  ...["getMiniMode", "getMiniTransitioning"].map(
-    (key) => [key, (c) => { c._mini[key] = () => true; }]
-  ),
-  ["active session", (c) => { c.anySessionInProgress = () => true; }],
-  ["permission bubble", (c) => { c._perm.hasVisiblePermissionBubbles = () => true; }],
-  ["invisible window", (c) => { c.win.isVisible = () => false; }],
-  ["settings visual preview", (c) => { c._state.isSettingsPreviewVisual = () => true; }],
-  ["IME editing", (c) => {
-    c.pendingPermissions = [{ bubble: {
-      isDestroyed: () => false,
-      isVisible: () => true,
-      __clawdMacImeEditing: true,
-    } }];
-  }],
-  ["sleep deadline", (c) => { c.Date.now = () => 61000; }],
-]) {
-  it(`idle activity eligibility holds for ${name}`, () => {
-    const { ctx, canPlay } = gateHarness();
-    assert.equal(canPlay(), true);
-    block(ctx);
-    assert.equal(canPlay(), false);
-  });
-}

@@ -5,105 +5,15 @@ const defaultPath = require("path");
 const { pathToFileURL } = require("url");
 const { detectAgentInstallations: defaultDetectAgentInstallations } = require("./agent-installation-detector");
 const {
-  readDeepSeekHarnessNotices: defaultReadDshNotices,
-  acknowledgeDeepSeekHarnessNotice: defaultAcknowledgeDshNotice,
-} = require("../hooks/dsh-install");
-const { DEFAULT_INTEGRATION_INSTALLED_IDS } = require("./prefs");
-const { effectiveClaudeConfigDirs } = require("../hooks/claude-config-dirs");
-const settingsThemeImporter = require("./settings-theme-importer");
-const {
   listPetTintOptions,
   listPetAccessoryOptions,
   listPetMouthAccessoryOptions,
 } = require("./pet-customization-catalog");
 
 const SOUND_OVERRIDE_ASSET_EXTS = new Set([".mp3", ".wav", ".ogg", ".m4a", ".aac", ".flac"]);
-// #895: cleanup prompts must skip the default integrations, referencing the
-// prefs list rather than a second hardcoded copy of the ids.
-const CLEANUP_EXEMPT_AGENT_IDS = new Set(DEFAULT_INTEGRATION_INSTALLED_IDS);
-// These commands mutate trust material or persist facts learned from an SSH
-// transaction. They are main-process capabilities, not renderer commands.
-// Keeping the check at the IPC boundary means an injected/compromised Settings
-// renderer cannot mint a trusted install binding, advance a deployment
-// transaction, or claim that a remote profile was verified.
-const INTERNAL_SETTINGS_COMMANDS = new Set([
-  "remoteSsh.applyInstallationIdentity",
-  "remoteSsh.beginIdentityRotation",
-  "remoteSsh.updateIdentityStep",
-  "remoteSsh.commitIdentityRotation",
-  "remoteSsh.forceRevoke",
-  "remoteSsh.beginRuntimeModeSwitch",
-  "remoteSsh.advanceRuntimeModeSwitch",
-  "remoteSsh.switchRuntimeMode",
-  "remoteSsh.markDeployed",
-  "remoteSsh.markRemoteNode",
-  "feishuApproval.commitResolvedApprover",
-  // Official theme install/uninstall are main-process capabilities. The
-  // renderer can only reach the dedicated, owner-gated IPC handlers; it must
-  // never mint a staging path or target directory through settings:command.
-  "officialTheme.commitInstall",
-  "officialTheme.uninstall",
-]);
 const SOUND_OVERRIDE_DIALOG_STRINGS = {
   en: { title: "Choose a sound file", filterName: "Audio" },
-  zh: { title: "选择音效文件", filterName: "音频" },
-  "zh-TW": { title: "選擇音效檔案", filterName: "音效" },
-  ko: { title: "음향 파일 선택", filterName: "오디오" },
-  ja: { title: "音声ファイルを選択", filterName: "音声" },
   "pt-BR": { title: "Escolha um arquivo de som", filterName: "Áudio" },
-  es: { title: "Elige un archivo de sonido", filterName: "Audio" },
-};
-
-// The Settings page only shows unacknowledged notices, and only the fields it
-// renders. Path fields (residues, locks) are diagnostic material that belongs
-// in logs, not in the renderer.
-const DSH_NOTICE_KIND_RANK = Object.freeze({
-  "restart-required": 0,
-  "failed-target": 1,
-  "manual-command": 2,
-  "first-install": 3,
-});
-
-function toDshNoticeView(notice) {
-  if (!notice || notice.acknowledged) return null;
-  const view = { id: notice.id, profile: notice.profile, kind: notice.kind };
-  const payload = notice.payload || {};
-  if (notice.kind === "manual-command") {
-    view.commands = Array.isArray(payload.commands) ? payload.commands.slice() : [];
-  } else if (notice.kind === "failed-target") {
-    view.operation = payload.operation;
-    view.reason = payload.reason;
-    view.message = payload.message;
-  }
-  return view;
-}
-
-function compareDshNoticeViews(left, right) {
-  const rankLeft = DSH_NOTICE_KIND_RANK[left.kind] === undefined ? 99 : DSH_NOTICE_KIND_RANK[left.kind];
-  const rankRight = DSH_NOTICE_KIND_RANK[right.kind] === undefined ? 99 : DSH_NOTICE_KIND_RANK[right.kind];
-  if (rankLeft !== rankRight) return rankLeft - rankRight;
-  if (left.profile !== right.profile) return left.profile === "web" ? -1 : 1;
-  return 0;
-}
-
-const AGENT_DISCOVERY_DIALOG_STRINGS = {
-  en: { file: "Choose a tool executable", directory: "Choose a tool installation folder" },
-  zh: { file: "选择工具可执行文件", directory: "选择工具安装目录" },
-  "zh-TW": { file: "選擇工具執行檔", directory: "選擇工具安裝目錄" },
-  ko: { file: "도구 실행 파일 선택", directory: "도구 설치 폴더 선택" },
-  ja: { file: "ツールの実行ファイルを選択", directory: "ツールのインストールフォルダーを選択" },
-  "pt-BR": { file: "Escolha o executável da ferramenta", directory: "Escolha a pasta de instalação da ferramenta" },
-  es: { file: "Elige el ejecutable de la herramienta", directory: "Elige la carpeta de instalación de la herramienta" },
-};
-
-const CLAUDE_CONFIG_DIR_DIALOG_STRINGS = {
-  en: "Choose a Claude Code config folder",
-  zh: "选择 Claude Code 配置目录",
-  "zh-TW": "選擇 Claude Code 設定資料夾",
-  ko: "Claude Code 설정 폴더 선택",
-  ja: "Claude Code の設定フォルダーを選択",
-  "pt-BR": "Escolha uma pasta de configuração do Claude Code",
-  es: "Elige una carpeta de configuración de Claude Code",
 };
 
 const REMOVE_THEME_DIALOG_STRINGS = {
@@ -113,41 +23,11 @@ const REMOVE_THEME_DIALOG_STRINGS = {
     message: (name) => `Delete theme "${name}"?`,
     detail: "This cannot be undone. All files for this theme will be removed from disk.",
   },
-  zh: {
-    delete: "删除",
-    cancel: "取消",
-    message: (name) => `确认删除主题 "${name}"？`,
-    detail: "此操作不可撤销。主题的所有文件将从磁盘移除。",
-  },
-  "zh-TW": {
-    delete: "刪除",
-    cancel: "取消",
-    message: (name) => `確定要刪除主題「${name}」？`,
-    detail: "此動作無法復原。此主題的所有檔案都會從磁碟移除。",
-  },
-  ko: {
-    delete: "삭제",
-    cancel: "취소",
-    message: (name) => `테마 "${name}"을(를) 삭제할까요?`,
-    detail: "이 작업은 되돌릴 수 없습니다. 이 테마의 모든 파일이 디스크에서 제거됩니다.",
-  },
-  ja: {
-    delete: "削除",
-    cancel: "キャンセル",
-    message: (name) => `テーマ "${name}" を削除しますか？`,
-    detail: "この操作は元に戻せません。このテーマのすべてのファイルがディスクから削除されます。",
-  },
   "pt-BR": {
     delete: "Excluir",
     cancel: "Cancelar",
     message: (name) => `Excluir o tema "${name}"?`,
     detail: "Isso não pode ser desfeito. Todos os arquivos deste tema serão removidos do disco.",
-  },
-  es: {
-    delete: "Eliminar",
-    cancel: "Cancelar",
-    message: (name) => `¿Eliminar el tema "${name}"?`,
-    detail: "Esta acción no se puede deshacer. Todos los archivos de este tema se eliminarán del disco.",
   },
 };
 
@@ -155,65 +35,6 @@ function requiredDependency(value, name) {
   if (!value) throw new Error(`registerSettingsIpc requires ${name}`);
   return value;
 }
-
-const UNINSTALL_OFFICIAL_THEME_DIALOG_STRINGS = {
-  en: {
-    uninstall: "Uninstall",
-    cancel: "Cancel",
-    message: (name) => `Uninstall official theme "${name}"?`,
-    detail: (mib) => `This frees about ${mib} MB and cannot be undone. Re-downloading later is not a lossless upgrade: this theme's customizations and Clawd-managed sound overrides will be cleared.`,
-    archiveDetail: (mib) => `The download package is about ${mib} MB; the installed theme may use more disk space. Uninstalling cannot be undone. Re-downloading later is not a lossless upgrade: this theme's customizations and Clawd-managed sound overrides will be cleared.`,
-    unknownDetail: "The installed size is unavailable. Uninstalling cannot be undone. Re-downloading later is not a lossless upgrade: this theme's customizations and Clawd-managed sound overrides will be cleared.",
-  },
-  zh: {
-    uninstall: "卸载",
-    cancel: "取消",
-    message: (name) => `确认卸载官方主题 "${name}"？`,
-    detail: (mib) => `将释放约 ${mib} MB，且不可撤销。以后重新下载不是无损升级：该主题的自定义设置和 Clawd 管理的声音覆盖会被清除。`,
-    archiveDetail: (mib) => `下载包约 ${mib} MB；主题安装后占用的磁盘空间可能更大。卸载不可撤销。以后重新下载不是无损升级：该主题的自定义设置和 Clawd 管理的声音覆盖会被清除。`,
-    unknownDetail: "无法确定已安装主题占用的空间。卸载不可撤销。以后重新下载不是无损升级：该主题的自定义设置和 Clawd 管理的声音覆盖会被清除。",
-  },
-  "zh-TW": {
-    uninstall: "解除安裝",
-    cancel: "取消",
-    message: (name) => `確定要解除安裝官方主題「${name}」？`,
-    detail: (mib) => `將釋放約 ${mib} MB，且無法復原。之後重新下載並非無損升級：此主題的自訂設定與 Clawd 管理的音效覆寫會被清除。`,
-    archiveDetail: (mib) => `下載包約 ${mib} MB；主題安裝後佔用的磁碟空間可能更大。解除安裝後無法復原。之後重新下載並非無損升級：此主題的自訂設定與 Clawd 管理的音效覆寫會被清除。`,
-    unknownDetail: "無法確定已安裝主題佔用的空間。解除安裝後無法復原。之後重新下載並非無損升級：此主題的自訂設定與 Clawd 管理的音效覆寫會被清除。",
-  },
-  ko: {
-    uninstall: "제거",
-    cancel: "취소",
-    message: (name) => `공식 테마 "${name}"을(를) 제거할까요?`,
-    detail: (mib) => `약 ${mib} MB가 확보되며 되돌릴 수 없습니다. 나중에 다시 받는 것은 무손실 업그레이드가 아니며, 이 테마의 사용자 설정과 Clawd가 관리하는 사운드 오버라이드가 지워집니다.`,
-    archiveDetail: (mib) => `다운로드 패키지는 약 ${mib} MB이며 설치된 테마는 더 많은 디스크 공간을 사용할 수 있습니다. 제거는 되돌릴 수 없습니다. 나중에 다시 받는 것은 무손실 업그레이드가 아니며, 이 테마의 사용자 설정과 Clawd가 관리하는 사운드 오버라이드가 지워집니다.`,
-    unknownDetail: "설치된 테마가 사용하는 공간을 확인할 수 없습니다. 제거는 되돌릴 수 없습니다. 나중에 다시 받는 것은 무손실 업그레이드가 아니며, 이 테마의 사용자 설정과 Clawd가 관리하는 사운드 오버라이드가 지워집니다.",
-  },
-  ja: {
-    uninstall: "アンインストール",
-    cancel: "キャンセル",
-    message: (name) => `公式テーマ「${name}」をアンインストールしますか？`,
-    detail: (mib) => `約 ${mib} MB 解放され、元に戻せません。後で再ダウンロードしても無損失アップグレードではなく、このテーマのカスタマイズと Clawd 管理のサウンド上書きは消去されます。`,
-    archiveDetail: (mib) => `ダウンロードパッケージは約 ${mib} MB で、インストール後のテーマはより多くのディスク容量を使用する場合があります。アンインストールは元に戻せません。後で再ダウンロードしても無損失アップグレードではなく、このテーマのカスタマイズと Clawd 管理のサウンド上書きは消去されます。`,
-    unknownDetail: "インストール済みテーマの使用容量を確認できません。アンインストールは元に戻せません。後で再ダウンロードしても無損失アップグレードではなく、このテーマのカスタマイズと Clawd 管理のサウンド上書きは消去されます。",
-  },
-  "pt-BR": {
-    uninstall: "Desinstalar",
-    cancel: "Cancelar",
-    message: (name) => `Desinstalar o tema oficial "${name}"?`,
-    detail: (mib) => `Libera cerca de ${mib} MB e não pode ser desfeito. Baixar de novo depois não é uma atualização sem perdas: as personalizações e os overrides de som gerenciados pelo Clawd deste tema serão apagados.`,
-    archiveDetail: (mib) => `O pacote de download tem cerca de ${mib} MB; o tema instalado pode ocupar mais espaço em disco. A desinstalação não pode ser desfeita. Baixar de novo depois não é uma atualização sem perdas: as personalizações e os overrides de som gerenciados pelo Clawd deste tema serão apagados.`,
-    unknownDetail: "O tamanho instalado não está disponível. A desinstalação não pode ser desfeita. Baixar de novo depois não é uma atualização sem perdas: as personalizações e os overrides de som gerenciados pelo Clawd deste tema serão apagados.",
-  },
-  es: {
-    uninstall: "Desinstalar",
-    cancel: "Cancelar",
-    message: (name) => `¿Desinstalar el tema oficial "${name}"?`,
-    detail: (mib) => `Libera unos ${mib} MB y no se puede deshacer. Volver a descargarlo no es una actualización sin pérdidas: se borrarán las personalizaciones y los reemplazos de sonido gestionados por Clawd de este tema.`,
-    archiveDetail: (mib) => `El paquete de descarga ocupa unos ${mib} MB; el tema instalado puede usar más espacio en disco. La desinstalación no se puede deshacer. Volver a descargarlo no es una actualización sin pérdidas: se borrarán las personalizaciones y los reemplazos de sonido gestionados por Clawd de este tema.`,
-    unknownDetail: "El tamaño instalado no está disponible. La desinstalación no se puede deshacer. Volver a descargarlo no es una actualización sin pérdidas: se borrarán las personalizaciones y los reemplazos de sonido gestionados por Clawd de este tema.",
-  },
-};
 
 function isPlainObject(value) {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -256,12 +77,6 @@ function mapAgentMetadata(agent) {
     name: agent.name,
     eventSource: agent.eventSource,
     capabilities: agent.capabilities || {},
-    // #895: default integrations never earn a "remove this stale hook" prompt —
-    // their parent dirs are not trustworthy evidence (Clawd's own Claude sync
-    // creates ~/.claude). Shipped as an explicit boolean rather than a list the
-    // renderer has to hold, so a missing field reads as "unknown" and the
-    // renderer fails closed instead of proposing a deletion.
-    cleanupSuggestionExempt: CLEANUP_EXEMPT_AGENT_IDS.has(agent.id),
   };
   if (typeof agent.category === "string" && agent.category) {
     metadata.category = agent.category;
@@ -269,36 +84,10 @@ function mapAgentMetadata(agent) {
   return metadata;
 }
 
-function mapCustomApplicationMetadata(application, options = {}) {
-  return {
-    id: application.id,
-    name: application.name,
-    category: application.category || "code",
-    eventSource: "custom-http",
-    custom: true,
-    sourcePath: application.sourcePath,
-    executablePath: application.executablePath,
-    processName: application.processName,
-    stateEndpoint: options.stateEndpoint || "",
-    lastStateEvent: options.lastStateEvent || null,
-    capabilities: {
-      httpHook: true,
-      permissionApproval: false,
-      interactiveBubble: false,
-      notificationHook: true,
-      sessionEnd: true,
-      subagent: false,
-      managedIntegration: false,
-    },
-  };
-}
-
 function registerSettingsIpc(options = {}) {
   const ipcMain = requiredDependency(options.ipcMain, "ipcMain");
   const settingsController = requiredDependency(options.settingsController, "settingsController");
   const themeLoader = requiredDependency(options.themeLoader, "themeLoader");
-  const codexPetMain = requiredDependency(options.codexPetMain, "codexPetMain");
-  const officialThemeMain = options.officialThemeMain || null;
   const dialog = requiredDependency(options.dialog, "dialog");
   const shell = requiredDependency(options.shell, "shell");
   const app = requiredDependency(options.app, "app");
@@ -325,10 +114,6 @@ function registerSettingsIpc(options = {}) {
   const getDoNotDisturb = options.getDoNotDisturb || (() => false);
   const getSoundMuted = options.getSoundMuted || (() => false);
   const getSoundVolume = options.getSoundVolume || (() => 1);
-  const saveFeishuApproverByEmail = requiredDependency(
-    options.saveFeishuApproverByEmail,
-    "saveFeishuApproverByEmail",
-  );
   const previewTextScale = options.previewTextScale
     || (() => ({ status: "error", message: "text scale preview unavailable" }));
   const endTextScalePreview = options.endTextScalePreview
@@ -338,22 +123,6 @@ function registerSettingsIpc(options = {}) {
   const getSizeContext = options.getSizeContext || (() => null);
   const getAllAgents = requiredDependency(options.getAllAgents, "getAllAgents");
   const detectAgentInstallations = options.detectAgentInstallations || defaultDetectAgentInstallations;
-  const readDshNotices = typeof options.readDshNotices === "function" ? options.readDshNotices : defaultReadDshNotices;
-  const acknowledgeDshNotice = typeof options.acknowledgeDshNotice === "function"
-    ? options.acknowledgeDshNotice
-    : defaultAcknowledgeDshNotice;
-  const platform = options.platform || process.platform;
-  // Injectable for tests; production refreshes the Windows registry snapshot.
-  const refreshDshDesktopDiscovery = typeof options.refreshDshDesktopDiscovery === "function"
-    ? options.refreshDshDesktopDiscovery
-    : async () => {
-      const { refreshDshDesktopDiscovery: refresh } = require("../hooks/dsh-install.js");
-      return refresh({});
-    };
-  const refreshWslDetection = typeof options.refreshWslDetection === "function"
-    ? options.refreshWslDetection
-    : require("./agent-installation-detector").refreshWslDetection;
-  const getHookServerPort = options.getHookServerPort || (() => null);
   const getRecentHookEvents = options.getRecentHookEvents || (() => []);
   const getHardwareAccelerationDisabledAtStartup =
     options.getHardwareAccelerationDisabledAtStartup || (() => false);
@@ -366,7 +135,6 @@ function registerSettingsIpc(options = {}) {
   const aboutHeroSvgPath = options.aboutHeroSvgPath
     || path.join(__dirname, "..", "assets", "svg", "clawd-about-hero.svg");
   const disposers = [];
-  let currentFeishuApproverLookup = null;
 
   function handle(channel, listener) {
     ipcMain.handle(channel, listener);
@@ -393,73 +161,6 @@ function registerSettingsIpc(options = {}) {
     return isTrustedSettingsEvent(event)
       ? null
       : { status: "error", message: "untrusted settings sender" };
-  }
-
-  function removeFeishuLookupListeners(operation) {
-    if (!operation || !operation.sender || typeof operation.sender.removeListener !== "function") return;
-    operation.sender.removeListener("destroyed", operation.onDestroyed);
-    operation.sender.removeListener("render-process-gone", operation.onRenderProcessGone);
-  }
-
-  function abortCurrentFeishuApproverLookup(reason, sender = null) {
-    const operation = currentFeishuApproverLookup;
-    if (!operation || (sender && operation.sender !== sender)) return false;
-    if (!operation.controller.signal.aborted) {
-      operation.reason = reason;
-      operation.controller.abort();
-    }
-    return true;
-  }
-
-  function publicFeishuLookupResult(result) {
-    if (result && result.status === "ok") return { status: "ok" };
-    return result && typeof result.code === "string"
-      ? { status: "error", code: result.code }
-      : { status: "error" };
-  }
-
-  async function runFeishuApproverLookup(event, email) {
-    abortCurrentFeishuApproverLookup("superseded");
-    const operation = {
-      sender: event.sender,
-      controller: new AbortController(),
-      reason: "cancelled",
-      onDestroyed: null,
-      onRenderProcessGone: null,
-    };
-    operation.onDestroyed = () => {
-      if (currentFeishuApproverLookup === operation) {
-        abortCurrentFeishuApproverLookup("destroyed", operation.sender);
-      }
-    };
-    operation.onRenderProcessGone = operation.onDestroyed;
-    currentFeishuApproverLookup = operation;
-    if (typeof operation.sender.once === "function") {
-      operation.sender.once("destroyed", operation.onDestroyed);
-      operation.sender.once("render-process-gone", operation.onRenderProcessGone);
-    }
-
-    try {
-      let result;
-      try {
-        result = await saveFeishuApproverByEmail({
-          email,
-          signal: operation.controller.signal,
-        });
-      } catch {
-        result = { status: "error", code: "lookup-failed" };
-      }
-      if (operation.controller.signal.aborted) {
-        return {
-          status: "error",
-          code: operation.reason === "superseded" ? "lookup-superseded" : "lookup-cancelled",
-        };
-      }
-      return publicFeishuLookupResult(result);
-    } finally {
-      removeFeishuLookupListeners(operation);
-      if (currentFeishuApproverLookup === operation) currentFeishuApproverLookup = null;
-    }
   }
 
   handle("settings:get-snapshot", () => settingsController.getSnapshot());
@@ -494,85 +195,6 @@ function registerSettingsIpc(options = {}) {
       return { status: "error", reason: "clear-failed" };
     }
   });
-  // Distinct quota-reporting sources (this machine + WSL / SSH remotes). The
-  // Sessions tab uses it to hide the "merge across machines" switch when it is
-  // a single-machine no-op.
-  handle("settings:get-quota-source-count", () => {
-    try {
-      return typeof options.getQuotaSourceCount === "function" ? options.getQuotaSourceCount() : 0;
-    } catch (_err) {
-      return 0;
-    }
-  });
-  // Which providers the "show beside the pet" list should offer. Driven by the
-  // live snapshot, not by the static provider table, so the list never shows a
-  // checkbox for a provider the user has not connected — the same reasoning
-  // that keeps "merge across machines" hidden on a single-machine setup. An
-  // empty array is the honest failure mode: the settings row hides itself
-  // rather than rendering a list that claims nothing is connected.
-  handle("settings:get-quota-ring-providers", () => {
-    try {
-      return typeof options.getQuotaRingProviders === "function"
-        ? options.getQuotaRingProviders()
-        : [];
-    } catch (_err) {
-      return [];
-    }
-  });
-  // Kimi API keys are accepted only by these trusted Settings-window handlers.
-  // They never transit settings:command, prefs, or a renderer-broadcast
-  // snapshot. Results are deliberately sanitized by kimi-quota-runtime.
-  handle("settings:kimi-quota-status", (event) => {
-    const rejected = rejectUntrustedSettingsEvent(event);
-    if (rejected) return rejected;
-    const runtime = options.kimiQuotaRuntime;
-    return runtime && typeof runtime.getStatus === "function"
-      ? runtime.getStatus()
-      : { status: "error", reason: "runtime-unavailable" };
-  });
-  handle("settings:kimi-quota-connect", async (event, payload) => {
-    const rejected = rejectUntrustedSettingsEvent(event);
-    if (rejected) return rejected;
-    if (!payload || typeof payload !== "object" || typeof payload.apiKey !== "string") {
-      return { status: "error", reason: "invalid-credential-input" };
-    }
-    const runtime = options.kimiQuotaRuntime;
-    return runtime && typeof runtime.connect === "function"
-      ? runtime.connect(payload.apiKey)
-      : { status: "error", reason: "runtime-unavailable" };
-  });
-  handle("settings:kimi-quota-refresh", (event) => {
-    const rejected = rejectUntrustedSettingsEvent(event);
-    if (rejected) return rejected;
-    const runtime = options.kimiQuotaRuntime;
-    return runtime && typeof runtime.refresh === "function"
-      ? runtime.refresh()
-      : { status: "error", reason: "runtime-unavailable" };
-  });
-  handle("settings:kimi-quota-reconnect", (event) => {
-    const rejected = rejectUntrustedSettingsEvent(event);
-    if (rejected) return rejected;
-    const runtime = options.kimiQuotaRuntime;
-    return runtime && typeof runtime.reconnect === "function"
-      ? runtime.reconnect()
-      : { status: "error", reason: "runtime-unavailable" };
-  });
-  handle("settings:kimi-quota-disconnect", (event) => {
-    const rejected = rejectUntrustedSettingsEvent(event);
-    if (rejected) return rejected;
-    const runtime = options.kimiQuotaRuntime;
-    return runtime && typeof runtime.disconnect === "function"
-      ? runtime.disconnect()
-      : { status: "error", reason: "runtime-unavailable" };
-  });
-  handle("settings:kimi-quota-forget", (event) => {
-    const rejected = rejectUntrustedSettingsEvent(event);
-    if (rejected) return rejected;
-    const runtime = options.kimiQuotaRuntime;
-    return runtime && typeof runtime.forget === "function"
-      ? runtime.forget()
-      : { status: "error", reason: "runtime-unavailable" };
-  });
   handle("settings:get-pet-tint-options", () => listPetTintOptions());
   handle("settings:get-pet-accessory-options", () => listPetAccessoryOptions());
   handle("settings:get-pet-mouth-accessory-options", () => listPetMouthAccessoryOptions());
@@ -596,28 +218,6 @@ function registerSettingsIpc(options = {}) {
   handle("settings:update", (_event, payload) => {
     if (!payload || typeof payload !== "object") {
       return { status: "error", message: "settings:update payload must be { key, value }" };
-    }
-    if (payload.key === "tgMigration") {
-      return { status: "error", message: "tgMigration is internal; use telegramMigration.dispatch" };
-    }
-    // Permission automation is command-only: the command enforces confirmed
-    // transitions for both automatic modes at the data layer.
-    if (
-      payload.key === "permissionAutomationMode"
-      || payload.key === "permissionAutomationAutoToolsWarningDismissed"
-      || payload.key === "permissionAutomationUnattendedWarningDismissed"
-      || payload.key === "autoApproveAllPermissions"
-    ) {
-      return {
-        status: "error",
-        message: "permission automation is gated; use the setPermissionAutomationMode command",
-      };
-    }
-    if (payload.key === "mobilePermissionPreviewEnabled") {
-      return {
-        status: "error",
-        message: "mobile permission preview is gated; use the setMobilePermissionPreviewEnabled command",
-      };
     }
     return settingsController.applyUpdate(payload.key, payload.value);
   });
@@ -657,23 +257,6 @@ function registerSettingsIpc(options = {}) {
   handle("settings:command", async (event, payload) => {
     if (!payload || typeof payload !== "object") {
       return { status: "error", message: "settings:command payload must be { action, payload }" };
-    }
-    if (payload.action === "feishuApproval.saveApproverByEmail") {
-      const rejected = rejectUntrustedSettingsEvent(event);
-      if (rejected) return rejected;
-      const email = payload.payload && typeof payload.payload === "object"
-        ? payload.payload.email
-        : undefined;
-      return runFeishuApproverLookup(event, email);
-    }
-    if (payload.action === "feishuApproval.cancelApproverLookup") {
-      const rejected = rejectUntrustedSettingsEvent(event);
-      if (rejected) return rejected;
-      abortCurrentFeishuApproverLookup("cancelled", event.sender);
-      return { status: "ok" };
-    }
-    if (INTERNAL_SETTINGS_COMMANDS.has(payload.action)) {
-      return { status: "error", message: `settings command "${payload.action}" is internal` };
     }
     return settingsController.applyCommand(payload.action, payload.payload);
   });
@@ -791,135 +374,17 @@ function registerSettingsIpc(options = {}) {
           && isPlainObject(activeTheme._capabilities)
           ? activeTheme._capabilities
           : null;
-        const decorated = codexPetMain.decorateThemeMetadata({
+        return {
           ...theme,
           active,
           ...(runtimeCapabilities
             ? { capabilities: { ...(theme.capabilities || {}), ...runtimeCapabilities } }
             : {}),
-        });
-        return officialThemeMain
-          ? officialThemeMain.decorateThemeMetadata(decorated)
-          : decorated;
+        };
       });
     } catch (err) {
-      console.warn("Clawd: settings:list-themes failed:", err && err.message);
+      console.warn("omp-pet: settings:list-themes failed:", err && err.message);
       return [];
-    }
-  });
-
-  // Official theme catalog + installed-state list. List-level `catalogStatus`
-  // (offline/invalid) is separate from each card's per-theme state.
-  handle("settings:list-official-themes", async (event) => {
-    const rejected = rejectUntrustedSettingsEvent(event);
-    if (rejected) return rejected;
-    if (!officialThemeMain) {
-      return {
-        status: "error",
-        catalogStatus: "invalid",
-        catalogVersion: null,
-        checkedAt: null,
-        themes: [],
-        message: "official themes are unavailable",
-      };
-    }
-    try {
-      await officialThemeMain.refreshCatalog();
-      return await officialThemeMain.listOfficialThemes({ catalogReady: true });
-    } catch (err) {
-      return {
-        status: "error",
-        catalogStatus: "offline",
-        catalogVersion: null,
-        checkedAt: null,
-        themes: [],
-        message: (err && err.message) || String(err),
-      };
-    }
-  });
-
-  handle("settings:install-official-theme", async (event, themeId) => {
-    const rejected = rejectUntrustedSettingsEvent(event);
-    if (rejected) return rejected;
-    if (!officialThemeMain) {
-      return { status: "error", message: "official themes are unavailable" };
-    }
-    if (typeof themeId !== "string" || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(themeId)) {
-      return { status: "error", message: "invalid official theme id" };
-    }
-    return officialThemeMain.installTheme(themeId);
-  });
-
-  handle("settings:cancel-official-theme-install", (event) => {
-    const rejected = rejectUntrustedSettingsEvent(event);
-    if (rejected) return rejected;
-    if (!officialThemeMain) {
-      return { status: "error", message: "official themes are unavailable" };
-    }
-    return officialThemeMain.cancelInstall();
-  });
-
-  handle("settings:uninstall-official-theme", async (event, themeId) => {
-    const rejected = rejectUntrustedSettingsEvent(event);
-    if (rejected) return rejected;
-    if (typeof themeId !== "string" || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(themeId)) {
-      return { status: "error", message: "invalid official theme id" };
-    }
-    return settingsController.applyCommand("officialTheme.uninstall", { themeId });
-  });
-
-  handle("settings:confirm-uninstall-official-theme", async (event, themeId) => {
-    const rejected = rejectUntrustedSettingsEvent(event);
-    if (rejected) return rejected;
-    if (typeof themeId !== "string" || !themeId) return { confirmed: false };
-    let displayName = themeId;
-    let bytes = null;
-    let byteKind = null;
-    if (officialThemeMain) {
-      try {
-        const listing = await officialThemeMain.listOfficialThemes();
-        const card = (listing.themes || []).find((entry) => entry && entry.id === themeId);
-        if (card) {
-          const localize = (value) => {
-            if (typeof value === "string" && value) return value;
-            if (isPlainObject(value)) {
-              const lang = getLang();
-              return value[lang] || value.en || value.zh || Object.values(value)[0] || themeId;
-            }
-            return themeId;
-          };
-          displayName = localize(card.officialThemeName) || localize(card.name) || themeId;
-          if (Number.isFinite(card.officialThemeUnpackedBytes) && card.officialThemeUnpackedBytes > 0) {
-            bytes = card.officialThemeUnpackedBytes;
-            byteKind = "unpacked";
-          } else if (Number.isFinite(card.officialThemeBytes) && card.officialThemeBytes > 0) {
-            bytes = card.officialThemeBytes;
-            byteKind = "archive";
-          }
-        }
-      } catch {}
-    }
-    const mib = bytes ? Math.max(1, Math.round(bytes / (1024 * 1024))) : null;
-    const lang = getLang();
-    const strings = UNINSTALL_OFFICIAL_THEME_DIALOG_STRINGS[lang] || UNINSTALL_OFFICIAL_THEME_DIALOG_STRINGS.en;
-    try {
-      const { response } = await dialog.showMessageBox(getDialogParent(event), {
-        type: "warning",
-        buttons: [strings.uninstall, strings.cancel],
-        defaultId: 1,
-        cancelId: 1,
-        message: strings.message(displayName),
-        detail: byteKind === "unpacked"
-          ? strings.detail(mib)
-          : byteKind === "archive"
-            ? strings.archiveDetail(mib)
-            : strings.unknownDetail,
-        noLink: true,
-      });
-      return { confirmed: response === 0 };
-    } catch (err) {
-      console.warn("Clawd: confirm-uninstall-official-theme dialog failed:", err && err.message);
-      return { confirmed: false };
     }
   });
 
@@ -932,39 +397,6 @@ function registerSettingsIpc(options = {}) {
     if (openResult) return { status: "error", message: openResult };
     return { status: "ok", path: dir };
   });
-
-  handle("settings:import-user-theme-zip", async (event) => {
-    let result;
-    try {
-      result = await dialog.showOpenDialog(getDialogParent(event), {
-        properties: ["openFile"],
-        filters: [{ name: "Clawd theme zip", extensions: ["zip"] }],
-      });
-    } catch (err) {
-      return { status: "error", message: `theme zip picker failed: ${err && err.message}` };
-    }
-    if (!result || result.canceled || !result.filePaths || !result.filePaths[0]) {
-      return { status: "cancel" };
-    }
-
-    try {
-      const userThemesDir = typeof themeLoader.ensureUserThemesDir === "function"
-        ? themeLoader.ensureUserThemesDir()
-        : null;
-      return settingsThemeImporter.importUserThemeZip(result.filePaths[0], {
-        fs,
-        path,
-        userThemesDir,
-      });
-    } catch (err) {
-      return { status: "error", message: (err && err.message) || String(err) };
-    }
-  });
-
-  handle("settings:refresh-codex-pets", () => codexPetMain.refreshFromSettings());
-  handle("settings:open-codex-pets-dir", () => codexPetMain.openCodexPetsDir());
-  handle("settings:import-codex-pet-zip", (event) => codexPetMain.importCodexPetZip(event));
-  handle("settings:remove-codex-pet", (_event, themeId) => codexPetMain.removeCodexPet(themeId));
 
   handle("settings:confirm-remove-theme", async (event, themeId) => {
     if (typeof themeId !== "string" || !themeId) return { confirmed: false };
@@ -984,164 +416,43 @@ function registerSettingsIpc(options = {}) {
       });
       return { confirmed: response === 0 };
     } catch (err) {
-      console.warn("Clawd: confirm-remove-theme dialog failed:", err && err.message);
+      console.warn("omp-pet: confirm-remove-theme dialog failed:", err && err.message);
       return { confirmed: false };
     }
   });
 
   handle("settings:list-agents", () => {
     try {
-      const snapshot = settingsController.getSnapshot();
-      const custom = Array.isArray(snapshot.customApplications)
-        ? snapshot.customApplications.map((application) => {
-          const port = getHookServerPort();
-          const stateEvents = getRecentHookEvents({ agentId: application.id })
-            .filter((event) => event && event.route === "state" && event.outcome === "accepted");
-          const lastStateEvent = stateEvents.length > 0 ? stateEvents[stateEvents.length - 1] : null;
-          return mapCustomApplicationMetadata(application, {
-            stateEndpoint: Number.isInteger(port) ? `http://127.0.0.1:${port}/state` : "",
-            lastStateEvent: lastStateEvent
-              ? { timestamp: lastStateEvent.timestamp, eventType: lastStateEvent.eventType }
-              : null,
-          });
-        })
-        : [];
-      return [...getAllAgents().map(mapAgentMetadata), ...custom];
+      return getAllAgents().map(mapAgentMetadata);
     } catch (err) {
-      console.warn("Clawd: settings:list-agents failed:", err && err.message);
+      console.warn("omp-pet: settings:list-agents failed:", err && err.message);
       return [];
     }
   });
 
-  handle("settings:pick-agent-discovery-path", async (event, payload) => {
-    const kind = payload && payload.kind;
-    if (kind !== "file" && kind !== "directory") {
-      return { status: "error", message: "pickAgentDiscoveryPath.kind must be file or directory" };
-    }
-    const lang = getLang();
-    const strings = AGENT_DISCOVERY_DIALOG_STRINGS[lang] || AGENT_DISCOVERY_DIALOG_STRINGS.en;
+  handle("settings:recent-agent-activity", (_event, agentId) => {
+    if (typeof agentId !== "string" || !agentId) return null;
     try {
-      const result = await dialog.showOpenDialog(getDialogParent(event), {
-        title: strings[kind],
-        properties: [kind === "file" ? "openFile" : "openDirectory"],
-      });
-      if (!result || result.canceled || !Array.isArray(result.filePaths) || !result.filePaths[0]) {
-        return { status: "cancel" };
-      }
-      return { status: "ok", path: result.filePaths[0] };
-    } catch (err) {
-      return { status: "error", message: `agent discovery path picker failed: ${err && err.message}` };
+      const accepted = getRecentHookEvents({ agentId })
+        .filter((event) => event && event.route === "state" && event.outcome === "accepted");
+      const last = accepted.length > 0 ? accepted[accepted.length - 1] : null;
+      return last ? { timestamp: last.timestamp, eventType: last.eventType } : null;
+    } catch {
+      return null;
     }
   });
 
-  // Claude config folders as Settings shows them: the primary folder Clawd
-  // resolves itself first, then the extra folders from prefs.
-  handle("settings:claude-config-dirs", () => {
+  handle("settings:detect-agent-installations", async () => {
     try {
-      const snapshot = settingsController.getSnapshot() || {};
-      const claude = snapshot.agents && snapshot.agents["claude-code"];
-      const entries = claude && Array.isArray(claude.configDirs) ? claude.configDirs : [];
-      return {
-        status: "ok",
-        dirs: effectiveClaudeConfigDirs(entries).map((entry) => ({
-          ...entry,
-          exists: fs.existsSync(entry.dir),
-        })),
-      };
-    } catch (err) {
-      return { status: "error", message: `claude config dirs failed: ${err && err.message}` };
-    }
-  });
-
-  handle("settings:pick-claude-config-dir", async (event) => {
-    const title = CLAUDE_CONFIG_DIR_DIALOG_STRINGS[getLang()] || CLAUDE_CONFIG_DIR_DIALOG_STRINGS.en;
-    try {
-      const result = await dialog.showOpenDialog(getDialogParent(event), {
-        title,
-        // Config folders are usually dot-folders (~/.claude-work).
-        properties: ["openDirectory", "showHiddenFiles", "createDirectory"],
-      });
-      if (!result || result.canceled || !Array.isArray(result.filePaths) || !result.filePaths[0]) {
-        return { status: "cancel" };
-      }
-      return { status: "ok", path: result.filePaths[0] };
-    } catch (err) {
-      return { status: "error", message: `claude config folder picker failed: ${err && err.message}` };
-    }
-  });
-
-  handle("settings:detect-agent-installations", async (_ev, opts) => {
-    try {
-      const options = opts && typeof opts === "object" ? opts : {};
       const detectorOptions = { fs, path, now, snapshot: settingsController.getSnapshot() };
-      if (options.refreshWsl) {
-        await refreshWslDetection({ ...detectorOptions, skipDefaultIntegrations: false });
-        // The manual Scan waits for the Windows registry too, so the report it
-        // returns already sees the desktop app. Opening the page without a scan
-        // skips this to avoid a PowerShell on every visit.
-        if (platform === "win32") {
-          try {
-            await refreshDshDesktopDiscovery();
-          } catch {}
-        }
-        return detectAgentInstallations(detectorOptions);
-      }
       return detectAgentInstallations(detectorOptions);
     } catch (err) {
-      console.warn("Clawd: settings:detect-agent-installations failed:", err && err.message);
+      console.warn("omp-pet: settings:detect-agent-installations failed:", err && err.message);
       return {
         checkedAt: now(),
         agents: [],
-        customAgents: [],
-        customTools: [],
-        skippedAgentIds: [],
-        wslAgents: [],
-        wslDistros: [],
-        // Keep the manual Scan entry point alive even on a hard failure.
-        wslSupported: process.platform === "win32",
         error: err && err.message ? err.message : String(err),
       };
-    }
-  });
-
-  handle("settings:dsh-notices", async () => {
-    try {
-      const state = await readDshNotices({});
-      if (state && state.errors) {
-        const broken = ["web", "desktop"].filter((profile) => state.errors[profile]);
-        if (broken.length) {
-          console.warn(`Clawd: DeepSeek Harness notices unreadable for ${broken.join(", ")}`);
-        }
-      }
-      const notices = [];
-      for (const profile of ["web", "desktop"]) {
-        for (const notice of (state && state[profile]) || []) {
-          const view = toDshNoticeView(notice);
-          if (view) notices.push(view);
-        }
-      }
-      notices.sort(compareDshNoticeViews);
-      return { notices };
-    } catch (err) {
-      console.warn("Clawd: settings:dsh-notices failed:", err && err.message);
-      return { notices: [] };
-    }
-  });
-
-  handle("settings:dsh-notice-ack", async (_ev, payload) => {
-    const request = payload && typeof payload === "object" ? payload : {};
-    if (request.profile !== "web" && request.profile !== "desktop") {
-      return { status: "error", message: "invalid DeepSeek Harness notice profile" };
-    }
-    if (typeof request.id !== "string" || request.id.length < 1 || request.id.length > 200) {
-      return { status: "error", message: "invalid DeepSeek Harness notice id" };
-    }
-    try {
-      const result = await acknowledgeDshNotice({}, { profile: request.profile, id: request.id });
-      if (result && result.error) return { status: "error", message: result.error };
-      return { status: "ok", found: !!(result && result.found === true) };
-    } catch (err) {
-      return { status: "error", message: err && err.message ? err.message : String(err) };
     }
   });
 
@@ -1150,7 +461,7 @@ function registerSettingsIpc(options = {}) {
     try {
       heroSvgContent = fs.readFileSync(aboutHeroSvgPath, "utf8");
     } catch (err) {
-      console.warn("Clawd: failed to read about hero SVG:", err && err.message);
+      console.warn("omp-pet: failed to read about hero SVG:", err && err.message);
     }
     return {
       version: app.getVersion(),
@@ -1191,55 +502,8 @@ function registerSettingsIpc(options = {}) {
     }
   });
 
-  handle("settings:mobile-connection-info", async () => {
-    try {
-      const lanWsServer = options.getLanWsServer ? options.getLanWsServer() : null;
-      if (!lanWsServer) return { status: "error", message: "LAN bridge not available" };
-      const info = lanWsServer.getConnectionInfo();
-      if (!Number.isInteger(info.port) || info.port <= 0 || typeof info.lanIp !== "string" || !info.lanIp) {
-        return { status: "starting", message: "LAN bridge is starting" };
-      }
-      return { status: "ok", port: info.port, lanIp: info.lanIp,
-        pairUrl: info.pairUrl, pairCode: info.pairCode, pairExpiresAt: info.pairExpiresAt,
-        pairQrSvg: info.pairQrSvg };
-    } catch (err) {
-      return { status: "error", message: (err && err.message) || String(err) };
-    }
-  });
-
-  handle("settings:refresh-mobile-pair-code", async () => {
-    return settingsController.applyCommand("mobilePreview.refreshPairCode", {});
-  });
-
-  handle("settings:mobile-devices", async () => {
-    try {
-      const lanWsServer = options.getLanWsServer ? options.getLanWsServer() : null;
-      if (!lanWsServer) return { status: "error", message: "LAN bridge not available" };
-      return {
-        status: "ok",
-        devices: lanWsServer.listDevices(),
-        legacyActive: lanWsServer.isLegacyActive(),
-      };
-    } catch (err) {
-      return { status: "error", message: (err && err.message) || String(err) };
-    }
-  });
-
-  handle("settings:revoke-mobile-device", async (_event, id) => {
-    return settingsController.applyCommand("mobilePreview.revokeDevice", { id });
-  });
-
-  handle("settings:revoke-mobile-legacy", async () => {
-    return settingsController.applyCommand("mobilePreview.revokeLegacy", {});
-  });
-
-  handle("settings:reset-mobile-access", async () => {
-    return settingsController.applyCommand("mobilePreview.resetAccess", {});
-  });
-
   return {
     dispose() {
-      abortCurrentFeishuApproverLookup("destroyed");
       while (disposers.length) {
         const dispose = disposers.pop();
         try { dispose(); } catch {}

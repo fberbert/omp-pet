@@ -92,117 +92,6 @@ module.exports = function initMenu(ctx) {
     };
   }
 
-  function getPermissionAutomationMode() {
-    const mode = ctx.permissionAutomationMode;
-    return mode === "auto-tools" || mode === "unattended" ? mode : "off";
-  }
-
-  function permissionAutomationModeLabel(mode) {
-    if (mode === "auto-tools") return t("permissionAutomationAutoTools");
-    if (mode === "unattended") return t("permissionAutomationUnattended");
-    return t("permissionAutomationOff");
-  }
-
-  function isPermissionAutomationWarningDismissed(mode) {
-    return typeof ctx.isPermissionAutomationWarningDismissed === "function"
-      && ctx.isPermissionAutomationWarningDismissed(mode) === true;
-  }
-
-  function reportPermissionAutomationFailure(reason) {
-    const message = reason && reason.message
-      ? reason.message
-      : (typeof reason === "string" ? reason : "Unknown error");
-    console.warn("Clawd: permission automation mode change failed:", message);
-    try {
-      return Promise.resolve(ctx.showPermissionAutomationError({
-        lang: ctx.lang,
-        title: t("menuPermissionAutomation"),
-        detail: message,
-        dismissLabel: t("dismiss"),
-      })).catch((err) => {
-        console.warn("Clawd: permission automation error window failed:", err && err.message);
-      });
-    } catch (err) {
-      console.warn("Clawd: permission automation error window failed:", err && err.message);
-      return Promise.resolve();
-    }
-  }
-
-  function applyPermissionAutomationMode(mode, options) {
-    return Promise.resolve()
-      .then(() => ctx.setPermissionAutomationMode(mode, options))
-      .then((result) => {
-        if (result && result.status === "error") {
-          return reportPermissionAutomationFailure(result);
-        }
-        return result;
-      })
-      .catch((err) => reportPermissionAutomationFailure(err));
-  }
-
-  // Three explicit radio choices avoid hiding a materially different trust
-  // boundary behind one checkbox. Both automatic modes require confirmation;
-  // off is immediate.
-  function buildPermissionAutomationMenuItem() {
-    const current = getPermissionAutomationMode();
-    const options = ["off", "auto-tools", "unattended"];
-    const setMode = (mode) => {
-      if (mode === current) return;
-      if (mode === "off") {
-        applyPermissionAutomationMode("off", { confirmed: false })
-          .finally(() => rebuildAllMenus());
-        return;
-      }
-      const unattended = mode === "unattended";
-      if (isPermissionAutomationWarningDismissed(mode)) {
-        applyPermissionAutomationMode(mode, { confirmed: false })
-          .finally(() => rebuildAllMenus());
-        return;
-      }
-      Promise.resolve(
-        ctx.confirmPermissionAutomation({
-          mode,
-          lang: ctx.lang,
-          title: t(unattended
-            ? "permissionAutomationUnattendedConfirmTitle"
-            : "permissionAutomationAutoToolsConfirmTitle"),
-          detail: t(unattended
-            ? "permissionAutomationUnattendedConfirmDetail"
-            : "permissionAutomationAutoToolsConfirmDetail"),
-          checkboxLabel: t(unattended
-            ? "permissionAutomationUnattendedDontShowAgain"
-            : "permissionAutomationAutoToolsDontShowAgain"),
-          confirmLabel: t(unattended
-            ? "permissionAutomationEnableUnattended"
-            : "permissionAutomationEnableAutoTools"),
-          cancelLabel: t("permissionAutomationCancel"),
-        })
-      ).then((res) => {
-        if (res && res.confirmed === true) {
-          return applyPermissionAutomationMode(mode, {
-            confirmed: true,
-            suppressFutureConfirmation: res.suppressFutureConfirmation === true,
-          });
-        }
-        return undefined;
-      }).catch((err) => {
-        return reportPermissionAutomationFailure(err);
-      }).finally(() => {
-        rebuildAllMenus();
-      });
-    };
-
-    return {
-      label: `${t("menuPermissionAutomation")}: ${permissionAutomationModeLabel(current)}`,
-      submenu: options.map((mode) => ({
-        label: permissionAutomationModeLabel(mode),
-        type: "radio",
-        checked: current === mode,
-        click: () => setMode(mode),
-      })),
-    };
-  }
-
   function buildBringToPrimaryDisplayMenuItem() {
     return {
       label: t("bringPetToPrimaryDisplay"),
@@ -248,8 +137,8 @@ module.exports = function initMenu(ctx) {
 
     // Same grouping discipline as the context menu (see joinGroups), adapted
     // for the tray's larger item set: state / noise / work / system / app /
-    // quit. Other settings (language, theme, bubble follow, start-with-Claude,
-    // updates, etc.) live only in the Settings panel / About tab.
+    // quit. Other settings (language, theme, etc.) live only in the Settings
+    // panel.
     const stateGroup = [
       {
         label: ctx.doNotDisturb ? t("wake") : t("sleep"),
@@ -258,14 +147,8 @@ module.exports = function initMenu(ctx) {
       buildMiniModeMenuItem(),
     ];
 
-    // Quick noise toggles (bubbles + sound) kept together.
+    // Quick noise toggle.
     const noiseGroup = [
-      {
-        label: t("hideBubbles"),
-        type: "checkbox",
-        checked: ctx.hideBubbles,
-        click: (menuItem) => { ctx.hideBubbles = menuItem.checked; },
-      },
       {
         label: t("soundEffects"),
         type: "checkbox",
@@ -274,8 +157,6 @@ module.exports = function initMenu(ctx) {
       },
     ];
 
-    // Dashboard + the danger auto-approve toggle (danger last, as in the
-    // context menu).
     const workGroup = [
       {
         label: t("openDashboard"),
@@ -283,7 +164,6 @@ module.exports = function initMenu(ctx) {
           if (typeof ctx.openDashboard === "function") ctx.openDashboard();
         },
       },
-      buildPermissionAutomationMenuItem(),
     ];
 
     // OS-integration / placement group: bring-to-primary, mac dock/menu-bar,
@@ -548,9 +428,7 @@ module.exports = function initMenu(ctx) {
   function buildContextMenu() {
     // Grouped as state / work / display / app / quit and joined with a single
     // separator between non-empty groups (see joinGroups). This replaced a flat
-    // list that wrapped almost every item in its own separator, and it moves the
-    // danger auto-approve toggle into the work group instead of leaving it as a
-    // prominent top-level entry.
+    // list that wrapped almost every item in its own separator.
     const stateGroup = [
       { ...buildMiniModeMenuItem() },
       {
@@ -570,27 +448,6 @@ module.exports = function initMenu(ctx) {
         label: t("openRecap"),
         click: () => ctx.openSettingsWindow({ tab: "recap" }),
       },
-      {
-        label: t("newSession"),
-        submenu: [
-          {
-            label: t("newSessionSelectFolder"),
-            click: () => {
-              if (typeof ctx.newSessionWithFolder === "function") ctx.newSessionWithFolder(t);
-            },
-          },
-          {
-            label: t("newSessionHomeDir"),
-            click: () => {
-              if (typeof ctx.newSessionInCurrentDir === "function") ctx.newSessionInCurrentDir(t);
-            },
-          },
-        ],
-      },
-      // Danger auto-approve sits at the tail of the work group: it governs how
-      // agent permission requests are handled, and keeping it here (rather than
-      // near the top) makes it harder to hit by accident.
-      buildPermissionAutomationMenuItem(),
     ];
 
     // Display group: just the multi-display "send to display" entry. The mac

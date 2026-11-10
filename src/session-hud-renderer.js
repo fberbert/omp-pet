@@ -1,7 +1,6 @@
 "use strict";
 
 const { canOfferLocalFolder, focusUnavailableReasonKey } = globalThis.ClawdSessionFocusUnavailable;
-const { taggedFallbackTag } = globalThis.ClawdSessionHudTaggedFallback;
 
 const HUD_MAX_EXPANDED_ROWS = 3;
 const HUD_MAX_EXPANDED_ROWS_LABELS = 5;
@@ -9,7 +8,7 @@ const HUD_TITLE_MAX_UNITS = 15;
 const RECENT_DONE_UNREAD_MS = 60 * 1000;
 const SESSION_ACTION_FEEDBACK_MS = 4000;
 
-let snapshot = { sessions: [], orderedIds: [], hudTotalNonIdle: 0, hudLastTitle: null, hudShowStateLabels: true, hudShowElapsed: true, hudShowContextUsage: true, hudShowQuota: true, hudPinned: false, accountQuota: [] };
+let snapshot = { sessions: [], orderedIds: [], hudTotalNonIdle: 0, hudLastTitle: null, hudShowStateLabels: true, hudShowElapsed: true, hudPinned: false };
 let i18nPayload = { lang: "en", translations: {} };
 
 const unreadSessions = new Set();
@@ -46,19 +45,6 @@ function formatElapsed(ms) {
   return t("sessionHrAgo").replace("{n}", hr);
 }
 
-function formatTokenCount(value) {
-  const n = Number(value);
-  if (!Number.isFinite(n) || n < 0) return "";
-  if (n >= 1000000) {
-    const formatted = (n / 1000000).toFixed(n >= 10000000 ? 0 : 1);
-    return `${formatted.replace(/\.0$/, "")}m`;
-  }
-  if (n >= 1000) {
-    const formatted = (n / 1000).toFixed(n >= 10000 ? 0 : 1);
-    return `${formatted.replace(/\.0$/, "")}k`;
-  }
-  return String(Math.round(n));
-}
 
 function titleFor(session) {
   return session.displayTitle || session.sessionTitle || session.id || "";
@@ -166,32 +152,6 @@ function stateChipInfo(session) {
   return null;
 }
 
-function usageChipInfo(session) {
-  if (snapshot.hudShowContextUsage === false) return null;
-  const usage = session && session.contextUsage;
-  if (!usage || !Number.isFinite(Number(usage.used))) return null;
-  const usedLabel = formatTokenCount(usage.used);
-  const percentKnown = Number.isFinite(Number(usage.percent));
-  if (percentKnown) {
-    const percent = Math.max(0, Math.min(100, Math.round(Number(usage.percent))));
-    const hasLimit = Number.isFinite(Number(usage.limit));
-    return {
-      label: `${percent}%`,
-      cls: percent >= 90 ? "usage-hot" : (percent >= 75 ? "usage-warm" : "usage-neutral"),
-      title: hasLimit
-        ? t("sessionHudContextUsageTooltip")
-          .replace("{used}", usedLabel)
-          .replace("{limit}", formatTokenCount(usage.limit))
-          .replace("{percent}", percent)
-        : t("sessionHudContextUsageTooltipUnknownLimit").replace("{used}", usedLabel),
-    };
-  }
-  return {
-    label: usedLabel,
-    cls: "usage-neutral",
-    title: t("sessionHudContextUsageTooltipUnknownLimit").replace("{used}", usedLabel),
-  };
-}
 
 const BELL_SVG = `<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>`;
 const FOCUS_UNAVAILABLE_SVG = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4l16 16"/><path d="M9.5 5h5"/><path d="M7 9h10"/><path d="M5 14h9"/><path d="M12 19h5"/></svg>`;
@@ -303,26 +263,7 @@ function createRowForSession(session, now) {
   const fullTitle = titleFor(session);
   const shortTitle = shortenHudTitle(fullTitle);
   title.className = feedbackText ? "title session-inline-feedback" : "title";
-  const fallbackTag = !feedbackText && taggedFallbackTag(session);
-  if (fallbackTag) {
-    // Reserve the entire separator/tag, yielding project text and elapsed time
-    // first when the compact HUD cannot fit every secondary field.
-    title.classList.add("title-tagged-fallback");
-    left.classList.add("left-tagged-fallback");
-    row.classList.add("row-tagged-fallback");
-    const suffix = ` · ${fallbackTag}`;
-    const label = document.createElement("span");
-    label.className = "title-fallback-label";
-    label.textContent = fullTitle.slice(0, -suffix.length);
-    const tag = document.createElement("span");
-    tag.className = "title-fallback-tag";
-    tag.textContent = suffix;
-    title.appendChild(label);
-    title.appendChild(tag);
-    title.title = fullTitle;
-  } else {
-    title.textContent = feedbackText || shortTitle;
-  }
+  title.textContent = feedbackText || shortTitle;
   if (feedbackText) {
     title.title = feedbackText;
     title.setAttribute("aria-live", "polite");
@@ -410,16 +351,6 @@ function createRowForSession(session, now) {
     hasRightContent = true;
   }
 
-  const usageInfo = feedbackText ? null : usageChipInfo(session);
-  if (usageInfo && usageInfo.label) {
-    const chip = document.createElement("span");
-    chip.className = `usage-chip ${usageInfo.cls}`;
-    chip.textContent = usageInfo.label;
-    chip.title = usageInfo.title;
-    right.appendChild(chip);
-    hasRightContent = true;
-  }
-
   if (showElapsed && !feedbackText) {
     const updatedAt = Number(session.updatedAt) || now;
     const elapsed = document.createElement("span");
@@ -432,33 +363,7 @@ function createRowForSession(session, now) {
 
   row.appendChild(left);
   if (hasRightContent) {
-    if (fallbackTag) {
-      // The elapsed column contributes zero to the grid's intrinsic floor;
-      // mandatory chips retain their complete width while time can ellipsize.
-      right.classList.add("right-tagged-fallback");
-      right.style.gridTemplateColumns = Array.from(right.children, (child) =>
-        child.className === "elapsed" ? "minmax(0, 1fr)" : "max-content").join(" ");
-    }
     row.appendChild(right);
-  }
-
-  if (!feedbackText && session.planProgress) {
-    const plan = session.planProgress;
-    const progressText = t("codexPlanProgress")
-      .replace("{completed}", plan.completed)
-      .replace("{total}", plan.total)
-      .replace("{percent}", plan.percent);
-    // An absolute 2px overlay uses no horizontal flex space, including at
-    // 160% HUD scale. The full steps/percentage stay available on hover.
-    const track = document.createElement("div");
-    track.className = "plan-progress-track";
-    track.setAttribute("aria-label", progressText);
-    const fill = document.createElement("div");
-    fill.className = "plan-progress-fill";
-    fill.style.width = String(Math.max(0, Math.min(100, plan.percent))) + "%";
-    track.appendChild(fill);
-    row.appendChild(track);
-    row.title = row.title ? row.title + " · " + progressText : progressText;
   }
 
   row.addEventListener("click", () => {
@@ -468,14 +373,6 @@ function createRowForSession(session, now) {
       window.sessionHudAPI.focusSession(session.id);
     } else {
       showSessionFeedback(session.id, focusUnavailableTooltip(session));
-    }
-    // Fire-and-forget: the row click's primary intent is focus / unread
-    // dismissal. ack failure shouldn't block the UI — the next snapshot
-    // will reconcile the lifecycle flag.
-    if (window.sessionHudAPI && typeof window.sessionHudAPI.ackCompletion === "function") {
-      Promise.resolve(window.sessionHudAPI.ackCompletion(session.id)).catch((err) => {
-        console.warn("ack completion threw:", err);
-      });
     }
   });
 

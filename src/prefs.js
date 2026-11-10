@@ -3,7 +3,7 @@
 // ── Preferences (pure data layer) ──
 //
 // This module is the canonical schema definition + load/save/migrate/validate
-// for `clawd-prefs.json`. It has zero dependencies on Electron, the store, the
+// for `omp-pet-prefs.json`. It has zero dependencies on Electron, the store, the
 // controller, or anything stateful — it deals in plain snapshots.
 //
 // `load(prefsPath)`  — read file, migrate to current version, validate, return snapshot
@@ -12,7 +12,7 @@
 // `validate(snapshot)` — coerces an arbitrary object into a valid snapshot, dropping bad fields
 // `migrate(raw)` — applies version-to-version migrations, returns the upgraded raw snapshot
 //
-// Bad-file handling: readable invalid contents → backup as `clawd-prefs.json.bak` → return defaults.
+// Bad-file handling: readable invalid contents → backup as `omp-pet-prefs.json.bak` → return defaults.
 //   Unreadable file (EACCES/EIO/...) → defaults in memory, but `locked` so save() will not
 //   overwrite a file we were never able to read.
 // Future-version handling: read succeeds but version > current → warn + refuse to overwrite
@@ -20,45 +20,14 @@
 
 const fs = require("fs");
 const path = require("path");
-const {
-  isCustomApplicationNamespace,
-  normalizeCustomApplications,
-} = require("./custom-applications");
 const { isPlainObject } = require("./theme-loader");
 const { normalizeShortcuts, getDefaultShortcuts } = require("./shortcut-actions");
-const {
-  DEFAULT_TIMEOUT_MS: PERMISSION_REVIEW_DEFAULT_TIMEOUT_MS,
-  MIN_TIMEOUT_MS: PERMISSION_REVIEW_MIN_TIMEOUT_MS,
-  MAX_TIMEOUT_MS: PERMISSION_REVIEW_MAX_TIMEOUT_MS,
-  normalizePermissionReviewCommand,
-} = require("./permission-review-command");
 const { isValidDisplaySnapshot } = require("./work-area");
-const { normalizeRemoteSsh, getDefaults: getRemoteSshDefaults } = require("./remote-ssh-profile");
-const {
-  cloneDefaultTelegramApproval,
-  normalizeTelegramApproval,
-} = require("./telegram-approval-settings");
 const {
   cloneDefaultDiscordPresence,
   normalizeDiscordPresence,
 } = require("./discord-presence-settings");
-const {
-  cloneDefaultFeishuApproval,
-  normalizeFeishuApproval,
-} = require("./feishu-approval-settings");
-const {
-  cloneDefaultSlackNotify,
-  normalizeSlackNotify,
-} = require("./slack-notify-settings");
-const {
-  NOTIFICATION_DEFAULT_SECONDS,
-  UPDATE_DEFAULT_SECONDS,
-  PERMISSION_DEFAULT_SECONDS,
-  MAX_AUTO_CLOSE_SECONDS,
-} = require("./bubble-policy");
 const { normalizeSessionAliases } = require("./session-alias");
-const { normalizeQuotaAlertThresholds } = require("./quota-alerts");
-const { normalizeClaudeConfigDirEntries } = require("../hooks/claude-config-dirs");
 const {
   TEXT_SCALE_MIN,
   TEXT_SCALE_MAX,
@@ -71,13 +40,8 @@ const {
   PET_MOUTH_ACCESSORY_IDS,
 } = require("./pet-customization-catalog");
 
-const CURRENT_VERSION = 21;
-const DEFAULT_INTEGRATION_INSTALLED_IDS = Object.freeze(["claude-code", "codex"]);
-const DEFAULT_INTEGRATION_INSTALLED_SET = new Set(DEFAULT_INTEGRATION_INSTALLED_IDS);
-
-function isDefaultIntegrationInstalled(agentId) {
-  return DEFAULT_INTEGRATION_INSTALLED_SET.has(agentId);
-}
+const CURRENT_VERSION = 1;
+const DEFAULT_INTEGRATION_INSTALLED_IDS = Object.freeze(["omp"]);
 
 // ── Schema ──
 // Each field has: type, default OR defaultFactory, optional enum/normalize/validate.
@@ -150,8 +114,8 @@ const SCHEMA = {
   // Pure data prefs
   lang: { type: "string", default: "en", enum: ["en", "zh", "zh-TW", "ko", "ja", "pt-BR", "es"] },
   showTray: { type: "boolean", default: true },
-  // Local activity recap is enabled by default for both fresh installs and
-  // upgrades. It stores only bounded aggregate/ticket data under ~/.clawd;
+  // Local activity recap is enabled by default. It stores only bounded
+  // aggregate/ticket data under ~/.clawd;
   // there is no network export and the user can disable or clear it later.
   recapEnabled: { type: "boolean", default: true },
   // Default off (macOS): a fresh install runs as an accessory/agent app — pet +
@@ -161,26 +125,6 @@ const SCHEMA = {
   // brand-new installs (which never run migrate) pick up this off default.
   // showTray stays default-on so there is always one access point (menu bar).
   showDock: { type: "boolean", default: false },
-  manageClaudeHooksAutomatically: { type: "boolean", default: true },
-  autoStartWithClaude: { type: "boolean", default: false },
-  // Fresh installs require an explicit opt-in before a local Codex
-  // SessionStart hook may cold-launch Clawd. The v17 -> v18 migration pins
-  // this on for existing users so an upgrade does not change prior behavior.
-  autoStartWithCodex: { type: "boolean", default: false },
-  // Codex approval awareness depends entirely on the official PermissionRequest
-  // hook (JSONL no longer infers approvals). These surface its health: the
-  // toggle gates the startup nudge, and LastNotified is the edge-trigger dedup
-  // signature (empty = healthy/never-warned) so a broken hook nags at most once
-  // per distinct breakage, not every launch. See codex-hook-health.js.
-  codexHookHealthNotifyEnabled: { type: "boolean", default: true },
-  codexHookHealthLastNotified: { type: "string", default: "" },
-  // Edge-triggered startup nudge for users whose retired Telegram sidecar
-  // requires native verification. Cleared after native activation or an
-  // explicit switch-off so a future migration requirement can warn once.
-  telegramMigrationLastNotified: { type: "string", default: "" },
-  // One-time upgrade nudge for Feishu/Lark credentials saved before platform
-  // and approver provenance binding existed. Cleared after repair or disable.
-  feishuApprovalMigrationLastNotified: { type: "string", default: "" },
   // System-backed: actual truth lives in OS login items / autostart files.
   // `openAtLoginHydrated` starts false; main.js's startup hydrate helper imports
   // the current system value into prefs on first run, then flips this flag.
@@ -188,51 +132,9 @@ const SCHEMA = {
   // would see prefs report `false` and have it written back to the system.
   openAtLogin: { type: "boolean", default: false },
   openAtLoginHydrated: { type: "boolean", default: false },
-  bubbleFollowPet: { type: "boolean", default: false },
-  bubbleFollowPreference: { type: "string", default: "auto", enum: ["auto", "left", "right"] },
-  bubbleFixedCorner: {
-    type: "string",
-    default: "bottom-right",
-    enum: ["top-left", "top-right", "bottom-left", "bottom-right"],
-  },
   sessionHudEnabled: { type: "boolean", default: true },
   sessionHudShowStateLabels: { type: "boolean", default: true },
   sessionHudShowElapsed: { type: "boolean", default: false },
-  sessionHudShowContextUsage: { type: "boolean", default: true },
-  // Display-only and opt-in: completed ordinary ephemeral side chats are also
-  // collapsed; the Dashboard remains the complete session list.
-  sessionHudHideCompletedCodexEphemeral: { type: "boolean", default: false },
-  // Independent opt-in: active temporary side chats are also collapsed, without
-  // changing execution, canonical sessions or pending-attention visibility.
-  sessionHudHideActiveCodexEphemeral: { type: "boolean", default: false },
-  sessionHudShowQuota: { type: "boolean", default: true },
-  // Preserve the historical used-percentage presentation for existing users;
-  // remaining is a display-only choice and never changes stored quota data.
-  quotaRingDisplayMode: { type: "string", default: "used", enum: ["used", "remaining"] },
-  quotaAlertsEnabled: { type: "boolean", default: false },
-  quotaAlertThresholds: { type: "array", defaultFactory: () => [20, 10], normalize: normalizeQuotaAlertThresholds },
-  quotaRecoveryAlertsEnabled: { type: "boolean", default: true },
-  // Empty by default, i.e. every connected provider draws — matching the
-  // behaviour before this preference existed. Storing what is HIDDEN rather
-  // than what is shown is the reason a newly connected provider appears on its
-  // own: an allow-list would leave it silently absent after the user pasted a
-  // key, which reads as a broken integration rather than a default.
-  quotaRingHiddenProviders: {
-    type: "array",
-    defaultFactory: () => [],
-    normalize: normalizeQuotaRingHiddenProviders,
-  },
-  // Claude Code exposes the reported context window and subscription limits
-  // through its visible, single-slot statusline. The historical key name is
-  // retained for compatibility, but it authorizes the whole local Claude
-  // statusline metadata stream. Keep it opt-in so a fresh Clawd install never
-  // changes the user's terminal UI without an explicit choice.
-  claudeQuotaCollectionEnabled: { type: "boolean", default: false },
-  // Kimi quota uses a separately encrypted API Key owned by the main process.
-  // This boolean is only the durable collection opt-in; the secret is never a
-  // preference and never enters a settings snapshot.
-  kimiQuotaCollectionEnabled: { type: "boolean", default: false },
-  quotaMergeSources: { type: "boolean", default: false },
   sessionHudCleanupDetached: { type: "boolean", default: true },
   sessionHudPinned: { type: "boolean", default: false },
   // Stale-cleanup intervals (ms). Defaults match the historical constants in
@@ -249,80 +151,10 @@ const SCHEMA = {
     default: 300000,
     validate: (v) => Number.isInteger(v) && v >= 30_000 && v <= 86_400_000,
   },
-  // Local Codex Desktop/CLI turns can remain legitimately silent while the
-  // model or network retries. Keep the historical 20-minute guard as the
-  // default, but make it explicit and independently disableable so it does
-  // not inherit Claude Code's missing-Stop fallback.
-  codexWorkingStaleMs: {
-    type: "number",
-    default: 1_200_000,
-    validate: (v) =>
-      Number.isInteger(v) && (v === 0 || (v >= 30_000 && v <= 86_400_000)),
-  },
   detachedIdleStaleMs: {
     type: "number",
     default: 30000,
     validate: (v) => Number.isInteger(v) && v >= 5_000 && v <= 300_000,
-  },
-  hideBubbles: { type: "boolean", default: false },
-  permissionBubblesEnabled: { type: "boolean", default: true },
-  // Global permission automation keeps the user's safe startup preference.
-  // `off` and `auto-tools` survive relaunches; `unattended` is a runtime-only
-  // elevation that validate() always downgrades to `auto-tools` for disk/load.
-  permissionAutomationMode: {
-    type: "string",
-    default: "off",
-    enum: ["off", "auto-tools", "unattended"],
-  },
-  // Risk acknowledgements persist independently from the selected mode.
-  // Each trust level is remembered separately so acknowledging auto-tools can
-  // never suppress the stronger unattended warning.
-  permissionAutomationAutoToolsWarningDismissed: { type: "boolean", default: false },
-  permissionAutomationUnattendedWarningDismissed: { type: "boolean", default: false },
-  // Opt-in reminder that pauses an otherwise-automatic allow for recognized
-  // high-risk operations so a human sees the card. Off by default, and
-  // deliberately NOT command-gated like the keys above: those widen what runs
-  // without a human, this only narrows it, so there is no trust transition to
-  // confirm.
-  destructiveActionReminder: { type: "boolean", default: false },
-  // Optional external review command (#995). Opt-in and empty by default.
-  // Stored as an argv array and executed without a shell; the first element is
-  // the executable. It runs only when permission automation is about to answer
-  // `allow`, and any outcome other than exit 0 pauses for a human card. Like
-  // the reminder above it can only narrow what automation allows, but unlike
-  // it this setting names an executable, so it is command-only at the
-  // controller boundary and can only be changed through the prefs file in this
-  // first release. A malformed value normalizes to "off".
-  permissionReviewCommand: {
-    type: "array",
-    defaultFactory: () => [],
-    normalize: (value) => normalizePermissionReviewCommand(value),
-  },
-  permissionReviewTimeoutMs: {
-    type: "number",
-    default: PERMISSION_REVIEW_DEFAULT_TIMEOUT_MS,
-    validate: (v) => Number.isInteger(v)
-      && v >= PERMISSION_REVIEW_MIN_TIMEOUT_MS
-      && v <= PERMISSION_REVIEW_MAX_TIMEOUT_MS,
-  },
-  // One-release tombstone for old files/tests. It can never become the current
-  // automation source: validation forces ephemeral fields to defaults, save()
-  // drops them, and no product writer targets this key.
-  autoApproveAllPermissions: { type: "boolean", default: false, ephemeral: true },
-  notificationBubbleAutoCloseSeconds: {
-    type: "number",
-    default: NOTIFICATION_DEFAULT_SECONDS,
-    validate: (v) => Number.isInteger(v) && v >= 0 && v <= MAX_AUTO_CLOSE_SECONDS,
-  },
-  permissionBubbleAutoCloseSeconds: {
-    type: "number",
-    default: PERMISSION_DEFAULT_SECONDS,
-    validate: (v) => Number.isInteger(v) && v >= 0 && v <= MAX_AUTO_CLOSE_SECONDS,
-  },
-  updateBubbleAutoCloseSeconds: {
-    type: "number",
-    default: UPDATE_DEFAULT_SECONDS,
-    validate: (v) => Number.isInteger(v) && v >= 0 && v <= MAX_AUTO_CLOSE_SECONDS,
   },
   soundMuted: { type: "boolean", default: false },
   soundVolume: {
@@ -341,22 +173,7 @@ const SCHEMA = {
     default: 5000,
     validate: (v) => Number.isInteger(v) && v >= 0 && v <= 60000,
   },
-  // #1326 follow-up: opt-in reminder for a Claude Desktop end-of-turn question
-  // (mcp__ccd_turn__wrap_up) still unanswered after the configured minutes.
-  claudeTurnAskReminder: { type: "boolean", default: false },
-  claudeTurnAskReminderMinutes: {
-    type: "number",
-    default: 5,
-    validate: (v) => Number.isInteger(v) && v >= 1 && v <= 120,
-  },
-  // Opt-in decorative feedback for recognized Claude Code Bash test runs.
-  // The hook sends only pass/fail, never the command or full test output.
-  testReactionsEnabled: { type: "boolean", default: false },
   lowPowerIdleMode: { type: "boolean", default: false },
-  mobilePreviewEnabled: { type: "boolean", default: false },
-  // Separate, explicit consent for the broader permission-summary disclosure.
-  // Never infer this from the legacy session-only mobile preview opt-in.
-  mobilePermissionPreviewEnabled: { type: "boolean", default: false },
   // When true, prevent the OS from sleeping while any agent task is in
   // progress (working/thinking/etc.); allow sleep again once tasks finish.
   keepAwakeWhileWorking: { type: "boolean", default: false },
@@ -481,96 +298,16 @@ const SCHEMA = {
     defaultFactory: () => ({}),
     normalize: normalizeHolidayAccessoryEnabled,
   },
-  // Phase 2/3 placeholders — schema reserves the keys so future migrations don't need v2.
+  // Per-agent integration intent. New installs ship the OMP extension
+  // installed and enabled; the user can uninstall or disable it in Settings.
   agents: {
     type: "object",
     defaultFactory: () => ({
-      // subagentPermissionsEnabled (#451): bubbles for PermissionRequests
-      // fired inside a Task subagent. Only claude-code carries the flag —
-      // normalizeAgents drops it for agents whose default entry lacks it.
-      "claude-code": { integrationInstalled: true, enabled: true, permissionsEnabled: true, subagentPermissionsEnabled: true, notificationHookEnabled: true },
-      "deepseek-harness": { integrationInstalled: false, enabled: false, permissionsEnabled: true, notificationHookEnabled: true },
-      "codex": { integrationInstalled: true, enabled: true, permissionsEnabled: true, notificationHookEnabled: true, permissionMode: "auto", nativeNotificationSoundEnabled: false },
-      "copilot-cli": { integrationInstalled: false, enabled: false, permissionsEnabled: true, notificationHookEnabled: true },
-      "cursor-agent": { integrationInstalled: false, enabled: false, permissionsEnabled: true, notificationHookEnabled: true },
-      "gemini-cli": { integrationInstalled: false, enabled: false, permissionsEnabled: true, notificationHookEnabled: true },
-      // Antigravity is state-only post-D2 — Clawd never surfaces a permission
-      // bubble for agy regardless of this flag (see server-route-permission.js
-      // antigravity branch). Default kept as false so legacy reads don't see a
-      // stale "true" implying bubbles are enabled.
-      "antigravity-cli": { integrationInstalled: false, enabled: false, permissionsEnabled: false },
-      "codebuddy": { integrationInstalled: false, enabled: false, permissionsEnabled: true, notificationHookEnabled: true, customPermissionUrl: "" },
-      // WorkBuddy shares CodeBuddy's Claude-Code-compatible hook protocol but
-      // uses a distinct data dir (~/.workbuddy-ai; legacy: ~/.workbuddy). Opt-in like every other
-      // non-default agent — agent-gate.js fail-opens missing entries, so this
-      // default MUST exist or startup sync would auto-install for any user who
-      // merely has a WorkBuddy data directory. State + Notification only: the
-      // desktop app owns its permission loop natively, so permission bubbles
-      // default off (like qoderwork).
-      "workbuddy": { integrationInstalled: false, enabled: false, permissionsEnabled: false, notificationHookEnabled: true },
-      // TraeCode is state-only: hook protocol is Claude Code-compatible but it
-      // has no PermissionRequest event, so permission bubbles default off.
-      "traecode": { integrationInstalled: false, enabled: false, permissionsEnabled: false, notificationHookEnabled: true },
-      // MiniMax Code is state-only via a Clawd-owned local plugin under
-      // ~/.minimax/plugins/clawd-state. PermissionRequest is not registered
-      // (the plugin-hook runner's 1–10s timeout budget makes blocking approval
-      // impossible) and there is no Notification event, so both flags default
-      // off.
-      "minimax": { integrationInstalled: false, enabled: false, permissionsEnabled: false, notificationHookEnabled: false },
-      "kiro-cli": { integrationInstalled: false, enabled: false, permissionsEnabled: true, notificationHookEnabled: true },
-      "kimi-cli": { integrationInstalled: false, enabled: false, permissionsEnabled: true, notificationHookEnabled: true },
-      "qwen-code": { integrationInstalled: false, enabled: false, permissionsEnabled: true, notificationHookEnabled: true },
-      // ZCode (智谱/Z.ai desktop ADE) supports blocking PermissionRequest
-      // hooks since Phase 2, so permission bubbles default on like qwen. Its
-      // ~/.zcode/cli/config.json schema is distinct: config-file hooks live
-      // under hooks.events.* and use timeoutMs.
-      "zcode": { integrationInstalled: false, enabled: false, permissionsEnabled: true, notificationHookEnabled: true },
-      "codewhale": { integrationInstalled: false, enabled: false, permissionsEnabled: false, notificationHookEnabled: true },
-      "opencode": { integrationInstalled: false, enabled: false, permissionsEnabled: true, notificationHookEnabled: true },
-      "mimocode": { integrationInstalled: false, enabled: false, permissionsEnabled: true, notificationHookEnabled: true },
-      "pi": { integrationInstalled: false, enabled: false, permissionsEnabled: false, notificationHookEnabled: true },
-      "omp": { integrationInstalled: false, enabled: false, permissionsEnabled: false, notificationHookEnabled: true },
-      "openclaw": { integrationInstalled: false, enabled: false, permissionsEnabled: false, notificationHookEnabled: true },
-      "hermes": { integrationInstalled: false, enabled: false, permissionsEnabled: true, notificationHookEnabled: true },
-      // Qoder is state-only (Phase 1) — permission bubbles default off.
-      "qoder": { integrationInstalled: false, enabled: false, permissionsEnabled: false, notificationHookEnabled: true },
-      "reasonix": { integrationInstalled: false, enabled: false, permissionsEnabled: false, notificationHookEnabled: true },
-      // QoderWork is state-only (Phase 1) — permission bubbles default off.
-      "qoderwork": { integrationInstalled: false, enabled: false, permissionsEnabled: false, notificationHookEnabled: true },
-      // QwenWork (千问办公) is state-only (Phase 1) — permission bubbles default off.
-      "qwenwork": { integrationInstalled: false, enabled: false, permissionsEnabled: false, notificationHookEnabled: true },
-      // Grok Build is state + Notification only: it has no PermissionRequest
-      // hook, so permission bubbles default off. Opt-in like other non-default
-      // agents — agent-gate fail-opens missing entries.
-      "grok-build": { integrationInstalled: false, enabled: false, permissionsEnabled: false, notificationHookEnabled: true },
-      // KiroCrew is a state-only bridge over the gateway's chat lifecycle
-      // hooks. It has no PermissionRequest and no Notification hook event, so
-      // both flags default off (like minimax). Opt-in like every other
-      // non-default agent — agent-gate.js fail-opens a MISSING entry, so this
-      // default MUST exist or startup sync would write the hooks for any user
-      // who merely has a ~/.kiro/crew directory.
-      "kirocrew": { integrationInstalled: false, enabled: false, permissionsEnabled: false, notificationHookEnabled: false },
-      // permissionsEnabled intentionally defaults on for read-only reminder cards.
-      "kiro-desktop": { integrationInstalled: false, enabled: false, permissionsEnabled: true },
+      omp: { integrationInstalled: true, enabled: true },
     }),
     normalize: normalizeAgents,
   },
-  customToolDiscoveryPaths: {
-    type: "array",
-    defaultFactory: () => [],
-    normalize: normalizePathList,
-  },
-  customApplications: {
-    type: "array",
-    defaultFactory: () => [],
-    normalize: normalizeCustomApplications,
-  },
   dismissedAgentInstallHints: {
-    type: "object",
-    defaultFactory: () => ({}),
-    normalize: normalizeDismissedAgentHintMap,
-  },
-  dismissedAgentCleanupHints: {
     type: "object",
     defaultFactory: () => ({}),
     normalize: normalizeDismissedAgentHintMap,
@@ -603,61 +340,10 @@ const SCHEMA = {
     defaultFactory: () => ({}),
     normalize: normalizeSessionAliases,
   },
-  // Remote SSH (Phase 2 plan-remote-ssh-one-click v7). Stores user-defined
-  // SSH tunnel profiles. The runtime is owned by `remote-ssh-runtime.js` —
-  // this field is data only.
-  remoteSsh: {
-    type: "object",
-    defaultFactory: () => getRemoteSshDefaults(),
-    normalize: normalizeRemoteSsh,
-  },
-  tgApproval: {
-    type: "object",
-    defaultFactory: () => cloneDefaultTelegramApproval(),
-    normalize: normalizeTelegramApproval,
-  },
   discordPresence: {
     type: "object",
     defaultFactory: () => cloneDefaultDiscordPresence(),
     normalize: normalizeDiscordPresence,
-  },
-  feishuApproval: {
-    type: "object",
-    defaultFactory: () => cloneDefaultFeishuApproval(),
-    normalize: normalizeFeishuApproval,
-  },
-  slackNotify: {
-    type: "object",
-    defaultFactory: () => cloneDefaultSlackNotify(),
-    normalize: normalizeSlackNotify,
-  },
-  // v0.9.0 migration state. transport defaults to null (undecided) so v0.8.x
-  // users upgrading without this key fall onto the "detect legacy artefacts"
-  // path inside the migration reducer.
-  tgMigration: {
-    type: "object",
-    defaultFactory: () => ({
-      transport: null,
-      nativeVerifiedAt: null,
-      legacyEnabled: null,
-      migration: { importedAt: null, importError: null },
-    }),
-    normalize: (value) => {
-      if (!value || typeof value !== "object") {
-        return { transport: null, nativeVerifiedAt: null, legacyEnabled: null, migration: { importedAt: null, importError: null } };
-      }
-      return {
-        transport: ["legacy", "native", "off"].includes(value.transport) ? value.transport : null,
-        nativeVerifiedAt: typeof value.nativeVerifiedAt === "number" ? value.nativeVerifiedAt : null,
-        legacyEnabled: typeof value.legacyEnabled === "boolean" ? value.legacyEnabled : null,
-        migration: value.migration && typeof value.migration === "object"
-          ? {
-              importedAt: typeof value.migration.importedAt === "number" ? value.migration.importedAt : null,
-              importError: typeof value.migration.importError === "string" ? value.migration.importError : null,
-            }
-          : { importedAt: null, importError: null },
-      };
-    },
   },
   // First-run tutorial gate: false until the user has seen (completed OR skipped)
   // the onboarding tutorial once, then true forever. Persisted (NOT ephemeral),
@@ -719,18 +405,6 @@ function validate(raw) {
     }
     // else: keep default already in `out`
   }
-  // `unattended` is intentionally valid in the live settings store, but never
-  // as a startup state. validate() is used on both load and save, so this one
-  // normalization makes hand-edited files safe and writes the next-launch
-  // fallback while leaving the controller's current in-memory mode untouched.
-  if (out.permissionAutomationMode === "unattended") {
-    out.permissionAutomationMode = "auto-tools";
-  }
-  if (!("customToolDiscoveryPaths" in raw)) {
-    const legacy = raw.agents && raw.agents.custom && raw.agents.custom.customDiscoveryPaths;
-    out.customToolDiscoveryPaths = normalizePathList(legacy);
-  }
-  normalizeCustomAgentGates(out);
   normalizeStaleTriple(out);
   // File load/save fallback: preserve the older roam preference on conflict.
   // Live-store exclusivity is enforced by settings-actions validators.
@@ -739,7 +413,7 @@ function validate(raw) {
 }
 
 // Hand-edited-file fallback: if a user manually inverted the pair in
-// clawd-prefs.json, clamp workingStaleMs down to sessionStaleMs at load time
+// omp-pet-prefs.json, clamp workingStaleMs down to sessionStaleMs at load time
 // so the live mirror is consistent. Primary enforcement lives in the
 // per-key validators in settings-actions.js and the
 // commandRegistry["sessionCleanup.setTriple"] command — this function is
@@ -757,382 +431,20 @@ function normalizeStaleTriple(out) {
 }
 
 // Apply version-to-version migrations on raw input. Returns the upgraded raw
-// object (still needs to be passed through validate()).
-//
-// v0 → v1: add `version`, `agents`, `themeOverrides` fields. Existing fields
-//   stay as-is and get re-validated downstream. Pre-existing prefs files have
-//   no `version` key — that's the v0 marker.
-// v1 → v2: historical Pi permission-subgate backfill. Version 2 is also the
-//   first schema version that includes Hermes in the built-in agent defaults.
-// v2 → v3: raise passive notification bubble default from 3s to 6s. Users
-//   who explicitly chose 3s in v2 are indistinguishable from defaulted-3 and
-//   are migrated too; other non-default values are preserved.
-// v3 → v4: Pi returns to a state-only integration. Clawd no longer inserts a
-//   permission prompt into Pi's default YOLO flow, so the Pi permission subgate
-//   is reset off.
-// v15 → v16: preserve the legacy meaning of literal `Control` shortcut tokens
-//   before v16 gives that token Electron's native Control meaning on macOS.
-function migrateLegacyControlShortcuts(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
-  const migrated = { ...value };
-  for (const [actionId, accelerator] of Object.entries(migrated)) {
-    if (typeof accelerator !== "string") continue;
-    migrated[actionId] = accelerator
-      .split("+")
-      .map((token) => token.trim().toLowerCase() === "control" ? "CommandOrControl" : token)
-      .join("+");
-  }
-  return migrated;
-}
-
+// object (still needs to be passed through validate()). Version 1 is the first
+// omp-pet schema, so there is nothing to migrate yet; a file without a version
+// is treated as version 1.
 function migrate(raw) {
   if (!raw || typeof raw !== "object") return raw;
-  const originalAgentIds = raw.agents && typeof raw.agents === "object" && !Array.isArray(raw.agents)
-    ? new Set(Object.keys(raw.agents))
-    : new Set();
   const out = { ...raw };
-  if (out.version === undefined || out.version === null) {
-    out.version = 1;
-    if (out.agents === undefined) {
-      out.agents = SCHEMA.agents.defaultFactory();
-    }
-    if (out.themeOverrides === undefined) {
-      out.themeOverrides = SCHEMA.themeOverrides.defaultFactory();
-    }
-  }
-  // v1 backfill: positionSaved didn't exist before this field was added.
-  // Existing users who have non-default x/y clearly had a saved position.
-  if (out.positionSaved === undefined) {
-    out.positionSaved =
-      (typeof out.x === "number" && out.x !== 0) ||
-      (typeof out.y === "number" && out.y !== 0);
-  }
-  // Backfill the split bubble settings from the old aggregate switch. This is
-  // intentionally field-level so users who already have the new keys keep them.
-  if (typeof out.hideBubbles === "boolean") {
-    if (out.permissionBubblesEnabled === undefined) {
-      out.permissionBubblesEnabled = !out.hideBubbles;
-    }
-    if (out.notificationBubbleAutoCloseSeconds === undefined) {
-      out.notificationBubbleAutoCloseSeconds = out.hideBubbles ? 0 : NOTIFICATION_DEFAULT_SECONDS;
-    }
-    if (out.updateBubbleAutoCloseSeconds === undefined) {
-      out.updateBubbleAutoCloseSeconds = out.hideBubbles ? 0 : UPDATE_DEFAULT_SECONDS;
-    }
-  }
-  // v1 -> v2 historical backfill for the short-lived Pi permission subgate.
-  // v4 below resets it off again because Pi is state-only.
-  if (out.version < 2) {
-    if (!out.agents || typeof out.agents !== "object") out.agents = {};
-    const currentPi = out.agents.pi && typeof out.agents.pi === "object" ? out.agents.pi : {};
-    out.agents.pi = {
-      ...currentPi,
-      enabled: typeof currentPi.enabled === "boolean" ? currentPi.enabled : true,
-      permissionsEnabled: typeof currentPi.permissionsEnabled === "boolean"
-        ? currentPi.permissionsEnabled
-        : true,
-      notificationHookEnabled: typeof currentPi.notificationHookEnabled === "boolean"
-        ? currentPi.notificationHookEnabled
-        : true,
-    };
-    out.version = 2;
-  }
-  if (out.version < 3) {
-    if (out.notificationBubbleAutoCloseSeconds === 3) {
-      out.notificationBubbleAutoCloseSeconds = NOTIFICATION_DEFAULT_SECONDS;
-    }
-    out.version = 3;
-  }
-  if (out.version < 4) {
-    if (!out.agents || typeof out.agents !== "object") out.agents = {};
-    const currentPi = out.agents.pi && typeof out.agents.pi === "object" ? out.agents.pi : {};
-    out.agents.pi = {
-      ...currentPi,
-      enabled: typeof currentPi.enabled === "boolean" ? currentPi.enabled : true,
-      permissionsEnabled: false,
-      notificationHookEnabled: typeof currentPi.notificationHookEnabled === "boolean"
-        ? currentPi.notificationHookEnabled
-        : true,
-    };
-    out.version = 4;
-  }
-  // v4 → v5: Session HUD hover/auto-hide mode removed in favor of explicit
-  // click-to-reveal. Users who explicitly opted out of auto-hide (
-  // `sessionHudAutoHide === false`, meaning "always show") get auto-pinned so
-  // their visual behavior is preserved. The deprecated field is dropped.
-  if (out.version < 5) {
-    if (out.sessionHudAutoHide === false && out.sessionHudPinned !== true) {
-      out.sessionHudPinned = true;
-    }
-    delete out.sessionHudAutoHide;
-    out.version = 5;
-  }
-  // v5 → v6: introduce autoUpdateCheck / pendingUpdateVersion /
-  // dismissedUpdateVersions for the #329 scheduler. No data conversion
-  // needed — new keys fill in from schema defaults via validate(); the
-  // version bump just records that the schema grew.
-  if (out.version < 6) {
-    out.version = 6;
-  }
-  // v6 → v7: Codex Native permission prompt sound now defaults off. Early
-  // builds may have written the old default true into prefs, so reset that
-  // default-like value during migration; users can turn the switch back on.
-  if (out.version < 7) {
-    if (out.agents && typeof out.agents === "object") {
-      const codex = out.agents.codex;
-      if (codex && typeof codex === "object") {
-        codex.nativeNotificationSoundEnabled = false;
-      }
-    }
-    out.version = 7;
-  }
-  // v7 -> v8: bare Telegram completion pings now default off. There was no
-  // UI for this flag, so a persisted true is overwhelmingly the old default
-  // rather than an explicit user opt-in.
-  if (out.version < 8) {
-    if (out.tgApproval && typeof out.tgApproval === "object") {
-      out.tgApproval.notifyOnComplete = false;
-    }
-    out.version = 8;
-  }
-  // v8 -> v9: introduce autoApproveAllPermissions ("auto-pilot"). Force the
-  // value OFF on upgrade — a v8 prefs file could not have legitimately set this
-  // key (it didn't exist yet), so any pre-existing value is stale or planted.
-  // Clearing it guarantees an upgrading user never silently inherits
-  // auto-approval; the only way to turn it on is the confirmation-gated path.
-  if (out.version < 9) {
-    out.autoApproveAllPermissions = false;
-    out.version = 9;
-  }
-  // v9 -> v10: sessionHudShowElapsed / sessionHudCleanupDetached flipped their
-  // schema defaults for FRESH INSTALLS ONLY (compact HUD by default). Existing
-  // files normally carry both keys explicitly (save() bakes the full
-  // snapshot), but a file written by a pre-HUD-toggle build or hand-trimmed
-  // by the user lacks them — without this backfill validate() would hand
-  // those users the new defaults and visibly change their HUD. Pin the old
-  // defaults for every pre-v10 file; fresh installs never run migrate().
-  if (out.version < 10) {
-    if (!("sessionHudShowElapsed" in out)) out.sessionHudShowElapsed = true;
-    if (!("sessionHudCleanupDetached" in out)) out.sessionHudCleanupDetached = false;
-    out.version = 10;
-  }
-  // v10 -> v11: agent integrations are installed on demand. Entries that were
-  // actually present in an old prefs file predate `integrationInstalled`, so
-  // keep them managed by Clawd. Missing entries fall through to v11 defaults
-  // instead of pretending that a never-seen/newer agent was installed.
-  if (out.version < 11) {
-    if (out.agents && typeof out.agents === "object") {
-      const defaults = SCHEMA.agents.defaultFactory();
-      for (const agentId of Object.keys(defaults)) {
-        if (!originalAgentIds.has(agentId)) continue;
-        const current = out.agents[agentId];
-        if (!current || typeof current !== "object") continue;
-        out.agents[agentId] = {
-          ...current,
-          integrationInstalled: true,
-        };
-      }
-    }
-    out.version = 11;
-  }
-  // v11 -> v12: showDock now defaults OFF for FRESH INSTALLS ONLY (a new install
-  // runs as a menu-bar/pet accessory with no Dock tile). Existing files normally
-  // carry showDock explicitly (save() bakes the full snapshot), but a file from a
-  // pre-showDock build or hand-trimmed by the user lacks it — without this
-  // backfill validate() would hand those users the new off default and hide their
-  // Dock. Pin the old on-default for every pre-v12 file; fresh installs never run
-  // migrate().
-  if (out.version < 12) {
-    if (!("showDock" in out)) out.showDock = true;
-    out.version = 12;
-  }
-  // v12 -> v13: Settings-window geometry persistence. No backfill is needed:
-  // an absent/null value intentionally keeps the existing centered placement.
-  if (out.version < 13) {
-    out.version = 13;
-  }
-  // v13 -> v14: Dashboard-window geometry persistence, same contract as the
-  // Settings step above.
-  if (out.version < 14) {
-    out.version = 14;
-  }
-  // v14 -> v15: ZCode Phase 2 permission bubbles. Phase 1 persisted
-  // permissionsEnabled:false while the Settings switch was never rendered
-  // (capabilities.permissionApproval was false), so no user intent exists
-  // behind that stored false — flip it to the new on-default. A false set on
-  // v15 or later is a real user choice and never migrates again.
-  if (out.version < 15) {
-    if (
-      out.agents
-      && typeof out.agents === "object"
-      && out.agents.zcode
-      && typeof out.agents.zcode === "object"
-      && out.agents.zcode.permissionsEnabled === false
-    ) {
-      out.agents.zcode.permissionsEnabled = true;
-    }
-    out.version = 15;
-  }
-  // v15 -> v16: `Control` used to be an accepted alias for
-  // `CommandOrControl`. Rewrite only pre-v16 persisted values before the
-  // parser starts using `Control` for macOS's distinct native Control key.
-  if (out.version < 16) {
-    out.shortcuts = migrateLegacyControlShortcuts(out.shortcuts);
-    out.version = 16;
-  }
-  // v16 -> v17: introduce an independent mouth-accessory map. Never infer a
-  // cigarette choice from the existing head accessory or from theme ids. A
-  // valid explicit map may exist in an unreleased v16 development snapshot;
-  // preserve it instead of erasing that selection during the version split.
-  if (out.version < 17) {
-    if (
-      !out.petMouthAccessory
-      || typeof out.petMouthAccessory !== "object"
-      || Array.isArray(out.petMouthAccessory)
-    ) {
-      out.petMouthAccessory = {};
-    }
-    out.version = 17;
-  }
-  // v17 -> v18: split Codex event intake from permission to cold-launch the
-  // desktop app. Existing installs previously got auto-start whenever Codex
-  // itself was enabled, so preserve that behavior on upgrade. Fresh installs
-  // never run migrate() and therefore keep the schema's opt-in default false.
-  if (out.version < 18) {
-    if (!Object.prototype.hasOwnProperty.call(out, "autoStartWithCodex")) {
-      out.autoStartWithCodex = true;
-    } else if (typeof out.autoStartWithCodex !== "boolean") {
-      // An explicitly-present malformed value is not reliable user consent.
-      out.autoStartWithCodex = false;
-    }
-    out.version = 18;
-  }
-  // v18 -> v19: recap is a local, privacy-minimized application history. Match
-  // Codex-style activity summaries by recording on upgrade without inserting
-  // a consent interstitial; Settings still exposes an immediate off switch.
-  if (out.version < 19) {
-    out.recapEnabled = typeof out.recapEnabled === "boolean" ? out.recapEnabled : true;
-    out.version = 19;
-  }
-  // Field-level migration also covers development snapshots that already have
-  // the current schema. Preserve the old effective Codex timeout only when no
-  // explicit independent value exists; fresh installs do not run migrate().
-  if (!Object.prototype.hasOwnProperty.call(out, "codexWorkingStaleMs")) {
-    const legacy = normalizeStaleTriple({
-      workingStaleMs: isValidValue(SCHEMA.workingStaleMs, out.workingStaleMs)
-        ? out.workingStaleMs : SCHEMA.workingStaleMs.default,
-      sessionStaleMs: isValidValue(SCHEMA.sessionStaleMs, out.sessionStaleMs)
-        ? out.sessionStaleMs : SCHEMA.sessionStaleMs.default,
-    });
-    out.codexWorkingStaleMs = Math.max(SCHEMA.codexWorkingStaleMs.default, legacy.workingStaleMs);
-  }
-
-  // v19 -> v20: Telegram Direct Send changed from the old paste-only
-  // experiment (which explicitly never pressed Enter) to submitting a reply
-  // directly through the target Console/ConPTY. A persisted true only records
-  // consent to the narrower behavior, so require every upgrading user to read
-  // the new Settings description and opt in again. Fresh installs already use
-  // the schema default false, while a true written by v20 is preserved.
-  if (out.version < 20) {
-    if (out.tgApproval && typeof out.tgApproval === "object") {
-      out.tgApproval.r3DirectSendEnabled = false;
-    }
-    out.version = 20;
-  }
-  // v20 -> v21: Codex approval routing gained Auto (#1155). save() bakes the
-  // full snapshot, so every earlier install has the old default "intercept"
-  // on disk and an explicit choice cannot be told apart from it. Move every
-  // upgrading user to Auto once; Intercept chosen after this release is kept.
-  // Fresh installs never run migrate() and already use the Auto default.
-  if (out.version < 21) {
-    const agents = out.agents;
-    const codex = agents && typeof agents === "object" && !Array.isArray(agents)
-      ? agents.codex : null;
-    if (codex && typeof codex === "object" && !Array.isArray(codex)
-      && (codex.permissionMode === "intercept" || codex.permissionMode === "native")) {
-      out.agents = { ...agents, codex: { ...codex, permissionMode: "auto" } };
-    }
-    out.version = 21;
-  }
-  if ((typeof out.version === "number" ? out.version : 0) < CURRENT_VERSION) {
-    out.version = CURRENT_VERSION;
-  }
-  // Future migrations slot in here as `if (out.version < N) { ... out.version = N }`.
+  if (out.version === undefined || out.version === null) out.version = CURRENT_VERSION;
   return out;
 }
 
 const AGENT_FLAGS = [
   "integrationInstalled",
   "enabled",
-  "permissionsEnabled",
-  "subagentPermissionsEnabled",
-  "notificationHookEnabled",
-  "nativeNotificationSoundEnabled",
 ];
-const CODEX_PERMISSION_MODES = ["auto", "intercept"];
-const MAX_CUSTOM_DISCOVERY_PATHS = 64;
-const MAX_CUSTOM_DISCOVERY_PATH_LENGTH = 2048;
-
-// Provider keys the user hid from the pet-side quota cluster. Display-only:
-// collection keeps running and the Dashboard keeps every provider, because the
-// cluster caps at four coins with no say over which ones survive while the
-// Dashboard has room for all of them.
-//
-// Unknown keys are kept, not dropped. The authoritative provider list lives in
-// quota-ring-geometry.js, and validating against it here would mean prefs.js
-// silently discarding a user's choice whenever load order, a rename, or a
-// not-yet-registered provider makes a key look unfamiliar — a hidden provider
-// would then reappear on its own. Consumers match by key, so a stale entry
-// costs nothing beyond a few bytes; the cap keeps that bounded.
-const MAX_HIDDEN_QUOTA_PROVIDERS = 32;
-function normalizeQuotaRingHiddenProviders(value) {
-  if (!Array.isArray(value)) return [];
-  const out = [];
-  const seen = new Set();
-  for (const entry of value) {
-    if (typeof entry !== "string") continue;
-    const trimmed = entry.replace(/\0/g, "").trim().slice(0, 64);
-    if (!trimmed || seen.has(trimmed)) continue;
-    seen.add(trimmed);
-    out.push(trimmed);
-    if (out.length >= MAX_HIDDEN_QUOTA_PROVIDERS) break;
-  }
-  return out;
-}
-
-function normalizePathList(value, options = {}) {
-  const raw = Array.isArray(value)
-    ? value
-    : (typeof value === "string" ? value.split(/[;\n]/g) : []);
-  const platform = typeof options.platform === "string" ? options.platform : process.platform;
-  const maxEntries = Number.isInteger(options.maxEntries) && options.maxEntries >= 0
-    ? options.maxEntries
-    : MAX_CUSTOM_DISCOVERY_PATHS;
-  const out = [];
-  const seen = new Set();
-  for (const entry of raw) {
-    if (typeof entry !== "string") continue;
-    const trimmed = entry.replace(/\0/g, "").trim().slice(0, MAX_CUSTOM_DISCOVERY_PATH_LENGTH);
-    const compareKey = platform === "win32" ? trimmed.toLowerCase() : trimmed;
-    if (!trimmed || seen.has(compareKey)) continue;
-    seen.add(compareKey);
-    out.push(trimmed);
-    if (out.length >= maxEntries) break;
-  }
-  return out;
-}
-
-function normalizeOptionalHttpUrl(value) {
-  if (typeof value !== "string") return "";
-  const trimmed = value.trim();
-  if (!trimmed) return "";
-  try {
-    const parsed = new URL(trimmed);
-    return parsed.protocol === "http:" || parsed.protocol === "https:" ? trimmed : "";
-  } catch {
-    return "";
-  }
-}
 
 function normalizeDismissedAgentHintMap(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
@@ -1202,83 +514,20 @@ function normalizePositionDisplay(value) {
   return out;
 }
 
+// Keep only known agents and their boolean flags; unknown ids (for example a
+// hand-edited entry) are dropped.
 function normalizeAgents(value, defaultsValue) {
   if (!value || typeof value !== "object") return defaultsValue;
   const out = { ...defaultsValue };
-  for (const id of Object.keys(value)) {
-    // Early #652 builds stored shared path checks as a phantom agent. The
-    // dedicated top-level field now owns that data; never rehydrate this id.
-    if (id === "custom") continue;
+  for (const id of Object.keys(defaultsValue || {})) {
     const entry = value[id];
     if (!entry || typeof entry !== "object") continue;
-    const base = (defaultsValue && defaultsValue[id])
-      || {
-        integrationInstalled: isDefaultIntegrationInstalled(id),
-        enabled: true,
-        permissionsEnabled: true,
-        notificationHookEnabled: true,
-      };
-    const merged = { ...base };
-    let touched = false;
-    const allowedFlags = AGENT_FLAGS.filter((flag) => Object.prototype.hasOwnProperty.call(base, flag));
-    for (const flag of allowedFlags) {
-      if (typeof entry[flag] === "boolean") {
-        merged[flag] = entry[flag];
-        touched = true;
-      }
+    const merged = { ...defaultsValue[id] };
+    for (const flag of AGENT_FLAGS) {
+      if (typeof entry[flag] === "boolean") merged[flag] = entry[flag];
     }
-    if (id === "codex" && CODEX_PERMISSION_MODES.includes(entry.permissionMode)) {
-      merged.permissionMode = entry.permissionMode;
-      touched = true;
-    }
-    if (Object.prototype.hasOwnProperty.call(base, "customPermissionUrl")) {
-      const customPermissionUrl = normalizeOptionalHttpUrl(entry.customPermissionUrl);
-      if (customPermissionUrl || typeof entry.customPermissionUrl === "string") {
-        merged.customPermissionUrl = customPermissionUrl;
-        touched = true;
-      }
-    }
-    if (
-      Object.prototype.hasOwnProperty.call(base, "customDiscoveryPaths")
-      || Object.prototype.hasOwnProperty.call(entry, "customDiscoveryPaths")
-    ) {
-      const customDiscoveryPaths = normalizePathList(entry.customDiscoveryPaths);
-      if (customDiscoveryPaths.length > 0 || Object.prototype.hasOwnProperty.call(entry, "customDiscoveryPaths")) {
-        merged.customDiscoveryPaths = customDiscoveryPaths;
-        touched = true;
-      }
-    }
-    if (id === "claude-code" && Object.prototype.hasOwnProperty.call(entry, "configDirs")) {
-      // Extra Claude config folders (CLAUDE_CONFIG_DIR profiles) whose
-      // settings.json also gets Clawd's hooks; see claude-config-dirs.js.
-      merged.configDirs = normalizeClaudeConfigDirEntries(entry.configDirs);
-      touched = true;
-    }
-    if (touched) out[id] = merged;
+    out[id] = merged;
   }
-  return out;
-}
-
-function normalizeCustomAgentGates(out) {
-  const applications = Array.isArray(out.customApplications) ? out.customApplications : [];
-  const registeredIds = new Set(applications.map((application) => application.id));
-  const agents = out.agents && typeof out.agents === "object" ? { ...out.agents } : {};
-
-  for (const id of Object.keys(agents)) {
-    if (isCustomApplicationNamespace(id) && !registeredIds.has(id)) delete agents[id];
-  }
-  for (const application of applications) {
-    const current = agents[application.id];
-    agents[application.id] = {
-      integrationInstalled: false,
-      enabled: current && typeof current.enabled === "boolean" ? current.enabled : true,
-      permissionsEnabled: false,
-      notificationHookEnabled: current && typeof current.notificationHookEnabled === "boolean"
-        ? current.notificationHookEnabled
-        : true,
-    };
-  }
-  out.agents = agents;
   return out;
 }
 
@@ -1568,8 +817,7 @@ function backupInvalidPrefs(prefsPath, reason) {
   }
 }
 
-// Read prefs from disk. Returns
-// `{ snapshot, locked, fresh?, recovered?, codexAutoStartAuthoritative? }`:
+// Read prefs from disk. Returns `{ snapshot, locked, fresh?, recovered? }`:
 //   - snapshot: a valid prefs object (always — falls back to defaults on any error)
 //   - locked: true when the on-disk file must not be overwritten, and save() should
 //             be a no-op. Two triggers: the file came from a future version, or the
@@ -1584,12 +832,7 @@ function backupInvalidPrefs(prefsPath, reason) {
 //            Absent/falsy on every other path — a corrupt or unreadable file is
 //            NOT treated as fresh, so we never clobber a returning user's language.
 //   - recovered: true when an existing file could not supply authoritative prefs
-//                and the snapshot is only a fail-safe defaults fallback. Callers
-//                must not publish permissive external gates from that snapshot.
-//   - codexAutoStartAuthoritative: false when the prefs root is otherwise
-//                recoverable but an explicitly-present Codex gate field has an
-//                invalid type. Missing legacy fields retain their historical
-//                default/migration behavior.
+//                and the snapshot is only a fail-safe defaults fallback.
 function load(prefsPath) {
   // Read and parse are separated on purpose. "We could not read the bytes" and
   // "we read the bytes and they are not valid prefs" are different states, and
@@ -1642,32 +885,6 @@ function load(prefsPath) {
       recoveryBackupFailed: !backupCreated,
     };
   }
-  const hasOwn = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
-  const isObjectRecord = (value) => !!value && typeof value === "object" && !Array.isArray(value);
-  let codexAutoStartAuthoritative = true;
-  if (hasOwn(raw, "autoStartWithCodex") && typeof raw.autoStartWithCodex !== "boolean") {
-    codexAutoStartAuthoritative = false;
-  }
-  if (hasOwn(raw, "agents")) {
-    if (!isObjectRecord(raw.agents)) {
-      codexAutoStartAuthoritative = false;
-    } else if (hasOwn(raw.agents, "codex")) {
-      if (!isObjectRecord(raw.agents.codex)) {
-        codexAutoStartAuthoritative = false;
-      } else if (
-        (hasOwn(raw.agents.codex, "enabled") && typeof raw.agents.codex.enabled !== "boolean")
-        || (
-          hasOwn(raw.agents.codex, "integrationInstalled")
-          && typeof raw.agents.codex.integrationInstalled !== "boolean"
-        )
-      ) {
-        codexAutoStartAuthoritative = false;
-      }
-    }
-  }
-  const codexAuthorityMeta = codexAutoStartAuthoritative
-    ? {}
-    : { codexAutoStartAuthoritative: false };
   // Future-version guard: refuse to overwrite a prefs file written by a newer version.
   const incomingVersion = typeof raw.version === "number" ? raw.version : 0;
   if (incomingVersion > CURRENT_VERSION) {
@@ -1675,17 +892,15 @@ function load(prefsPath) {
       `Clawd: prefs file version ${incomingVersion} is newer than supported (${CURRENT_VERSION}). ` +
       `Settings will be readable but not saved to avoid data loss.`
     );
-    return { snapshot: validate(raw), locked: true, ...codexAuthorityMeta };
+    return { snapshot: validate(raw), locked: true };
   }
   const migrated = migrate(raw);
-  return { snapshot: validate(migrated), locked: false, ...codexAuthorityMeta };
+  return { snapshot: validate(migrated), locked: false };
 }
 
 function save(prefsPath, snapshot) {
   const validated = validate(snapshot);
-  // Ephemeral fields never touch disk. permissionAutomationMode is persisted
-  // separately: validate() keeps off/auto-tools and downgrades unattended to
-  // auto-tools, making full automation a current-process elevation only.
+  // Ephemeral fields never touch disk.
   for (const key of SCHEMA_KEYS) {
     if (SCHEMA[key].ephemeral) delete validated[key];
   }
@@ -1723,7 +938,6 @@ module.exports = {
   SCHEMA,
   SCHEMA_KEYS,
   AGENT_FLAGS,
-  CODEX_PERMISSION_MODES,
   DEFAULT_INTEGRATION_INSTALLED_IDS,
   getDefaults,
   validate,
@@ -1736,10 +950,5 @@ module.exports = {
   normalizeThemeAppearance,
   normalizePetMouthAccessory,
   normalizeShortcuts,
-  normalizeOptionalHttpUrl,
-  normalizePathList,
   isValidSettingsWindowBounds,
-  MAX_CUSTOM_DISCOVERY_PATHS,
-  MAX_HIDDEN_QUOTA_PROVIDERS,
-  MAX_CUSTOM_DISCOVERY_PATH_LENGTH,
 };

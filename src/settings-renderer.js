@@ -3,16 +3,14 @@
 const core = globalThis.ClawdSettingsCore;
 
 // Icons resolve via settings-icons.js at render time (keyed by tab id),
-// not as emoji/unicode glyphs \u2014 those rendered inconsistently across
+// not as emoji/unicode glyphs, since those rendered inconsistently across
 // system fonts and didn't dark-mode well.
 const SIDEBAR_TABS = [
   { id: "general", labelKey: "sidebarGeneral", available: true },
   { id: "pet", labelKey: "sidebarPet", available: true },
   { id: "notifications", labelKey: "sidebarNotifications", available: true },
   { id: "sessions", labelKey: "sidebarSessions", available: true },
-  { id: "permissions", labelKey: "sidebarPermissions", available: true },
   { id: "agents", labelKey: "sidebarAgents", available: true, groupStart: true },
-  { id: "remote-ssh", labelKey: "sidebarRemoteSsh", available: true },
   { id: "discord-presence", labelKey: "sidebarDiscordPresence", available: true },
   { id: "theme", labelKey: "sidebarTheme", available: true, groupStart: true },
   { id: "animOverrides", labelKey: "sidebarAnimOverrides", available: true },
@@ -103,20 +101,16 @@ globalThis.ClawdSettingsTabGeneral.init(core);
 globalThis.ClawdSettingsTabPet.init(core);
 globalThis.ClawdSettingsTabNotifications.init(core);
 globalThis.ClawdSettingsTabSessions.init(core);
-globalThis.ClawdSettingsTabPermissions.init(core);
 globalThis.ClawdSettingsTabAgents.init(core);
 globalThis.ClawdSettingsTabTheme.init(core);
-// Not a top-level tab anymore — it provides the "on / off" subtab that
+// Not a top-level tab anymore; it provides the "on / off" subtab that
 // ClawdSettingsTabAnimOverrides renders. init() just wires up the core refs.
 globalThis.ClawdSettingsTabAnimMap.init(core);
 globalThis.ClawdSettingsTabAnimOverrides.init(core);
 globalThis.ClawdSettingsTabShortcuts.init(core);
-if (globalThis.ClawdSettingsTabTelegramApproval) globalThis.ClawdSettingsTabTelegramApproval.init(core);
 if (globalThis.ClawdSettingsTabDiscordPresence) globalThis.ClawdSettingsTabDiscordPresence.init(core);
 if (globalThis.ClawdSettingsTabRecap) globalThis.ClawdSettingsTabRecap.init(core);
 globalThis.ClawdSettingsTabAbout.init(core);
-if (globalThis.ClawdSettingsTabRemoteSsh) globalThis.ClawdSettingsTabRemoteSsh.init(core);
-if (globalThis.ClawdSettingsTabMobile) globalThis.ClawdSettingsTabMobile.init(core);
 
 core.ops.restoreNavigationState();
 function selectRequestedTab(tab) {
@@ -141,13 +135,6 @@ if (window.settingsAPI && typeof window.settingsAPI.onChanged === "function") {
   window.settingsAPI.onChanged((payload) => core.ops.applyChanges(payload));
 }
 
-if (window.settingsAPI && typeof window.settingsAPI.onAgentActivity === "function") {
-  window.settingsAPI.onAgentActivity((payload) => {
-    const tab = core.tabs.agents;
-    if (tab && typeof tab.applyAgentActivity === "function") tab.applyAgentActivity(payload);
-  });
-}
-
 if (window.settingsAPI && typeof window.settingsAPI.onRecapChanged === "function") {
   window.settingsAPI.onRecapChanged(() => {
     const tab = core.tabs.recap;
@@ -165,19 +152,6 @@ if (window.settingsAPI && typeof window.settingsAPI.onShortcutRecordKey === "fun
 
 if (window.settingsAPI && typeof window.settingsAPI.onShortcutFailuresChanged === "function") {
   window.settingsAPI.onShortcutFailuresChanged((failures) => core.ops.applyShortcutFailures(failures));
-}
-
-if (window.settingsAPI && typeof window.settingsAPI.onRemoteApprovalStatusChanged === "function") {
-  window.settingsAPI.onRemoteApprovalStatusChanged((payload) => {
-    const tab = core.tabs[core.state.activeTab];
-    if (tab && typeof tab.refreshRuntimeStatus === "function") {
-      tab.refreshRuntimeStatus(payload);
-    }
-  });
-}
-
-if (window.settingsAPI && typeof window.settingsAPI.onOfficialThemeProgress === "function") {
-  window.settingsAPI.onOfficialThemeProgress((progress) => core.ops.applyOfficialThemeProgress(progress));
 }
 
 if (window.settingsAPI && typeof window.settingsAPI.getShortcutFailures === "function") {

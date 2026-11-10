@@ -1,11 +1,7 @@
-const { app, BrowserWindow, Notification, screen, ipcMain, globalShortcut, nativeTheme, dialog, shell, nativeImage, powerSaveBlocker, powerMonitor, clipboard, safeStorage, net } = require("electron");
+const { app, BrowserWindow, Notification, screen, ipcMain, globalShortcut, nativeTheme, dialog, shell, nativeImage, powerSaveBlocker, powerMonitor } = require("electron");
 // Pin the per-user data directory (prefs, logs, single-instance lock) to one
 // name for both `npm start` and packaged builds, independent of productName.
 app.setPath("userData", require("path").join(app.getPath("appData"), "omp-pet"));
-const { maybeRunPackageKoffiSmoke } = require("./package-koffi-smoke");
-if (maybeRunPackageKoffiSmoke({ app, BrowserWindow })) {
-  return;
-}
 // ── Linux/Wayland: relaunch under XWayland so the pet is draggable (issue #441) ──
 // Native Wayland ignores client-side window positioning and blocks global cursor
 // queries, so the pet spawns centered, can't be dragged, and has no tracking;
@@ -87,22 +83,12 @@ const createSettingsWindowRuntime = require("./settings-window");
 const createRoamFenceLoader = require("./roam-fence");
 const createRoamFenceSettings = require("./roam-fence-settings");
 const createRoamFencePicker = require("./roam-fence-picker");
-const createPermissionAutomationConfirmationRuntime = require("./permission-automation-confirmation");
-const {
-  stopActivePermissionReviews,
-} = require("./permission-review-command");
 const {
   createSettingsSizePreviewSession,
 } = require("./settings-size-preview-session");
 const { registerSettingsIpc } = require("./settings-ipc");
-const { registerQuotaNotificationIpc } = require("./quota-notification-ipc");
-const { createQuotaAlertsRuntime } = require("./quota-alerts-runtime");
-const { createQuotaNotificationPresenter } = require("./quota-notifications");
 const createSettingsEffectRouter = require("./settings-effect-router");
 const { createRecapRuntime } = require("./recap-runtime");
-const { createKimiQuotaClient } = require("./kimi-quota-client");
-const { createKimiQuotaCredentialStore } = require("./kimi-quota-credential-store");
-const { createKimiQuotaRuntime } = require("./kimi-quota-runtime");
 const {
   getPetTintIdForTheme,
   resolvePetTintPayload,
@@ -120,45 +106,13 @@ const {
   createHolidayAccessoryRuntime,
 } = require("./holiday-accessory");
 const { registerSessionIpc } = require("./session-ipc");
-const { createSessionAutomationStore } = require("./session-automation-store");
-const { createSessionAutomationCoordinator } = require("./session-automation-coordinator");
-const {
-  selectSessionAutomationDialogParent,
-} = require("./session-automation-dialog-parent");
 const { createSessionFolderOpener } = require("./session-open-folder");
-const { createOpencodeSessionAttacher } = require("./opencode-session-attach");
 const { isTrustedMainFrameEvent, registerPetInteractionIpc } = require("./pet-interaction-ipc");
 const { createSystemWakeRecovery } = require("./system-wake-recovery");
 const { formatLocalTimestamp } = require("./log-timestamp");
-const { launchClaudeSession, openTerminalAt } = require("./launch-claude");
-const { dialog: electronDialog } = require("electron");
-const initPermission = require("./permission");
-const { createClaudeTurnAskReminder, reminderDelayMsFromMinutes } = require("./claude-turn-ask-reminder");
-const { isPassiveNotifyEntry } = require("./passive-notify-entry");
-const { registerPermissionIpc } = initPermission;
-const telegramApprovalSettings = require("./telegram-approval-settings");
-const { sanitizeTelegramApprovalLogMeta } = require("./telegram-approval-log-meta");
+const { openTerminalAt } = require("./open-terminal");
 const discordPresenceSettings = require("./discord-presence-settings");
 const { createDiscordPresenceBridge } = require("./discord-presence-rpc");
-const { resolveAgentDisplayName } = require("./agent-display-name");
-const {
-  FeishuApprovalClient,
-  classifyFeishuSdkError,
-  lookupOpenIdByEmail,
-} = require("./feishu-approval-client");
-const feishuApprovalSettings = require("./feishu-approval-settings");
-const { createSlackNotifyClient } = require("./slack-notify-client");
-const slackNotifySettings = require("./slack-notify-settings");
-const { saveFeishuApproverByEmail } = require("./settings-actions");
-const {
-  buildTelegramApprovalStatus,
-  isNativeTelegramApprovalSelected,
-  buildTelegramStatusDiagnostic,
-  formatTelegramStatusDiagnostic,
-} = require("./telegram-approval-runtime-status");
-const { createTelegramMigrationController } = require("./telegram-migration-controller");
-const { createTelegramMigrationNudge } = require("./telegram-migration-nudge");
-const { createFeishuApprovalMigrationNudge } = require("./feishu-approval-migration-nudge");
 const { createTrayBalloonOwner } = require("./tray-balloon-owner");
 const createSettingsAnimationOverridesMain = require("./settings-animation-overrides-main");
 const { registerSettingsAnimationOverridesIpc } = createSettingsAnimationOverridesMain;
@@ -168,10 +122,6 @@ const {
   buildDisplaySnapshot,
   SYNTHETIC_WORK_AREA,
 } = require("./work-area");
-const {
-  isUsableWorkArea: isUsableBubbleWorkArea,
-  resolveBubbleWorkArea,
-} = require("./bubble-work-area");
 const {
   getLaunchPixelSize,
   getLaunchSizingWorkArea,
@@ -190,29 +140,22 @@ const { WIN_TOPMOST_LEVEL } = createTopmostRuntime;
 const {
   createHitWindowActivationRuntime,
 } = require("./win-hit-window-activation");
-const { startMobilePreviewServerSafely } = require("./network/mobile-preview-lifecycle");
 const createThemeFadeSequencer = require("./theme-fade-sequencer");
 const createThemeRuntime = require("./theme-runtime");
 const createAgentRuntimeMain = require("./agent-runtime-main");
-const createFloatingWindowRuntime = require("./floating-window-runtime");
 const createPetWindowRuntime = require("./pet-window-runtime");
 const { createRendererConfigChannel } = require("./renderer-config-channel");
 const { collectRequiredAssetFiles } = require("./theme-schema");
 const { describeGeometrySync } = require("./pet-accessory-state");
 const { createDisplayedVisualProjection } = require("./displayed-visual-projection");
 const { getRightSideMirrorFiles, isVisualMirrored, resolveMirroredFile } = require("./mirrored-files");
-const { createTestReactionHandler } = require("./test-reaction");
 const createMacHideController = require("./mac-hide");
 const {
   getFocusableLocalHudSessionIds: selectFocusableLocalHudSessionIds,
   getSessionFocusTarget,
-  mergeSessionFocusEntry,
 } = require("./session-focus");
-const { focusCodexThreadTarget, focusDshDesktopTarget } = require("./session-focus-handoff");
 const { isSessionInProgress } = require("./state-session-snapshot");
-const { restoreSessionsFromRecoveryLeases } = require("./session-recovery-loader");
-const { createSessionHistoryRuntime } = require("./session-history-runtime");
-const { getAllAgents, getAgent } = require("../agents/registry");
+const { getAllAgents } = require("../agents/registry");
 const { getAgentIconUrl } = require("./state-agent-icons");
 // ── Autoplay policy: allow sound playback without user gesture ──
 // MUST be set before any BrowserWindow is created (before app.whenReady)
@@ -286,18 +229,6 @@ const _cloakInspector = createCloakInspector({
   log: (line) => console.warn(`Clawd: ${line}`),
 });
 
-// ── Windows: foreground Windows Terminal probe (server-side wt_hwnd sample,
-// #627 residual) ──
-// Best-effort; degrades to "never sampled" (always null) if koffi/user32 is
-// unavailable, so a broken probe never blocks a /state POST — wt_hwnd just
-// falls back to the session's last-known value (state.js merge). Never spawns
-// a subprocess, so it cannot reproduce the console flash it exists to avoid.
-const { createForegroundWindowsTerminalProbe } = require("./win-foreground-terminal");
-const _captureForegroundWindowsTerminal = createForegroundWindowsTerminalProbe({
-  isWin,
-  onError: (err) => console.warn("Clawd: win-foreground-terminal not available:", err && err.message),
-});
-
 // ── Windows: switch the dev console to UTF-8 ──
 //
 // `npm start` attaches Clawd to a parent PowerShell/cmd console. That
@@ -351,17 +282,8 @@ const SIZES = {
 // `_settingsController.applyUpdate()`, which auto-persists.
 const prefsModule = require("./prefs");
 const { createSettingsController } = require("./settings-controller");
-const { loadOrCreateInstallationIdentity } = require("./remote-ssh-identity");
 const { createTranslator, i18n, SUPPORTED_LANGS } = require("./i18n");
-const { setClaudeCollectionWithConsent } = require("./claude-statusline-consent");
-const {
-  getBubblePolicy,
-  isAllBubblesHidden,
-} = require("./bubble-policy");
 const loginItemHelpers = require("./login-item");
-const { writeCodexAutoStartGate } = require("../hooks/server-config");
-const { effectiveClaudeConfigDirs, claudeConfigDirKey } = require("../hooks/claude-config-dirs");
-const { createCodexAutoStartGateEvaluator } = require("./agent-gate");
 const PREFS_PATH = path.join(app.getPath("userData"), "omp-pet-prefs.json");
 const _initialPrefsLoad = prefsModule.load(PREFS_PATH);
 // Recovery from readable invalid contents is writable only after the original
@@ -384,44 +306,6 @@ const _recapStartupAuthorityLost = (
   || _initialPrefsRecovered
   || _initialPrefsRecoveryBackupFailed
 );
-const _codexAutoStartAuthorityLost = (
-  _initialPrefsLoad.locked === true
-  || _initialPrefsRecovered
-  || _initialPrefsRecoveryBackupFailed
-  || _initialPrefsLoad.codexAutoStartAuthoritative === false
-);
-const _evaluateCodexAutoStartGate = createCodexAutoStartGateEvaluator({
-  authorityLost: _codexAutoStartAuthorityLost,
-});
-
-function _persistCodexAutoStartGate(enabled) {
-  return writeCodexAutoStartGate(enabled === true);
-}
-
-function _syncCodexAutoStartGate(snapshot, source) {
-  if (_persistCodexAutoStartGate(_evaluateCodexAutoStartGate(snapshot))) return true;
-  console.warn(`Clawd: failed to sync Codex auto-start gate (${source})`);
-  return false;
-}
-
-// Lazy helpers — these run inside the action `effect` callbacks at click time,
-// long after server.js / hooks/install.js are loaded. Wrapping them in closures
-// avoids a chicken-and-egg require order at module load.
-//
-// All of these route through _server's Claude hook operation queue rather than
-// requiring hooks/install.js directly: every process-internal settings.json
-// mutation must be serialized against the fs watcher, periodic health audit,
-// and other Settings actions (#657).
-function _installAutoStartHook() {
-  return _server.setClaudeAutoStart({ enabled: true, source: "auto-start" });
-}
-function _uninstallAutoStartHook() {
-  return _server.setClaudeAutoStart({ enabled: false, source: "auto-start" });
-}
-async function _uninstallClaudeHooksNow() {
-  return _server.uninstallClaudeHooks({ source: "settings", automatic: false });
-}
-
 // Cross-platform "open at login" writer used by both the openAtLogin effect
 // and the startup hydration helper. Throws on failure so the action layer can
 // surface the error to the UI.
@@ -448,32 +332,6 @@ function _readSystemOpenAtLogin() {
   return app.getLoginItemSettings(
     app.isPackaged ? {} : { path: process.execPath, args: [app.getAppPath()] }
   ).openAtLogin;
-}
-
-function _getAgentIntegrationOptions(agentId) {
-  const agents = _settingsController && _settingsController.get("agents");
-  const entry = agents && agents[agentId];
-  if (!entry || typeof entry !== "object") return {};
-  const options = {};
-  const agent = getAgent(agentId);
-  const capabilities = (agent && agent.capabilities) || {};
-  if (capabilities.httpHook && capabilities.customPermissionUrl) {
-    const customPermissionUrl = prefsModule.normalizeOptionalHttpUrl(entry.customPermissionUrl);
-    options.permissionTarget = customPermissionUrl
-      ? { mode: "custom", url: customPermissionUrl }
-      : { mode: "local" };
-  }
-  return options;
-}
-
-function _getClaudeConfigDirEntries() {
-  const agents = _settingsController && _settingsController.get("agents");
-  const entry = agents && agents["claude-code"];
-  return entry && Array.isArray(entry.configDirs) ? entry.configDirs : [];
-}
-
-function _resolveAgentDisplayName(agentId) {
-  return resolveAgentDisplayName(agentId, _settingsController.get("customApplications"));
 }
 
 function _deferredResizePet(sizeKey) {
@@ -505,23 +363,9 @@ function _restartClawdNow() {
 let shortcutRuntime = null;
 let themeRuntime = null;
 let systemThemeAppearanceHandler = null;
-// Official downloadable theme owner (created after the settings controller).
-let officialThemeMain = null;
 let agentRuntime = null;
-let sessionAutomationCoordinator = null;
-let sessionAutomationStore = null;
 let systemWakeRecovery = null;
-let floatingWindowRuntime = null;
-let codexPetMain = null;
-let telegramApprovalIdentitySignature = "";
-let telegramDirectSendGateEnabled = null;
-let _telegramMigrationController = null;
-let telegramMigrationNudge = null;
-let feishuApprovalMigrationNudge = null;
 const trayBalloonOwner = createTrayBalloonOwner();
-let telegramNativeRunner = null;
-let telegramCompanion = null;
-let telegramDirectSend = null;
 let discordPresenceBridge = null;
 // Renderer-visible state animations can diverge from state.currentSvg (idle
 // rotation and reactions). Presence is fed only after the renderer confirms
@@ -529,132 +373,32 @@ let discordPresenceBridge = null;
 let lastDiscordPresenceVisual = null;
 let displayedVisualProjection = null;
 let lastAppliedVisualGeneration = 0;
-let suppressTelegramMigrationReconcile = 0;
-let _remoteSshTransportCoordinator = null;
-let feishuApprovalClient = null;
-const feishuApprovalCloseDrains = new Set();
-let feishuApprovalSyncPromise = Promise.resolve();
-let feishuApprovalConfigSignature = "";
-let feishuSessionAutomationRouteSignature = "";
-let feishuApprovalSecretsRevision = 0;
-// One-way Slack notifier. Unlike Feishu there is no connection to restart.
-// Queued automatic sends re-read the destination and the per-event gates before
-// each attempt, so a preference or secret change is picked up without a
-// revision counter that would also discard real backlogs on every settings
-// click.
-let slackNotifyClient = null;
 const shortcutHandlers = {
   togglePet: () => togglePetVisibility(),
-  quickSelectSession: () => showQuickSelect(),
 };
 const _settingsController = createSettingsController({
   prefsPath: PREFS_PATH,
   loadResult: _initialPrefsLoad,
   injectedDeps: {
-    installAutoStart: _installAutoStartHook,
-    uninstallAutoStart: _uninstallAutoStartHook,
     resolveTextScaleDisplayKey: () => getSettingsDisplayKey(),
-    syncClaudeHooksNow: () => _server.syncClawdHooks({ source: "settings", automatic: false }),
-    setClaudeQuotaCollectionEnabled: (enabled) => setClaudeCollectionWithConsent(enabled, {
-      setEnabled: (options) => _server.setClaudeQuotaCollectionEnabled({
-        ...options, source: "settings-quota-collection",
-      }),
-      confirm: async () => {
-        const parent = settingsWindowRuntime.getWindow();
-        const options = {
-          type: "question", noLink: true, defaultId: 1, cancelId: 1,
-          buttons: [translate("confirm"), translate("cancel")],
-          message: translate("claudeStatuslineCoexistTitle"),
-          detail: translate("claudeStatuslineCoexistDetail"),
-        };
-        const { response } = parent && !parent.isDestroyed()
-          ? await electronDialog.showMessageBox(parent, options)
-          : await electronDialog.showMessageBox(options);
-        return response === 0;
-      },
-    }),
-    uninstallClaudeHooksNow: _uninstallClaudeHooksNow,
-    installClaudeConfigDir: (dir) => _server.installClaudeConfigDir(dir),
-    uninstallClaudeConfigDir: (dir) => _server.uninstallClaudeConfigDir(dir),
-    startClaudeSettingsWatcher: () => _server.startClaudeSettingsWatcher(),
-    stopClaudeSettingsWatcher: () => _server.stopClaudeSettingsWatcher(),
     setOpenAtLogin: _writeSystemOpenAtLogin,
-    startMonitorForAgent: (id, intent) => agentRuntime && agentRuntime.startMonitorForAgent(id, intent),
-    stopMonitorForAgent: (id) => agentRuntime && agentRuntime.stopMonitorForAgent(id),
     syncIntegrationForAgent: (id, options) =>
       agentRuntime ? agentRuntime.syncIntegrationForAgent(id, options) : false,
     repairIntegrationForAgent: (id, options) =>
       agentRuntime ? agentRuntime.repairIntegrationForAgent(id, options) : false,
-    stopIntegrationForAgent: (id) => agentRuntime ? agentRuntime.stopIntegrationForAgent(id) : false,
     uninstallIntegrationForAgent: (id) => agentRuntime ? agentRuntime.uninstallIntegrationForAgent(id) : false,
-    writeCodexAutoStartGate: _persistCodexAutoStartGate,
-    deployHooksToWsl: async (distro, agentId) => {
-      const { deployToWsl } = require("./wsl-deploy");
-      return deployToWsl(distro, { agentId, isPackaged: app.isPackaged, resourcesPath: process.resourcesPath,
-        localServerPort: _server.getRuntimeStatus().port });
-    },
-    removeHooksFromWsl: async (distro, agentId) => {
-      const { removeFromWsl } = require("./wsl-deploy");
-      return removeFromWsl(distro, { agentId, isPackaged: app.isPackaged, resourcesPath: process.resourcesPath });
-    },
-    cleanupIntegrations: async (options = {}) => {
-      // Claude hooks + statusline unregister as one queue task, awaited here so
-      // it settles (and any in-flight repair drains) before the generic cleaner
-      // runs. hooks/cleanup-integrations.js records this precomputed result
-      // instead of unregistering Claude a second time outside the queue.
-      const claudeCleanupResult = await _server.uninstallClaudeHooks({ source: "cleanup", automatic: false });
-      const { cleanupIntegrations } = require("../hooks/cleanup-integrations.js");
-      return cleanupIntegrations({ ...options, backup: true, silent: true, claudeCleanupResult });
-    },
     repairLocalServer: () => _server && typeof _server.repairRuntimeStatus === "function"
       ? _server.repairRuntimeStatus()
       : false,
     restartClawd: _restartClawdNow,
     clearSessionsByAgent: (id) => agentRuntime ? agentRuntime.clearSessionsByAgent(id) : 0,
-    clearSessionAutomationByAgent: (id) =>
-      sessionAutomationCoordinator ? sessionAutomationCoordinator.clearAgent(id) : [],
-    dismissPermissionsByAgent: (id, options) => {
-      if (id === "codex" && !(options && options.subagentOnly) && _codexRemoteFallbackNotice) {
-        _codexRemoteFallbackNotice.clearAll("codex-permissions-disabled");
-      }
-      return agentRuntime ? agentRuntime.dismissPermissionsByAgent(id, options) : 0;
-    },
     clearRecentHookEvents: (id) => _server.clearRecentHookEvents(id),
-    identifyCustomApplication: (sourcePath) => require("./custom-applications").identifyCustomApplication(sourcePath),
     resizePet: _deferredResizePet,
     rebaseSizeToRealizedPixels: () => rebaseSizeToRealizedPixels(),
     getActiveSessionAliasKeys: () =>
       _state && typeof _state.getActiveSessionAliasKeys === "function"
         ? _state.getActiveSessionAliasKeys()
         : new Set(),
-    writeTelegramApprovalToken: (token) => writeTelegramApprovalToken(token),
-    getTelegramApprovalStatus: () => getTelegramApprovalStatus(),
-    getTelegramApprovalTokenInfo: () => getTelegramApprovalTokenInfo(),
-    sendTelegramApprovalTest: () => sendTelegramApprovalTest(),
-    writeFeishuApprovalSecrets: (secrets) => writeFeishuApprovalSecrets(secrets),
-    getFeishuApprovalPrefs: () => getFeishuApprovalPrefs(),
-    getFeishuApprovalSecrets: () => getFeishuApprovalSecrets(),
-    getFeishuApprovalSecretsRevision: () => feishuApprovalSecretsRevision,
-    getFeishuApprovalStatus: () => getFeishuApprovalStatus(),
-    getFeishuApprovalSecretInfo: () => getFeishuApprovalSecretInfo(),
-    sendFeishuApprovalTest: (persisted) => sendFeishuApprovalTest(persisted),
-    resetMobileAccess: () => ensureMobilePreviewServer().resetMobileAccess(),
-    refreshMobilePairCode: () => ensureMobilePreviewServer().refreshPairCode(),
-    revokeMobileDevice: (id) => ensureMobilePreviewServer().revokeDevice(id),
-    revokeMobileLegacy: () => ensureMobilePreviewServer().revokeLegacy(),
-    disconnectMobilePreviewClients: () => ensureMobilePreviewServer().disconnectClients({
-      code: 4001,
-      reason: "Permission preview consent changed",
-    }),
-    writeSlackNotifySecrets: (secrets) => writeSlackNotifySecrets(secrets),
-    getSlackNotifyStatus: () => getSlackNotifyStatus(),
-    getSlackNotifySecretInfo: () => getSlackNotifySecretInfo(),
-    sendSlackNotifyTest: () => sendSlackNotifyTest(),
-    // Lazy getter so settings-actions can use the controller even though it's
-    // instantiated below (forward-reference).
-    get telegramMigration() {
-      return _telegramMigrationController;
-    },
     // Theme runtime is wired after theme-loader.init(); keep these closures
     // lazy so settings actions never capture a pre-init runtime reference.
     activateTheme: (id, variantId, overrideMap) => themeRuntime.activateTheme(id, variantId, overrideMap),
@@ -664,11 +408,6 @@ const _settingsController = createSettingsController({
     removeThemeDir: (id) => themeRuntime.removeThemeDir(id),
     getActiveTheme: () => themeRuntime.getActiveTheme(),
     waitForThemeReloadSettled: (opts) => themeRuntime.waitForThemeReloadSettled(opts),
-    // Lazy getter: the official-theme owner is constructed after the controller
-    // (it depends on it), and only the command effect reads it.
-    get officialThemeManager() {
-      return officialThemeMain;
-    },
     globalShortcut,
     shortcutHandlers,
     // The controller is created before shortcutRuntime because each side needs
@@ -677,99 +416,8 @@ const _settingsController = createSettingsController({
     clearShortcutFailure: (actionId) => {
       if (shortcutRuntime) shortcutRuntime.clearFailure(actionId);
     },
-    isRemoteSshTransportBusy: (profileId) => {
-      if (_remoteSshTransportCoordinator) {
-        const snapshot = _remoteSshTransportCoordinator.snapshotForProfile(profileId);
-        if (snapshot.transportPhase !== "idle") return true;
-      }
-      if (_remoteSshRuntime) {
-        const status = _remoteSshRuntime.getProfileStatus(profileId);
-        return status.status === "connecting"
-          || status.status === "connected"
-          || status.status === "reconnecting";
-      }
-      return false;
-    },
   },
 });
-_settingsController.subscribeKey("agents", (_agents, snapshot) => {
-  // A readable future-version prefs file may still change in memory for the
-  // current process. An unreadable prefs file rejects mutations earlier in the
-  // controller. In both locked cases, publishing ephemeral values would let a
-  // retained hook cold-launch Clawd against a different durable prefs truth.
-  if (_settingsController.isLocked()) return;
-  _syncCodexAutoStartGate(snapshot, "settings");
-});
-_settingsController.subscribeKey("autoStartWithCodex", (_enabled, snapshot) => {
-  if (_settingsController.isLocked()) return;
-  _syncCodexAutoStartGate(snapshot, "settings");
-});
-
-function _claudeConfigDirWatcherKey(agents) {
-  const entries = agents && agents["claude-code"] && agents["claude-code"].configDirs;
-  const dirs = effectiveClaudeConfigDirs(entries).map(({ dir }) => claudeConfigDirKey(dir));
-  return JSON.stringify(dirs.sort());
-}
-let _lastClaudeConfigDirWatcherKey = _claudeConfigDirWatcherKey(_settingsController.get("agents"));
-_settingsController.subscribeKey("agents", (agents) => {
-  if (_settingsController.isLocked()) return;
-  const key = _claudeConfigDirWatcherKey(agents);
-  if (key === _lastClaudeConfigDirWatcherKey) return;
-  // Advance the baseline only after sync succeeds so a failure can be retried.
-  _server.syncClaudeConfigDirWatchers();
-  _lastClaudeConfigDirWatcherKey = key;
-});
-let _remoteSshInstallationIdentity = null;
-let _remoteSshInstallationIdentityPromise = null;
-
-async function initializeRemoteSshInstallationIdentity() {
-  const remoteSsh = _settingsController.get("remoteSsh") || {};
-  const persistedAuthorityPresent = Array.isArray(remoteSsh.profiles)
-    && remoteSsh.profiles.some((profile) => profile && (
-      typeof profile.routingNonce === "string"
-      || typeof profile.previousNonce === "string"
-      || !!profile.identityTxn
-      || profile.isolatedActive === true
-      || !!profile.isolatedRuntime
-      || (Array.isArray(profile.managedDeployTargets) && profile.managedDeployTargets.length > 0)
-      || (Number.isFinite(profile.lastDeployedAt) && profile.lastDeployedAt > 0)
-    ));
-  const identity = loadOrCreateInstallationIdentity({
-    userDataDir: app.getPath("userData"),
-    expectedInstallId: remoteSsh.installId,
-    persistedAuthorityPresent,
-    safeStorage,
-  });
-  const result = await _settingsController.applyCommand("remoteSsh.applyInstallationIdentity", {
-    installId: identity.installId,
-    cloneRecoveryRequired: identity.cloneRecoveryRequired === true,
-  });
-  if (!result || result.status !== "ok") {
-    throw new Error((result && result.message) || "failed to bind Remote SSH installation identity");
-  }
-  _remoteSshInstallationIdentity = Object.freeze(identity);
-  if (identity.cloneRecoveryRequired) {
-    console.warn("Clawd remote-ssh: local installation identity changed; remote profiles require redeploy");
-  }
-  if (!identity.strongStorage) {
-    console.warn(`Clawd remote-ssh: installation binding uses weak storage backend (${identity.storageBackend})`);
-  }
-  return identity;
-}
-
-function ensureRemoteSshInstallationIdentity() {
-  if (_remoteSshInstallationIdentity) {
-    return Promise.resolve(_remoteSshInstallationIdentity);
-  }
-  if (_remoteSshInstallationIdentityPromise) {
-    return _remoteSshInstallationIdentityPromise;
-  }
-  _remoteSshInstallationIdentityPromise = initializeRemoteSshInstallationIdentity()
-    .finally(() => {
-      _remoteSshInstallationIdentityPromise = null;
-    });
-  return _remoteSshInstallationIdentityPromise;
-}
 
 // Mirror of `_settingsController.get("lang")` so existing sync read sites in
 // menu.js / state.js / etc. don't have to round-trip through the controller.
@@ -900,8 +548,6 @@ function safeConsoleError(...args) {
 
 // ── Theme loader ──
 const themeLoader = require("./theme-loader");
-const createCodexPetMain = require("./codex-pet-main");
-const createOfficialThemeMain = require("./official-theme-main");
 themeLoader.init(__dirname, app.getPath("userData"));
 themeRuntime = createThemeRuntime({
   themeLoader,
@@ -930,8 +576,6 @@ themeRuntime = createThemeRuntime({
   refreshDisplayedVisualHitBoxes: () => refreshDisplayedVisualHitBoxes(),
   bumpAnimationOverridePreviewPosterGeneration,
   rebuildAllMenus: () => rebuildAllMenus(),
-  isManagedTheme: (themeId) => codexPetMain && codexPetMain.isManagedTheme(themeId),
-  isOfficialManagedTheme: (themeId) => !!(officialThemeMain && officialThemeMain.isManagedTheme(themeId)),
 });
 themeLoader.bindActiveThemeRuntime(themeRuntime);
 
@@ -986,15 +630,6 @@ const settingsWindowRuntime = createSettingsWindowRuntime({
   },
 });
 
-const permissionAutomationConfirmationRuntime = createPermissionAutomationConfirmationRuntime({
-  BrowserWindow,
-  ipcMain,
-  nativeTheme,
-  screen,
-  path,
-  iconPath: settingsWindowRuntime.getIconPath(),
-});
-
 function getSettingsWindow() {
   return settingsWindowRuntime.getWindow();
 }
@@ -1025,56 +660,6 @@ shortcutRuntime = createShortcutRuntime({
   shortcutHandlers,
 });
 
-// The injected window/menu closures below are intentionally lazy. During
-// startup before themeRuntime / win / Settings window / rebuildAllMenus exist,
-// only the sync/summary/merge methods are safe to call.
-codexPetMain = createCodexPetMain({
-  app,
-  BrowserWindow,
-  dialog,
-  fs,
-  getActiveTheme: () => getActiveTheme(),
-  getLang: () => lang,
-  getMainWindow: () => win,
-  getSettingsWindow,
-  path,
-  reloadActiveTheme: () => themeRuntime.reloadActiveTheme(),
-  rebuildAllMenus: () => rebuildAllMenus(),
-  settingsController: _settingsController,
-  shell,
-  themeLoader,
-});
-const REGISTER_PROTOCOL_DEV_ARG = codexPetMain.REGISTER_PROTOCOL_DEV_ARG;
-
-// Official downloadable themes: the catalog is fetched lazily, downloads go
-// through manager-owned staging, and the final commit/uninstall run under the
-// settings controller's shared `theme` lock. All window/menu closures are lazy.
-officialThemeMain = createOfficialThemeMain({
-  app,
-  fs,
-  net,
-  path,
-  themeLoader,
-  settingsController: _settingsController,
-  getActiveTheme: () => getActiveTheme(),
-  waitForThemeReloadSettled: (opts) => themeRuntime.waitForThemeReloadSettled(opts),
-  rebuildAllMenus: () => rebuildAllMenus(),
-  sendToSettingsWindow: (channel, payload) => broadcastSettingsWindow(channel, payload),
-  getLang: () => lang,
-});
-// Startup crash recovery is intentionally narrow: only the manager's own
-// download/staging roots, only strictly valid id/version/nonce names, only
-// orphans older than the retention window.
-try {
-  const removedOrphans = officialThemeMain.cleanupOrphans();
-  if (removedOrphans.length > 0) {
-    console.log(`Clawd: cleared ${removedOrphans.length} stale official-theme artifact(s)`);
-  }
-  officialThemeMain.refreshInstalledScan();
-} catch (err) {
-  console.warn("Clawd: official theme startup cleanup failed:", err && err.message);
-}
-
 // Lenient load so a missing/corrupt user-selected theme can't brick boot.
 // If lenient fell back to "clawd" OR the variant fell back to "default",
 // hydrate prefs to match so the store stays truth.
@@ -1083,36 +668,11 @@ try {
 // load path, not activateTheme (which requires ready windows) and not the
 // setThemeSelection command (which goes through activateTheme). The runtime
 // switch path via UI goes through setThemeSelection post-window-ready.
-let _requestedThemeId = _settingsController.get("theme") || "clawd";
+const _requestedThemeId = _settingsController.get("theme") || "clawd";
 const _initialVariantMap = _settingsController.get("themeVariant") || {};
-let _requestedVariantId = _initialVariantMap[_requestedThemeId] || "default";
+const _requestedVariantId = _initialVariantMap[_requestedThemeId] || "default";
 const _initialThemeOverrides = _settingsController.get("themeOverrides") || {};
-let _requestedThemeOverrides = _initialThemeOverrides[_requestedThemeId] || null;
-let _startupCodexPetSyncSummary = codexPetMain.syncThemes(_requestedThemeId);
-if (codexPetMain.summaryHasActiveOrphan(_startupCodexPetSyncSummary, _requestedThemeId)) {
-  const orphanThemeId = _requestedThemeId;
-  const nextVariantMap = { ...(_settingsController.get("themeVariant") || {}) };
-  const nextOverrides = { ...(_settingsController.get("themeOverrides") || {}) };
-  delete nextVariantMap[orphanThemeId];
-  delete nextOverrides[orphanThemeId];
-
-  _requestedThemeId = "clawd";
-  _requestedVariantId = nextVariantMap[_requestedThemeId] || "default";
-  _requestedThemeOverrides = nextOverrides[_requestedThemeId] || null;
-  const result = _settingsController.hydrate({
-    theme: _requestedThemeId,
-    themeVariant: nextVariantMap,
-    themeOverrides: nextOverrides,
-  });
-  if (result && result.status === "error") {
-    console.warn("Clawd: Codex Pet active theme fallback hydrate failed:", result.message);
-  }
-  _startupCodexPetSyncSummary = codexPetMain.mergeSyncSummaries(
-    _startupCodexPetSyncSummary,
-    codexPetMain.syncThemes(_requestedThemeId)
-  );
-  codexPetMain.setLastSyncSummary(_startupCodexPetSyncSummary);
-}
+const _requestedThemeOverrides = _initialThemeOverrides[_requestedThemeId] || null;
 // Theme files can be briefly unreadable on the first launch after an update
 // (#1295, exact trigger unconfirmed): give the startup read a small bounded
 // retry before the fatal "Default theme 'clawd' not found".
@@ -1248,23 +808,11 @@ const petWindowRuntime = createPetWindowRuntime({
   keepOutOfTaskbar,
   repositionSessionHud: () => repositionSessionHud(),
   repositionAnchoredSurfaces: () => repositionAnchoredFloatingSurfaces(),
-  // #640: hitbox changes without a window move (state switch, theme reload)
-  // must re-answer the editing-overlap question. (Lazy — defined below.)
-  syncImeEditingPetDodge: () => topmostRuntime.syncImeEditingPetDodge(),
-  repositionFloatingBubbles: () => repositionFloatingBubbles(),
-  showFloatingSurfacesForPet: () => floatingWindowRuntime.showFloatingSurfacesForPet(),
-  hideFloatingSurfacesForPet: () => floatingWindowRuntime.hideFloatingSurfacesForPet(),
-  setFloatingSurfacesFullscreenSuppressed: (suppressed) => (
-    floatingWindowRuntime.setFullscreenSuppressedForPet(suppressed, {
-      includePermissionSurfaces: fullscreenAutoHideCached,
-    })
-  ),
   // Lazy-bound like isMiniAnimating below — topmostRuntime is constructed
   // after petWindowRuntime, but this closure only fires on a user gesture,
   // well after module load finishes. (#935 override latch)
   noteManualPetShow: () => topmostRuntime.noteFullscreenAutoHideOverride(),
-  syncSessionHudVisibilityAndBubbles: () => syncSessionHudVisibilityAndBubbles(),
-  syncPermissionShortcuts: () => syncPermissionShortcuts(),
+  syncSessionHudVisibilityAndBubbles: () => syncSessionHudVisibility(),
   buildTrayMenu: () => buildTrayMenu(),
   buildContextMenu: () => buildContextMenu(),
   reapplyMacVisibility: () => reapplyMacVisibility(),
@@ -1415,39 +963,22 @@ function getEffectiveCurrentPixelSize(overrideWa) {
 }
 let contextMenu;
 let doNotDisturb = false;
-let quotaAlertsRuntime = null;
 let isQuitting = false;
 let quitCleanupStarted = false;
-let appQuitDrainStarted = false;
-let appQuitDrainReady = false;
 // Mirror caches: kept in sync with the settings store via settings-effect-router
 // further down. Read freely; never assign
 // directly (writes go through ctx setters → controller.applyUpdate).
 let showTray = _settingsController.get("showTray");
 let showDock = _settingsController.get("showDock");
-let manageClaudeHooksAutomatically = _settingsController.get("manageClaudeHooksAutomatically");
-let autoStartWithClaude = _settingsController.get("autoStartWithClaude");
 let openAtLogin = _settingsController.get("openAtLogin");
-let bubbleFollowPet = _settingsController.get("bubbleFollowPet");
-let bubbleFollowPreference = _settingsController.get("bubbleFollowPreference");
-let bubbleFixedCorner = _settingsController.get("bubbleFixedCorner");
 let sessionHudEnabled = _settingsController.get("sessionHudEnabled");
 let sessionHudShowStateLabels = _settingsController.get("sessionHudShowStateLabels");
 let sessionHudShowElapsed = _settingsController.get("sessionHudShowElapsed");
 let sessionHudShowContextUsage = _settingsController.get("sessionHudShowContextUsage");
-let sessionHudShowQuota = _settingsController.get("sessionHudShowQuota");
-let quotaRingDisplayMode = _settingsController.get("quotaRingDisplayMode");
-let quotaRingHiddenProviders = _settingsController.get("quotaRingHiddenProviders");
-let claudeQuotaCollectionEnabled = _settingsController.get("claudeQuotaCollectionEnabled");
-let kimiQuotaCollectionEnabled = _settingsController.get("kimiQuotaCollectionEnabled");
-let quotaMergeSources = _settingsController.get("quotaMergeSources");
 let sessionHudCleanupDetached = _settingsController.get("sessionHudCleanupDetached");
-let sessionHudHideCompletedCodexEphemeral = _settingsController.get("sessionHudHideCompletedCodexEphemeral");
-let sessionHudHideActiveCodexEphemeral = _settingsController.get("sessionHudHideActiveCodexEphemeral");
 let sessionHudPinned = _settingsController.get("sessionHudPinned");
 let sessionStaleMs = _settingsController.get("sessionStaleMs");
 let workingStaleMs = _settingsController.get("workingStaleMs");
-let codexWorkingStaleMs = _settingsController.get("codexWorkingStaleMs");
 let detachedIdleStaleMs = _settingsController.get("detachedIdleStaleMs");
 let soundMuted = _settingsController.get("soundMuted");
 let soundVolume = _settingsController.get("soundVolume");
@@ -1565,14 +1096,6 @@ function endTextScalePreview() {
   textScalePreview = null;
   applyTextScaleNow();
   return { status: "ok" };
-}
-
-function getRuntimeBubblePolicy(kind) {
-  return getBubblePolicy(_settingsController.getSnapshot(), kind);
-}
-
-function getAllBubblesHidden() {
-  return isAllBubblesHidden(_settingsController.getSnapshot());
 }
 
 let macHideController = null; // macOS app-hidden ↔ pet visibility bridge (#416); created in whenReady
@@ -1768,15 +1291,6 @@ function sendToRenderer(channel, ...args) {
 function sendToHitWin(channel, ...args) {
   if (hitWin && !hitWin.isDestroyed()) hitWin.webContents.send(channel, ...args);
 }
-function broadcastSettingsWindow(channel, payload) {
-  try {
-    const settingsWin = getSettingsWindow();
-    if (!settingsWin || settingsWin.isDestroyed()) return;
-    if (!settingsWin.webContents || settingsWin.webContents.isDestroyed()) return;
-    settingsWin.webContents.send(channel, payload);
-  } catch {}
-}
-
 function getThemeSoundPreloadUrls() {
   const urls = [];
   for (const name of ["complete", "confirm"]) {
@@ -2003,42 +1517,11 @@ let forceEyeResend = false;
 let forceEyeResendBoostUntil = 0;
 let requestFastTick = () => {};
 let repositionSessionHud = () => {};
-let repositionQuotaRing = () => {};
 let syncSessionHudVisibility = () => {};
 let broadcastSessionHudSnapshot = () => {};
 let sendSessionHudI18n = () => {};
-let getSessionHudReservedOffset = () => 0;
 let getSessionHudWindow = () => null;
-let getQuotaRingWindow = () => null;
 
-function getVisibleSessionHudBounds() {
-  try {
-    const hudWindow = getSessionHudWindow();
-    if (
-      !hudWindow
-      || (typeof hudWindow.isDestroyed === "function" && hudWindow.isDestroyed())
-      || (typeof hudWindow.isVisible === "function" && !hudWindow.isVisible())
-      || typeof hudWindow.getBounds !== "function"
-    ) {
-      return [];
-    }
-    const bounds = hudWindow.getBounds();
-    if (
-      !bounds
-      || !Number.isFinite(bounds.x)
-      || !Number.isFinite(bounds.y)
-      || !Number.isFinite(bounds.width)
-      || bounds.width <= 0
-      || !Number.isFinite(bounds.height)
-      || bounds.height <= 0
-    ) {
-      return [];
-    }
-    return [{ x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height }];
-  } catch {
-    return [];
-  }
-}
 const themeFadeSequencer = createThemeFadeSequencer({
   getRenderWindow: () => win,
   getHitWindow: () => hitWin,
@@ -2089,22 +1572,13 @@ const setHitWinFocusable = _hitWindowActivationRuntime.setHitWinFocusable;
 // See _mini initialization below
 
 // ── alwaysOnTop recovery — delegated to src/topmost-runtime.js ──
-let permissionPresentationRuntime = null;
 const topmostRuntime = createTopmostRuntime({
   isWin,
   isMac,
   getWin: () => win,
   getHitWin: () => hitWin,
   recoverCloakedPet: () => petWindowRuntime.recoverIfCloaked(),
-  getPendingPermissions: () => pendingPermissions,
-  getPermissionPresentationWindows: () => (
-    permissionPresentationRuntime
-    && typeof permissionPresentationRuntime.getPermissionPresentationWindows === "function"
-      ? permissionPresentationRuntime.getPermissionPresentationWindows()
-      : pendingPermissions.map((entry) => entry && entry.bubble).filter(Boolean)
-  ),
   getSessionHudWindow: () => getSessionHudWindow(),
-  getQuotaRingWindow: () => getQuotaRingWindow(),
   getContextMenuOwner: () => contextMenuOwner,
   getNearestWorkArea,
   getPetWindowBounds,
@@ -2146,7 +1620,6 @@ const {
   startFocusablePoll,
 } = topmostRuntime;
 
-// ── Permission bubble — delegated to src/permission.js ──
 const {
   createRuntimeAgentGate,
 } = require("./agent-gate");
@@ -2157,231 +1630,11 @@ const _runtimeAgentGate = createRuntimeAgentGate({
   // but only a clean load after restart can re-open agent paths.
   isAuthoritative: () => !_initialPrefsRecovered && !_settingsController.hasReadFailure(),
 });
-const refreshPermissionPresentation = require("./permission-presentation-refresh")({
-  getStateRuntime: () => _state,
-  isDisposed: () => isQuitting,
-});
-const createCodexRemoteFallbackNotice = require("./codex-remote-fallback-notice");
-const {
-  isCodexRemoteFallbackSuppressed: isRemoteFallbackSuppressed,
-} = createCodexRemoteFallbackNotice;
-let _codexRemoteFallbackNotice = null;
-const _permCtx = {
-  getClaudeConfigDirs: () => effectiveClaudeConfigDirs(_getClaudeConfigDirEntries()),
-  onPermissionsChanged: refreshPermissionPresentation,
-  get win() { return win; },
-  get lang() { return lang; },
-  get sessions() { return sessions; },
-  get bubbleFollowPet() { return bubbleFollowPet; },
-  get bubbleFollowPreference() { return bubbleFollowPreference; },
-  get bubbleFixedCorner() { return bubbleFixedCorner; },
-  get permDebugLog() { return permDebugLog; },
-  get doNotDisturb() { return doNotDisturb; },
-  get hideBubbles() { return getAllBubblesHidden(); },
-  get petHidden() { return petWindowRuntime.isPetEffectivelyHidden(); },
-  getBubblePolicy: getRuntimeBubblePolicy,
-  getPetWindowBounds,
-  getNearestWorkArea,
-  getBubbleWorkArea,
-  getHitRectScreen,
-  getHudReservedOffset: () => getSessionHudReservedOffset(),
-  getSessionHudBounds: () => getVisibleSessionHudBounds(),
-  getTextScale: (workArea) => getTextScaleForBubbleWorkArea(workArea),
-  guardAlwaysOnTop,
-  reapplyMacVisibility,
-  // #640: permission.js re-runs the editing-overlap dodge scan whenever the
-  // pendingPermissions list changes (notifyPermissionsChanged), so a bubble
-  // that leaves the list mid-edit can't strand the pet faded + click-through.
-  syncImeEditingPetDodge: () => topmostRuntime.syncImeEditingPetDodge(),
-  isAgentEnabled: (agentId) => _runtimeAgentGate.isAgentEnabled(agentId),
-  isAgentPermissionsEnabled: (agentId) =>
-    _runtimeAgentGate.isAgentPermissionsEnabled(agentId),
-  isAgentSubagentPermissionsEnabled: (agentId) =>
-    _runtimeAgentGate.isAgentSubagentPermissionsEnabled(agentId),
-  getCodexPermissionMode: () => _runtimeAgentGate.getCodexPermissionMode(),
-  isCodexPermissionInterceptEnabled: () =>
-    _runtimeAgentGate.isCodexPermissionInterceptEnabled(),
-  // The permission layer consumes one normalized runtime mode. DND,
-  // headless, per-agent and bubble gates run before this chokepoint.
-  getPermissionAutomationMode: () =>
-    _settingsController.get("permissionAutomationMode") || "off",
-  isDestructiveReminderEnabled: () =>
-    _settingsController.get("destructiveActionReminder") === true,
-  // Optional external review command (#995). The permission runtime consumes
-  // both values together; an empty command means the feature is off.
-  getPermissionReviewConfig: () => ({
-    command: _settingsController.get("permissionReviewCommand"),
-    timeoutMs: _settingsController.get("permissionReviewTimeoutMs"),
-  }),
-  getEffectivePermissionAutomationMode: (entry, options) =>
-    sessionAutomationCoordinator
-      ? sessionAutomationCoordinator.getEffectiveMode(entry, options)
-      : (_settingsController.get("permissionAutomationMode") || "off"),
-  hasSessionAutomationOverride: (entry) =>
-    !!(
-      sessionAutomationCoordinator
-      && sessionAutomationCoordinator.getRecordForEntry(entry)
-    ),
-  canOfferSessionTrust: (entry) =>
-    !!(sessionAutomationCoordinator && sessionAutomationCoordinator.canOfferSessionTrust(entry)),
-  translate: (key) => translate(key),
-  canOfferRemoteSessionTrust: (entry, remote) => {
-    const client = remote && remote.client;
-    return !!(
-      sessionAutomationCoordinator
-      && sessionAutomationCoordinator.canOfferSessionTrust(entry)
-      && client
-      && typeof client.supportsSessionAutomation === "function"
-      && client.supportsSessionAutomation()
-    );
-  },
-  requestSessionTrust: (entry) =>
-    sessionAutomationCoordinator
-      ? sessionAutomationCoordinator.requestEntryTrust(entry)
-      : Promise.resolve({ status: "unavailable" }),
-  requestRemoteSessionTrust: (entry, remote) =>
-    sessionAutomationCoordinator
-      ? sessionAutomationCoordinator.requestRemoteSessionTrust(entry, remote)
-      : Promise.resolve({ status: "unavailable" }),
-  cancelSessionTrustCandidate: (entry, options) =>
-    !!(sessionAutomationCoordinator
-      && sessionAutomationCoordinator.cancelSessionTrustCandidate(entry, options)),
-  focusTerminalForSession: (sessionId, options = {}) => {
-    focusDashboardSession(sessionId, {
-      requestSource: options.requestSource || "permission-bubble",
-      fallbackEntry: options.fallbackEntry || getPendingPermissionFocusEntry(sessionId),
-    });
-  },
-  getSettingsSnapshot: () => _settingsController.getSnapshot(),
-  subscribeShortcuts: (cb) => _settingsController.subscribeKey("shortcuts", (_value, snapshot) => {
-    if (typeof cb === "function") cb(snapshot);
-  }),
-  reportShortcutFailure: (actionId, reason) => shortcutRuntime.reportFailure(actionId, reason),
-  clearShortcutFailure: (actionId) => shortcutRuntime.clearFailure(actionId),
-  repositionFloatingBubbles: () => repositionFloatingBubbles(),
-  repositionSessionHud: () => repositionQuotaRing(),
-  getTelegramApprovalClient: () => getTelegramApprovalClient(),
-  getRemoteApprovalClients: () => {
-    const client = getFeishuApprovalClient();
-    return client && typeof client.isConnected === "function" && client.isConnected()
-      ? [{ name: "feishu", client }]
-      : [];
-  },
-  onPermissionResolved: (permEntry, options = {}) => {
-    if (!_state || typeof _state.clearPermissionNotification !== "function") return;
-    _state.clearPermissionNotification(permEntry && permEntry.sessionId, {
-      ...options,
-      permissionSource: permEntry && {
-        agentId: permEntry.agentId, profileId: permEntry.profileId,
-        host: permEntry.host, wslDistro: permEntry.wslDistro,
-        headless: permEntry.headless, subagentId: permEntry.subagentId,
-      },
-    });
-  },
-  // Best-effort, read-only "permission needed" heads-up to Slack. Slack cannot
-  // resolve the approval in this build (webhook is one-way), so this only
-  // announces — the desktop bubble / other channels still own the decision.
-  notifySlackPermission: (payload, options = {}) => {
-    const client = getSlackNotifyClient();
-    if (client && typeof client.notifyPermissionRequest === "function") {
-      try { client.notifyPermissionRequest(payload, options); } catch {}
-    }
-  },
-  notifyCodexRemoteFallback: (payload) => (
-    _codexRemoteFallbackNotice ? _codexRemoteFallbackNotice.notify(payload) : false
-  ),
-  onCodexRemoteFallbackCardDismissed: (sessionId, entry) => (
-    _codexRemoteFallbackNotice
-      ? _codexRemoteFallbackNotice.noteCardDismissed(sessionId, entry)
-      : false
-  ),
-};
-const _perm = initPermission(_permCtx);
-permissionPresentationRuntime = _perm;
-const { showPermissionBubble, resolvePermissionEntry, sendPermissionResponse, repositionBubbles, permLog, PASSTHROUGH_TOOLS, addPendingPermission, removePendingPermission, isPermissionEntryLive, canAutoResolvePendingPermission, wouldAutoAllowPermission, beginSessionTrustConfirmation, endSessionTrustConfirmation, syncPermissionBubbleContent, maybeStartRemoteApproval, clearCodexNotifyBubbles, showCodexUserInputBubble, clearCodexUserInputBubbles, showClaudeTurnAskBubble, clearClaudeTurnAskBubbles, showKimiNotifyBubble, clearKimiNotifyBubbles, syncPermissionShortcuts, replyOpencodeFamilyPermission, dismissOpencodeFamilyPermissionResolvedExternally } = _perm;
-
-_codexRemoteFallbackNotice = createCodexRemoteFallbackNotice({
-  setTimeout: (fn, ms) => setTimeout(fn, ms),
-  clearTimeout: (handle) => clearTimeout(handle),
-  isSuppressed: () => isQuitting || isRemoteFallbackSuppressed(_permCtx),
-  show: (payload) => callRuntimeMethod(_perm, "showCodexRemoteFallbackNotice", payload),
-  refresh: (entry, payload) => callRuntimeMethod(_perm, "refreshCodexRemoteFallbackNotice", entry, payload),
-  dismiss: (entry, reason) => callRuntimeMethod(_perm, "dismissCodexRemoteFallbackNotice", entry, reason),
-  log: (message) => permLog(message),
-});
-const pendingPermissions = _perm.pendingPermissions;
-let permDebugLog = null; // set after app.whenReady()
 let sessionDebugLog = null; // set after app.whenReady()
 let focusDebugLog = null; // set after app.whenReady()
-let recordWindowsProcessChainShadow = () => false;
-
-// #1326 follow-up: re-show an unanswered Claude Desktop wrap_up question (with
-// a sound) once it has waited the configured minutes, if the user opted in.
-// Created before _stateCtx so onSessionDeleted can resolve it. The minutes are
-// read when a question starts waiting; the switch, the agent gate and the
-// live-session check are read again when the timer fires.
-const claudeTurnAskReminder = createClaudeTurnAskReminder({
-  isEnabled: () => _settingsController.get("claudeTurnAskReminder") === true,
-  canRemind: (payload) => _runtimeAgentGate.isAgentEnabled("claude-code")
-    && sessions.has(payload.sessionId),
-  getDelayMs: () => reminderDelayMsFromMinutes(_settingsController.get("claudeTurnAskReminderMinutes")),
-  onRemind: (payload) => {
-    if (showClaudeTurnAskBubble(payload)) playSound("confirm");
-  },
-});
-app.on("will-quit", () => claudeTurnAskReminder.dispose());
-
-function getPendingPermissionFocusEntry(sessionId) {
-  const id = String(sessionId || "");
-  if (!id) return null;
-  const entry = pendingPermissions.find((perm) => perm && perm.sessionId === id && perm.agentId === "codex");
-  if (!entry) return null;
-  const focusEntry = { id, agentId: entry.agentId };
-  if (entry.sourcePid) focusEntry.sourcePid = entry.sourcePid;
-  if (entry.wtHwnd) focusEntry.wtHwnd = entry.wtHwnd;
-  if (entry.cwd) focusEntry.cwd = entry.cwd;
-  if (entry.agentPid) focusEntry.agentPid = entry.agentPid;
-  if (entry.pidChain) focusEntry.pidChain = entry.pidChain;
-  if (entry.tmuxSocket) focusEntry.tmuxSocket = entry.tmuxSocket;
-  if (entry.tmuxClient) focusEntry.tmuxClient = entry.tmuxClient;
-  if (entry.orcaPaneKey) focusEntry.orcaPaneKey = entry.orcaPaneKey;
-  if (entry.host) focusEntry.host = entry.host;
-  if (entry.platform) focusEntry.platform = entry.platform;
-  if (entry.model) focusEntry.model = entry.model;
-  if (entry.codexOriginator) focusEntry.codexOriginator = entry.codexOriginator;
-  if (entry.codexSource) focusEntry.codexSource = entry.codexSource;
-  return focusEntry;
-}
-
-floatingWindowRuntime = createFloatingWindowRuntime({
-  getPendingPermissions: () => pendingPermissions,
-  repositionPermissionBubbles: () => repositionBubbles(),
-  repositionSessionHud: () => repositionSessionHud(),
-  repositionQuotaRing: () => repositionQuotaRing(),
-  syncSessionHudVisibility: () => syncSessionHudVisibility(),
-  keepOutOfTaskbar,
-  showPermissionSurfacesForPet: () => _perm.showPermissionSurfacesForPet(),
-  hidePermissionSurfacesForPet: () => _perm.hidePermissionSurfacesForPet(),
-  setPermissionSurfacesFullscreenSuppressed: (suppressed) => (
-    _perm.setPermissionSurfacesFullscreenSuppressed(suppressed)
-  ),
-});
-
-function repositionFloatingBubbles() {
-  return floatingWindowRuntime.repositionFloatingBubbles();
-}
 
 function repositionAnchoredFloatingSurfaces() {
-  const result = floatingWindowRuntime.repositionAnchoredSurfaces();
-  // #640: pet bounds changed — re-evaluate the editing-overlap dodge (a drag
-  // can slide the pet over the bubble being typed into; the bubble itself is
-  // frozen while editing, and roam is paused, so the pet is the mover here).
-  topmostRuntime.syncImeEditingPetDodge();
-  return result;
-}
-
-function syncSessionHudVisibilityAndBubbles() {
-  return floatingWindowRuntime.syncSessionHudVisibilityAndBubbles();
+  repositionSessionHud();
 }
 
 // ── State machine — delegated to src/state.js ──
@@ -2457,12 +1710,7 @@ const _stateCtx = {
   get theme() { return getActiveTheme(); },
   get win() { return win; },
   get hitWin() { return hitWin; },
-  // Last-known account quota survives app restarts (state-account-quota.js).
-  accountQuotaPersistPath: require("./state-account-quota").DEFAULT_PERSIST_PATH,
   recapSink: recapRuntime,
-  get claudeQuotaCollectionEnabled() { return claudeQuotaCollectionEnabled; },
-  get kimiQuotaCollectionEnabled() { return kimiQuotaCollectionEnabled; },
-  get quotaMergeSources() { return quotaMergeSources; },
   get doNotDisturb() { return doNotDisturb; },
   set doNotDisturb(v) { doNotDisturb = v; },
   get miniMode() { return _mini.getMiniMode(); },
@@ -2478,7 +1726,6 @@ const _stateCtx = {
   get forceEyeResend() { return forceEyeResend; },
   set forceEyeResend(v) { setForceEyeResend(v); },
   get mouseStillSince() { return _tick ? _tick._mouseStillSince : Date.now(); },
-  get pendingPermissions() { return pendingPermissions; },
   sendToRenderer,
   sendToHitWin,
   syncHitWin,
@@ -2486,62 +1733,18 @@ const _stateCtx = {
   flashTaskbar,
   t: (key) => t(key),
   focusTerminalWindow: (...args) => focusTerminalWindow(...args),
-  resolvePermissionEntry: (...args) => resolvePermissionEntry(...args),
-  dismissPermissionsForDnd: (...args) => {
-    if (_codexRemoteFallbackNotice) _codexRemoteFallbackNotice.invalidateAll("dnd-enabled");
-    return _perm.dismissPermissionsForDnd(...args);
-  },
-  showKimiNotifyBubble: (...args) => showKimiNotifyBubble(...args),
-  clearKimiNotifyBubbles: (...args) => clearKimiNotifyBubbles(...args),
-  // state.js needs this to gate startKimiPermissionPoll symmetrically with
-  // shouldSuppressKimiNotifyBubble in permission.js — without it the
-  // permissionsEnabled=false toggle would silently rebuild holds on every
-  // incoming Kimi PermissionRequest.
-  isAgentPermissionsEnabled: (agentId) =>
-    _runtimeAgentGate.isAgentPermissionsEnabled(agentId),
-  // state.js gates self-issued Notification events (idle / wait-for-input
-  // pings) via this reader. Living in updateSession (not at the HTTP
-  // boundary) keeps the gate consistent for hook / log-poll / plugin paths.
-  isAgentNotificationHookEnabled: (agentId) =>
-    _runtimeAgentGate.isAgentNotificationHookEnabled(agentId),
-  resolveAgentDisplayName: _resolveAgentDisplayName,
   miniPeekIn: (mode) => miniPeekIn(mode),
   miniPeekOut: () => miniPeekOut(),
   buildContextMenu: () => buildContextMenu(),
   buildTrayMenu: () => buildTrayMenu(),
   debugLog: (msg) => sessionLog(msg),
   broadcastSessionSnapshot: (snapshot) => {
-    quotaAlertsRuntime?.observeQuota();
     reconcilePowerSaveBlocker();
     broadcastDashboardSessionSnapshot(snapshot);
     broadcastSessionHudSnapshot(snapshot);
-    repositionFloatingBubbles();
-    // R1a: best-effort completion notifications. Must never throw or block the
-    // broadcast — the companion computes synchronously and fires sends async.
-    if (telegramCompanion) {
-      try {
-        const telegramSnapshot = {
-          ...snapshot,
-          sessions: Array.isArray(snapshot && snapshot.sessions)
-            ? snapshot.sessions.map((entry) => {
-              const runtimeEntry = entry && entry.id ? sessions.get(String(entry.id)) : null;
-              return {
-                ...entry,
-                agentPid: runtimeEntry && runtimeEntry.agentPid || null,
-              };
-            })
-            : [],
-        };
-        telegramCompanion.onSnapshot(telegramSnapshot);
-      } catch {}
-    }
-    // Slack completion pings ride the same fanout; the client dedupes internally
-    // and fires sends async, so this never throws or blocks the broadcast.
-    try { getSlackNotifyClient().onSnapshot(snapshot); } catch {}
     if (discordPresenceBridge) {
       try { discordPresenceBridge.onSnapshot(snapshot); } catch {}
     }
-    if (_lanWss) { try { _lanWss.onSnapshot(); } catch {} }
   },
   // Phase 3b: 读 prefs.themeOverrides 判断某个 oneshot state 是否被用户禁用。
   // state.js gate 调这个做 early-return。不做白名单校验——settings-actions
@@ -2557,39 +1760,14 @@ const _stateCtx = {
     return !!(entry && entry.disabled === true);
   },
   get sessionHudCleanupDetached() { return sessionHudCleanupDetached; },
-  get sessionHudHideCompletedCodexEphemeral() { return sessionHudHideCompletedCodexEphemeral; },
-  get sessionHudHideActiveCodexEphemeral() { return sessionHudHideActiveCodexEphemeral; },
   getStaleConfig: () => ({
     sessionStaleMs,
     workingStaleMs,
-    codexWorkingStaleMs,
     detachedIdleStaleMs,
   }),
-  hasReplyableCompletionMapping: (sessionId, session) => !!(
-    telegramDirectSend
-    && typeof telegramDirectSend.hasReplyableCompletionMapping === "function"
-    && telegramDirectSend.hasReplyableCompletionMapping(sessionId, session)
-  ),
   getSessionAliases: () => _settingsController.get("sessionAliases"),
-  getClaudeConfigDirs: () => effectiveClaudeConfigDirs(_getClaudeConfigDirEntries()),
-  getSessionAutomationRecords: () =>
-    sessionAutomationStore ? sessionAutomationStore.list() : [],
-  getPermissionAutomationMode: () =>
-    _settingsController.get("permissionAutomationMode") || "off",
-  getKiroDesktopPendingSessionIds: () => agentRuntime?.getKiroDesktopPendingSessionIds() || new Set(),
-  getCopilotTerminalWaitSessionIds: () => agentRuntime?.getCopilotTerminalWaitSessionIds() || new Set(),
-  onSessionDeleted: (sessionId) => {
-    agentRuntime?.clearKiroDesktopSession(sessionId);
-    agentRuntime?.clearCopilotTerminalWaitSession(sessionId);
-    claudeTurnAskReminder.resolve(sessionId);
-  },
-  resyncKiroDesktopReminderCards: () => agentRuntime?.resyncKiroDesktopReminderCards(),
-  onSessionAutomationLifecycleEnd: (payload) => {
-    if (sessionAutomationCoordinator) sessionAutomationCoordinator.onSessionLifecycleEnd(payload);
-  },
   getIdleVisualChoice,
   isAgentEnabled: (agentId) => _runtimeAgentGate.isAgentEnabled(agentId),
-  hasAnyEnabledAgent: () => _runtimeAgentGate.hasAnyEnabledAgent(),
 };
 const _state = require("./state")(_stateCtx);
 displayedVisualProjection = createDisplayedVisualProjection({
@@ -2626,28 +1804,6 @@ displayedVisualProjection = createDisplayedVisualProjection({
     petWindowRuntime.reloadWindowWebContents(win);
   },
 });
-const _kimiQuotaCredentialStore = createKimiQuotaCredentialStore({ safeStorage });
-const _kimiQuotaRuntime = createKimiQuotaRuntime({
-  credentialStore: _kimiQuotaCredentialStore,
-  client: createKimiQuotaClient({ appVersion: app.getVersion() }),
-  getSettingsSnapshot: () => _settingsController.getSnapshot(),
-  setCollectionEnabled: (enabled) => _settingsController.applyCommand(
-    "setKimiQuotaCollectionEnabled",
-    { enabled }
-  ),
-  commitLocalKimiQuota: (quota) => _state.commitLocalKimiQuota(quota),
-  clearLocalKimiQuota: () => _state.clearLocalKimiQuota(),
-});
-_settingsController.subscribeKey("kimiQuotaCollectionEnabled", (enabled) => {
-  void _kimiQuotaRuntime.onCollectionPreferenceChanged(enabled).catch((error) => {
-    console.warn("Clawd: Kimi quota preference reconciliation failed:", error && error.message);
-  });
-});
-_settingsController.subscribeKey("agents", (_agents, snapshot) => {
-  if (!_runtimeAgentGate.isAgentEnabled("kimi-cli")) {
-    _kimiQuotaRuntime.invalidateRequests();
-  }
-});
 const { setState, applyState, updateSession, resolveDisplayState, getSvgOverride,
         enableDoNotDisturb, disableDoNotDisturb: disableDoNotDisturbState,
         startStaleCleanup, stopStaleCleanup,
@@ -2656,66 +1812,14 @@ const { setState, applyState, updateSession, resolveDisplayState, getSvgOverride
 const sessions = _state.sessions;
 
 function disableDoNotDisturb() {
-  const result = disableDoNotDisturbState();
-  quotaAlertsRuntime?.observeQuota();
-  return result;
+  return disableDoNotDisturbState();
 }
-
-function showQuotaAlert(event) {
-  return quotaNotifications.show(event);
-}
-
-async function showSessionAutomationWarning(entry) {
-  const parent = selectSessionAutomationDialogParent({
-    entry,
-    petWindow: win,
-  });
-  return permissionAutomationConfirmationRuntime.confirmPermissionAutomation({
-    parent,
-    lang: _settingsController.get("lang") || lang || "en",
-    title: translate("sessionAutomationConfirmTitle"),
-    message: translate("sessionAutomationConfirmMessage"),
-    detail: translate("sessionAutomationConfirmDetail"),
-    checkboxLabel: translate("permissionAutomationAutoToolsDontShowAgain"),
-    confirmLabel: translate("sessionAutomationConfirmEnable"),
-    cancelLabel: translate("permissionAutomationCancel"),
-  });
-}
-
-sessionAutomationStore = createSessionAutomationStore({
-  onChange: (changes) => {
-    try { _state.emitSessionSnapshot({ force: true }); } catch {}
-    for (const client of [telegramNativeRunner, feishuApprovalClient]) {
-      if (client && typeof client.handleSessionAutomationChanges === "function") {
-        try { client.handleSessionAutomationChanges(changes); } catch {}
-      }
-    }
-  },
-});
-sessionAutomationCoordinator = createSessionAutomationCoordinator({
-  store: sessionAutomationStore,
-  getSession: (sessionId) => sessions.get(sessionId) || null,
-  listPending: () => pendingPermissions,
-  getGlobalMode: () => _settingsController.get("permissionAutomationMode") || "off",
-  canAutoResolvePendingPermission,
-  resolvePermissionEntry,
-  beginConfirmation: beginSessionTrustConfirmation,
-  endConfirmation: endSessionTrustConfirmation,
-  restoreBubble: syncPermissionBubbleContent,
-  isWarningDismissed: () =>
-    _settingsController.get("permissionAutomationAutoToolsWarningDismissed") === true,
-  showWarning: showSessionAutomationWarning,
-  rememberWarning: () =>
-    _settingsController.applyUpdate("permissionAutomationAutoToolsWarningDismissed", true),
-  translate: (key, fallback) => translate(key) || fallback,
-});
 
 // ── Keep-awake: block OS sleep while any agent task is in progress ──
 // State→in-progress mapping lives in state-session-snapshot.isSessionInProgress
 // (kept as a pure helper so the semantics are unit-tested).
 let powerSaveBlockerId = null;
 function anySessionInProgress() {
-  if (_state.hasActiveCodexSubagents()) return true;
   for (const [, s] of sessions) {
     if (isSessionInProgress(s)) return true;
   }
@@ -2800,34 +1904,12 @@ const {
   initFocusHelper,
   killFocusHelper,
   focusTerminalWindow,
-  focusProcessAppWindow,
-  captureGhosttyTerminalId,
   clearMacFocusCooldownTimer,
 } = _focus;
 
 function getFocusableLocalHudSessionIds() {
   if (!_state || typeof _state.buildSessionSnapshot !== "function") return [];
-  return selectFocusableLocalHudSessionIds(_state.buildSessionSnapshot(), { osPlatform: process.platform });
-}
-
-function focusTerminalSession(session, sessionId, requestSource) {
-  if (!session || (!session.sourcePid && !session.orcaPaneKey)) return false;
-  return focusTerminalWindow({
-    sourcePid: session.sourcePid,
-    wtHwnd: session.wtHwnd,
-    cwd: session.cwd,
-    editor: session.editor,
-    pidChain: session.pidChain,
-    tmuxSocket: session.tmuxSocket,
-    tmuxClient: session.tmuxClient,
-    orcaPaneKey: session.orcaPaneKey,
-    herdrPaneId: session.herdrPaneId,
-    herdrSocket: session.herdrSocket,
-    ghosttyTerminalId: session.ghosttyTerminalId,
-    sessionId: String(sessionId),
-    agentId: session.agentId,
-    requestSource,
-  });
+  return selectFocusableLocalHudSessionIds(_state.buildSessionSnapshot());
 }
 
 function focusDashboardSession(sessionId, options = {}) {
@@ -2835,58 +1917,26 @@ function focusDashboardSession(sessionId, options = {}) {
   const requestSource = options.requestSource || "dashboard";
   const id = String(sessionId);
   const session = sessions.get(id);
-  const fallbackEntry = options.fallbackEntry && typeof options.fallbackEntry === "object"
-    ? options.fallbackEntry
-    : null;
-  if (!session && !fallbackEntry) {
+  if (!session) {
     focusLog(`focus result branch=none reason=session-not-found source=${requestSource} sid=${id}`);
     return false;
   }
-
-  const focusEntry = mergeSessionFocusEntry(session, fallbackEntry, id);
-  const focusTarget = getSessionFocusTarget(focusEntry, { osPlatform: process.platform });
-  if (focusTarget.type === "codex-app") {
-    // Existing local process activation only: no protocol, resume or launcher.
-    Promise.resolve(focusProcessAppWindow({ sourcePid: focusEntry.sourcePid, agentPid: focusEntry.agentPid }))
-      .then(result => focusLog(`focus result branch=codex-app reason=${result.reason || "unknown"} source=${requestSource} sid=${id}`))
-      .catch(() => focusLog(`focus result branch=codex-app reason=process-focus-failed source=${requestSource} sid=${id}`));
-    return true;
-  }
-  if (focusTarget.type === "codex-thread" && focusTarget.url) {
-    focusCodexThreadTarget({
-      shell,
-      focusEntry,
-      sessionId: id,
-      requestSource,
-      url: focusTarget.url,
-      focusLog,
-      focusTerminalSession,
-    });
-    return true;
-  }
-
-  if (focusTarget.type === "dsh-desktop" && focusTarget.url) {
-    focusDshDesktopTarget({
-      shell,
-      focusEntry,
-      sessionId: id,
-      requestSource,
-      url: focusTarget.url,
-      focusLog,
-    });
-    return true;
-  }
-
-  if (focusTarget.type === "terminal") {
-    return focusTerminalSession(focusEntry, id, requestSource);
-  }
-
-  if (focusEntry.platform === "webui") {
-    focusLog(`focus result branch=none reason=webui-unfocusable source=${requestSource} sid=${id}`);
-  } else {
+  if (!getSessionFocusTarget({ ...session, id }).canFocus) {
     focusLog(`focus result branch=none reason=no-source-pid source=${requestSource} sid=${id}`);
+    return false;
   }
-  return false;
+  return focusTerminalWindow({
+    sourcePid: session.sourcePid,
+    cwd: session.cwd,
+    editor: session.editor,
+    pidChain: session.pidChain,
+    tmuxSocket: session.tmuxSocket,
+    tmuxClient: session.tmuxClient,
+    orcaPaneKey: session.orcaPaneKey,
+    sessionId: id,
+    agentId: session.agentId,
+    requestSource,
+  });
 }
 
 function hideDashboardSession(sessionId) {
@@ -2940,11 +1990,6 @@ sendDashboardI18n = () => {
 // `will-quit` never arrives. Tear it down while the app is still deciding to
 // quit; the `will-quit` call stays as an idempotent backstop for a host created
 // after that point.
-// A review process still running after Clawd exits has no reader left, and its
-// verdict can no longer reach a permission decision. Stop it before the rest of
-// the quit path runs. Kept as its own listener so the quick-host teardown below
-// stays a single, directly testable line.
-app.on("before-quit", () => stopActivePermissionReviews());
 app.on("before-quit", () => _dashboard.quick.dispose());
 app.on("will-quit", () => _dashboard.quick.dispose());
 
@@ -3060,11 +2105,6 @@ const _tutorial = require("./tutorial")({
   ),
 });
 
-// Shared with session-hud.js on purpose: the Settings "show beside the pet"
-// list has to be built from the SAME provider table and draw rule that sizes
-// the cluster window, or the list can offer a provider that never draws.
-const _ringGeom = require("./quota-ring-geometry");
-
 const _sessionHud = require("./session-hud")({
   get win() { return win; },
   get petHidden() { return petWindowRuntime.isPetEffectivelyHidden(); },
@@ -3072,9 +2112,6 @@ const _sessionHud = require("./session-hud")({
   get sessionHudShowStateLabels() { return sessionHudShowStateLabels; },
   get sessionHudShowElapsed() { return sessionHudShowElapsed; },
   get sessionHudShowContextUsage() { return sessionHudShowContextUsage; },
-  get sessionHudShowQuota() { return sessionHudShowQuota; },
-  get quotaRingDisplayMode() { return quotaRingDisplayMode; },
-  get quotaRingHiddenProviders() { return quotaRingHiddenProviders; },
   get sessionHudPinned() { return sessionHudPinned; },
   get lowPowerIdleMode() { return lowPowerIdleMode; },
   getMiniMode: () => _mini.getMiniMode(),
@@ -3086,242 +2123,39 @@ const _sessionHud = require("./session-hud")({
   getSessionHudAnchorRect,
   getNearestWorkArea,
   getTextScale: () => getTextScaleForPetWindows(),
-  getPermissionBubbleBounds: () => _perm.getVisibleBubbleBounds(),
   guardAlwaysOnTop,
   reapplyMacVisibility,
-  onReservedOffsetChange: () => repositionFloatingBubbles(),
 });
 repositionSessionHud = _sessionHud.repositionSessionHud;
-repositionQuotaRing = _sessionHud.repositionQuotaRing;
 syncSessionHudVisibility = _sessionHud.syncSessionHud;
 broadcastSessionHudSnapshot = _sessionHud.broadcastSessionSnapshot;
 sendSessionHudI18n = _sessionHud.sendI18n;
-getSessionHudReservedOffset = _sessionHud.getHudReservedOffset;
 getSessionHudWindow = _sessionHud.getWindow;
-getQuotaRingWindow = _sessionHud.getQuotaRingWindow;
 
 agentRuntime = createAgentRuntimeMain({
   getServer: () => _server,
   getStateRuntime: () => _state,
-  getPermissionRuntime: () => _perm,
-  getKiroDesktopReminderContext: () => _permCtx,
   isAgentEnabled: (agentId) => _runtimeAgentGate.isAgentEnabled(agentId),
   updateSession: (sessionId, state, event, opts) => updateSession(sessionId, state, event, opts),
-  debugLog: (msg) => sessionLog(msg),
-  captureGhosttyTerminalId,
-  clearCodexNotifyBubbles: (...args) => clearCodexNotifyBubbles(...args),
-  showCodexUserInputBubble: (...args) => showCodexUserInputBubble(...args),
-  clearCodexUserInputBubbles: (...args) => clearCodexUserInputBubbles(...args),
-  loadCodexArchiveTracker: () => require("./codex-archive-tracker"),
-  onCodexArchiveLifecycleEnd: (payload) => {
-    if (sessionAutomationCoordinator) sessionAutomationCoordinator.onSessionLifecycleEnd(payload);
-  },
 });
 
 // ── HTTP server — delegated to src/server.js ──
 const _serverCtx = {
-  get manageClaudeHooksAutomatically() { return manageClaudeHooksAutomatically; },
-  get autoStartWithClaude() { return autoStartWithClaude; },
-  get claudeQuotaCollectionEnabled() { return claudeQuotaCollectionEnabled; },
   get doNotDisturb() { return doNotDisturb; },
   shouldDropForDnd: () => _state.shouldDropForDnd ? _state.shouldDropForDnd() : doNotDisturb,
-  get hideBubbles() { return getAllBubblesHidden(); },
-  getBubblePolicy: getRuntimeBubblePolicy,
-  get pendingPermissions() { return pendingPermissions; },
-  get PASSTHROUGH_TOOLS() { return PASSTHROUGH_TOOLS; },
   get STATE_SVGS() { return _state.STATE_SVGS; },
   get sessions() { return sessions; },
-  getCustomAgentIds: () => (_settingsController.get("customApplications") || [])
-    .map((application) => application && application.id)
-    .filter(Boolean),
-  onHookEventRecorded: (event) => {
-    if (!event || event.route !== "state" || event.outcome !== "accepted") return;
-    const registered = (_settingsController.get("customApplications") || [])
-      .some((application) => application && application.id === event.agentId);
-    if (!registered) return;
-    broadcastSettingsWindow("settings:agent-activity", {
-      agentId: event.agentId,
-      timestamp: event.timestamp,
-      eventType: event.eventType,
-    });
-  },
-  // #627 residual: synchronous server-side wt_hwnd sample for UserPromptSubmit
-  // (src/server-route-state.js). Initialized once above; never re-created per
-  // request.
-  captureForegroundWindowsTerminal: _captureForegroundWindowsTerminal,
   debugLog: (msg) => sessionLog(msg),
-  recordWindowsProcessChainShadow: (record) => recordWindowsProcessChainShadow(record),
   isAgentEnabled: (agentId) => _runtimeAgentGate.isAgentEnabled(agentId),
   shouldSyncAgentIntegration: (agentId) =>
     _runtimeAgentGate.shouldSyncAgentIntegration(agentId),
-  getAgentIntegrationOptions: _getAgentIntegrationOptions,
-  // Extra Claude config folders (prefs.agents["claude-code"].configDirs),
-  // read live so every queued hook task sees the current list.
-  getClaudeConfigDirs: _getClaudeConfigDirEntries,
-  isAgentPermissionsEnabled: (agentId) => _runtimeAgentGate.isAgentPermissionsEnabled(agentId),
-  notifyCodexRemoteFallback: (payload) => (
-    _codexRemoteFallbackNotice ? _codexRemoteFallbackNotice.notify(payload) : false
-  ),
-  queueCodexRemoteFallbackForEntry: (entry) => (
-    callRuntimeMethod(_perm, "queueCodexRemoteFallbackForEntry", entry)
-  ),
-  onCodexRemoteStateEvent: (payload) => (
-    _codexRemoteFallbackNotice ? _codexRemoteFallbackNotice.handleStateEvent(payload) : false
-  ),
-  // External review (#995): the route derives the review verdict at accept
-  // time, so it needs the same effective-mode and reminder gates the
-  // permission runtime uses. Values are read from the shared controller and
-  // coordinator; nothing is cached per request.
-  getEffectivePermissionAutomationMode: (entry, options) =>
-    sessionAutomationCoordinator
-      ? sessionAutomationCoordinator.getEffectiveMode(entry, options)
-      : (_settingsController.get("permissionAutomationMode") || "off"),
-  hasSessionAutomationOverride: (entry) =>
-    !!(
-      sessionAutomationCoordinator
-      && sessionAutomationCoordinator.getRecordForEntry(entry)
-    ),
-  isDestructiveReminderEnabled: () =>
-    _settingsController.get("destructiveActionReminder") === true,
-  getPermissionReviewConfig: () => ({
-    command: _settingsController.get("permissionReviewCommand"),
-    timeoutMs: _settingsController.get("permissionReviewTimeoutMs"),
-  }),
-  isAgentSubagentPermissionsEnabled: (agentId) => _runtimeAgentGate.isAgentSubagentPermissionsEnabled(agentId),
-  isCodexNativeNotificationSoundEnabled: () => _runtimeAgentGate.isCodexNativeNotificationSoundEnabled(),
-  getCodexPermissionMode: () => _runtimeAgentGate.getCodexPermissionMode(),
-  isCodexPermissionInterceptEnabled: () => _runtimeAgentGate.isCodexPermissionInterceptEnabled(),
-  codexSubagentClassifier: agentRuntime.getCodexSubagentClassifier(),
   setState,
   updateSession: agentRuntime.updateSessionFromServer,
-  observeClaudeToolPhase: _state.observeClaudeToolPhase,
   updateSessionMetadata: agentRuntime.updateSessionMetadataFromServer,
-  shouldSuppressCodexArchive: (rawSessionId, opts) =>
-    agentRuntime.shouldSuppressCodexArchive(rawSessionId, opts),
-  clearClaudeStatuslineAuthority: (profileId) => _state.clearClaudeStatuslineAuthority(profileId),
-  clearLocalClaudeQuota: () => _state.clearLocalClaudeQuota(),
-  updateAccountQuota: (host, quotas) => _state.updateAccountQuota(host, quotas),
-  resolvePermissionEntry,
-  sendPermissionResponse,
-  addPendingPermission,
-  removePendingPermission,
-  isPermissionEntryLive,
-  canAutoResolvePendingPermission,
-  wouldAutoAllowPermission,
-  maybeAutoResolveSessionPermission: (entry, options) =>
-    !!(sessionAutomationCoordinator
-      && sessionAutomationCoordinator.resolveIfAllowed(entry, options)),
-  showPermissionBubble,
-  showCodexUserInputBubble,
-  syncPermissionBubbleContent,
-  clearCodexUserInputBubbles,
-  showClaudeTurnAskBubble,
-  clearClaudeTurnAskBubbles,
-  trackClaudeTurnAskReminder: (payload) => claudeTurnAskReminder.track(payload),
-  resolveClaudeTurnAskReminder: (sessionId) => claudeTurnAskReminder.resolve(sessionId),
-  handleTestResult: (result, context) => handleTestResult(result, context),
-  maybeStartRemoteApproval,
-  replyOpencodeFamilyPermission,
-  dismissOpencodeFamilyPermissionResolvedExternally,
-  syncPermissionShortcuts,
-  permLog,
-  // #898: the settings watcher pauses Claude hook auto-repair when settings.json
-  // shrinks suspiciously (a third-party overwrite). The server already dedups to
-  // once per persisting shrink via its shrinkNotified flag; surface that pause
-  // as an active Windows tray balloon so the user knows repair is on hold without
-  // opening Doctor — mirroring fireCodexHookNudge's balloon.
-  notifySuspiciousShrink: () => {
-    try {
-      if (process.platform !== "win32") return;
-      const tray = _menu && typeof _menu.getTray === "function" ? _menu.getTray() : null;
-      trayBalloonOwner.show(tray, {
-        iconType: "warning",
-        title: translate("claudeHookGuardNudgeTitle"),
-        content: translate("claudeHookGuardNudgeBody"),
-      });
-    } catch (err) {
-      console.warn("Clawd: Claude hook guard balloon failed:", err && err.message);
-    }
-  },
 };
 Object.assign(_serverCtx, require("./local-server-port-hint"));
 const _server = require("./server")(_serverCtx);
 const { startHttpServer, getHookServerPort } = _server;
-
-// ── LAN WebSocket bridge for PWA mobile clients (lazy-loaded) ──
-let _lanWss = null;
-let _mobilePreviewReconcileRevision = 0;
-let _mobilePreviewReconcileTail = Promise.resolve();
-
-function setMobilePermissionObservationEnabled(enabled) {
-  const observation = _perm && _perm.permissionObservation;
-  if (observation && typeof observation.setEnabled === "function") {
-    observation.setEnabled(enabled === true);
-  }
-}
-
-function ensureMobilePreviewServer() {
-  if (_lanWss) return _lanWss;
-  const { initMobilePreviewServer } = require("./network/mobile-preview-server");
-  _lanWss = initMobilePreviewServer({
-    sessions,
-    rotationMs: !app.isPackaged ? Number(process.env.CLAWD_MOBILE_ROTATION_MS) : undefined,
-    permissionObservation: _perm && _perm.permissionObservation,
-    getLang: () => lang,
-    log: (message) => sessionLog(message),
-  });
-  return _lanWss;
-}
-
-function enqueueMobilePreviewReconcile(snapshot = _settingsController.getSnapshot()) {
-  const desired = {
-    revision: ++_mobilePreviewReconcileRevision,
-    sessionEnabled: snapshot && snapshot.mobilePreviewEnabled === true,
-    permissionEnabled: !!(
-      snapshot
-      && snapshot.mobilePreviewEnabled === true
-      && snapshot.mobilePermissionPreviewEnabled === true
-    ),
-  };
-
-  _mobilePreviewReconcileTail = _mobilePreviewReconcileTail
-    .catch((err) => {
-      console.warn("Clawd: prior mobile preview reconcile failed:", err && err.message);
-    })
-    .then(async () => {
-      if (desired.revision !== _mobilePreviewReconcileRevision) return;
-      if (!desired.sessionEnabled) {
-        setMobilePermissionObservationEnabled(false);
-        if (_lanWss) await _lanWss.cleanup();
-        return;
-      }
-
-      const server = ensureMobilePreviewServer();
-      if (desired.revision !== _mobilePreviewReconcileRevision) return;
-      setMobilePermissionObservationEnabled(desired.permissionEnabled);
-      await startMobilePreviewServerSafely(server, {
-        source: "settings-reconcile",
-        onError: (err) => console.warn(
-          "Clawd mobile preview: start failed:",
-          err && err.message ? err.message : err,
-        ),
-      });
-
-      // A newer disable may have committed while listen() was in flight.
-      // Never leave that stale listener alive while the queued successor waits.
-      if (desired.revision !== _mobilePreviewReconcileRevision) {
-        const latest = _settingsController.getSnapshot();
-        if (!latest || latest.mobilePreviewEnabled !== true) await server.cleanup();
-      }
-    })
-    .catch((err) => {
-      console.warn("Clawd: mobile preview reconcile failed:", err && err.message);
-    });
-
-  // Synchronous facade: settings-effect-router must never receive a rejecting
-  // Promise because safeCall only contains synchronous throws.
-  return undefined;
-}
 
 function sessionLog(msg) {
   if (!sessionDebugLog) return;
@@ -3343,1145 +2177,6 @@ function focusLog(msg) {
   if (!focusDebugLog) return;
   const { rotatedAppend } = require("./log-rotate");
   rotatedAppend(focusDebugLog, `[${new Date().toISOString()}] ${msg}\n`);
-}
-
-function getTelegramApprovalClient() {
-  const controller = _telegramMigrationController;
-  if (controller && typeof controller.getSnapshot === "function") {
-    const snap = controller.getSnapshot() || {};
-    if (isNativeTelegramApprovalSelected(snap)) {
-      if (snap.state === "NATIVE_ACTIVE"
-        && telegramNativeRunner
-        && typeof telegramNativeRunner.isPolling === "function"
-        && telegramNativeRunner.isPolling()
-        && typeof telegramNativeRunner.requestApproval === "function") {
-        return telegramNativeRunner;
-      }
-      return null;
-    }
-  }
-  return null;
-}
-
-// Completion notifications are native-only.
-function getTelegramCompanionClient() {
-  const controller = _telegramMigrationController;
-  if (controller && typeof controller.getSnapshot === "function") {
-    const snap = controller.getSnapshot() || {};
-    if (snap.state === "NATIVE_ACTIVE"
-      && telegramNativeRunner
-      && typeof telegramNativeRunner.sendNotification === "function") {
-      return telegramNativeRunner;
-    }
-  }
-  return null;
-}
-
-function getFeishuApprovalClient() {
-  return feishuApprovalClient && typeof feishuApprovalClient.isConnected === "function" && feishuApprovalClient.isConnected()
-    ? feishuApprovalClient
-    : null;
-}
-
-function getConfiguredFeishuApprovalClient() {
-  return feishuApprovalClient && typeof feishuApprovalClient.isEnabled === "function" && feishuApprovalClient.isEnabled()
-    ? feishuApprovalClient
-    : null;
-}
-
-function telegramApprovalLog(level, message, meta = {}) {
-  const diagnosticMeta = sanitizeTelegramApprovalLogMeta(meta);
-  const parts = [`telegram approval ${level}: ${message}`];
-  if (meta && meta.text) parts.push(String(meta.text).trim());
-  if (meta && meta.error) parts.push(String(meta.error).trim());
-  for (const key of ["errorClass", "errorCode", "delayMs", "id", "sessionId", "messageId", "status", "reason", "fallbackReason"]) {
-    const value = meta && meta[key];
-    if (value !== undefined && value !== null && value !== "") {
-      parts.push(`${key}=${String(value).trim()}`);
-    }
-  }
-  for (const key of ["outcome", "mode", "proxy"]) {
-    const value = diagnosticMeta[key];
-    if (value) parts.push(`${key}=${value}`);
-  }
-  permLog(parts.filter(Boolean).join(" | "));
-}
-
-function feishuApprovalLog(level, message, meta = {}) {
-  const parts = [`feishu approval ${level}: ${message}`];
-  if (meta && meta.text) parts.push(String(meta.text).trim());
-  if (meta && meta.error) parts.push(String(meta.error).trim());
-  for (const key of ["requestId", "messageId", "decision", "matched", "code", "stage", "httpStatus", "businessCode", "networkCode"]) {
-    const value = meta && meta[key];
-    if (value !== undefined && value !== null && value !== "") {
-      parts.push(`${key}=${String(value).trim()}`);
-    }
-  }
-  const config = getFeishuApprovalPrefs();
-  const secrets = getFeishuApprovalSecrets();
-  const redactionSecrets = feishuApprovalSettings.redactionSecretsForFeishuApproval(config, secrets);
-  for (const secret of redactionSecrets) {
-    if (!secret) continue;
-    for (let i = 0; i < parts.length; i += 1) {
-      parts[i] = String(parts[i]).split(String(secret)).join("<redacted>");
-    }
-  }
-  permLog(parts.filter(Boolean).join(" | "));
-}
-
-function getTelegramApprovalPrefs() {
-  return telegramApprovalSettings.normalizeTelegramApproval(_settingsController.get("tgApproval"));
-}
-
-function getTelegramSessionAutomationRoute() {
-  const config = getTelegramApprovalPrefs();
-  const token = getTelegramApprovalTokenStatus();
-  const migration = getTelegramMigrationPrefs();
-  const key = config && config.targetSessionKey;
-  const match = typeof key === "string" ? key.match(/^telegram:(-?\d+)/) : null;
-  return {
-    transport: typeof migration.transport === "string" ? migration.transport : "off",
-    allowedUserId: (config && config.allowedTgUserId) || "",
-    chatId: match ? match[1] : "",
-    tokenStored: !!(token && token.tokenStored),
-    tokenFileMtimeMs: (token && token.tokenFileMtimeMs) || 0,
-    tokenFileDigest: telegramTokenFileDigest(getTelegramApprovalPaths().tokenEnvFilePath),
-  };
-}
-
-function syncTelegramSessionAutomationRoute(route = getTelegramSessionAutomationRoute()) {
-  if (
-    telegramNativeRunner
-    && typeof telegramNativeRunner.syncSessionAutomationRoute === "function"
-  ) {
-    telegramNativeRunner.syncSessionAutomationRoute(route);
-  }
-}
-
-function getFeishuApprovalPrefs() {
-  return feishuApprovalSettings.normalizeFeishuApproval(_settingsController.get("feishuApproval"));
-}
-
-function getTelegramMigrationPrefs() {
-  const raw = _settingsController.get("tgMigration");
-  return raw && typeof raw === "object" ? raw : {};
-}
-
-function readTelegramMigrationPrefsForController() {
-  const raw = { ...getTelegramMigrationPrefs() };
-  if (typeof raw.legacyEnabled !== "boolean") {
-    raw.legacyEnabled = getTelegramApprovalPrefs().enabled === true;
-  }
-  return raw;
-}
-
-function hasCompleteTelegramApprovalConfig(config, tokenInfo) {
-  return !!(
-    tokenInfo && tokenInfo.tokenStored === true
-    && config && config.allowedTgUserId
-    && config.targetSessionKey
-  );
-}
-
-function buildTelegramApprovalIdentitySignature(config) {
-  const normalized = telegramApprovalSettings.normalizeTelegramApproval(config);
-  return JSON.stringify({
-    allowedTgUserId: normalized.allowedTgUserId,
-    targetSessionKey: normalized.targetSessionKey,
-  });
-}
-
-async function applySettingsUpdateOrThrow(key, value, label) {
-  const result = await Promise.resolve(_settingsController.applyUpdate(key, value));
-  if (!result || result.status !== "ok") {
-    throw new Error((result && result.message) || `${label || key} update failed`);
-  }
-  return result;
-}
-
-async function setTelegramApprovalEnabledForMigration(enabled) {
-  const current = getTelegramApprovalPrefs();
-  if (current.enabled === enabled) return;
-  suppressTelegramMigrationReconcile += 1;
-  try {
-    await applySettingsUpdateOrThrow("tgApproval", { ...current, enabled }, "tgApproval");
-  } finally {
-    suppressTelegramMigrationReconcile = Math.max(0, suppressTelegramMigrationReconcile - 1);
-  }
-}
-
-async function persistTelegramMigrationPatch(patch) {
-  const cur = getTelegramMigrationPrefs();
-  // Disable the retired v0.8 flag before publishing the native/off transport
-  // decision. If either write fails, the controller never exposes the target
-  // state in memory; this ordering also prevents a partial write from reviving
-  // legacy behavior in an older build.
-  if (patch && (patch.transport === "native" || patch.transport === "off")) {
-    await setTelegramApprovalEnabledForMigration(false);
-  }
-  await applySettingsUpdateOrThrow("tgMigration", { ...cur, ...patch }, "tgMigration");
-}
-
-// Canonical paths only — no env-var override. The Settings "Save token" button,
-// native token store, and tokenStatus all share this single location so a
-// malicious or accidental env override cannot redirect the writer.
-function getTelegramApprovalPaths() {
-  const userDataDir = app.getPath("userData");
-  return {
-    userDataDir,
-    tokenEnvFilePath: telegramApprovalSettings.defaultTokenEnvFilePath(userDataDir),
-  };
-}
-
-function getFeishuApprovalPaths() {
-  const userDataDir = app.getPath("userData");
-  return {
-    userDataDir,
-    secretsEnvFilePath: feishuApprovalSettings.defaultSecretsEnvFilePath(userDataDir),
-  };
-}
-
-function getFeishuApprovalSecrets() {
-  const paths = getFeishuApprovalPaths();
-  return feishuApprovalSettings.readSecretsEnvFile({
-    fs,
-    filePath: paths.secretsEnvFilePath,
-  });
-}
-
-function getFeishuApprovalSecretInfo() {
-  const paths = getFeishuApprovalPaths();
-  return feishuApprovalSettings.readMaskedSecrets({
-    fs,
-    filePath: paths.secretsEnvFilePath,
-  });
-}
-
-// Anything that changes the live connection must be in here. `platform` in
-// particular: switching Feishu <-> Lark has to tear the client down so the WS
-// reconnects to the new host and the cached REST client (and its token cache,
-// which is per-domain) is dropped with it. `lang` is deliberately absent — the
-// translator reads it dynamically, so a language switch must not bounce the
-// long connection.
-function buildFeishuApprovalBindingSignatureFields(
-  config,
-  secrets,
-  revision = feishuApprovalSecretsRevision,
-) {
-  return {
-    enabled: config.enabled === true,
-    platform: config.platform,
-    credentialPlatform: secrets.credentialPlatform,
-    idType: config.idType,
-    approverId: config.approverId,
-    approverSource: config.approverSource,
-    approverBoundPlatform: config.approverBoundPlatform,
-    approverBoundAppId: config.approverBoundAppId,
-    appId: secrets.appId,
-    secretsRevision: revision,
-  };
-}
-
-function buildFeishuApprovalSignature(config, paths, secrets) {
-  return JSON.stringify({
-    ...buildFeishuApprovalBindingSignatureFields(config, secrets),
-    secretsEnvFilePath: paths.secretsEnvFilePath,
-    connectionTimeoutSeconds: config.connectionTimeoutSeconds,
-  });
-}
-
-function buildFeishuSessionAutomationRouteSignature(config, secrets, revision = feishuApprovalSecretsRevision) {
-  return JSON.stringify(buildFeishuApprovalBindingSignatureFields(config, secrets, revision));
-}
-
-function prepareFeishuSessionAutomationRouteChange(nextRouteSignature) {
-  const client = feishuApprovalClient;
-  if (
-    !client
-    || !feishuSessionAutomationRouteSignature
-    || nextRouteSignature === feishuSessionAutomationRouteSignature
-  ) {
-    return false;
-  }
-  if (typeof client.markSessionAutomationRouteStale === "function") {
-    client.markSessionAutomationRouteStale();
-  }
-  if (sessionAutomationCoordinator) {
-    sessionAutomationCoordinator.onRemoteClientRouteChange(client);
-  }
-  return true;
-}
-
-function getFeishuApprovalStatus() {
-  const config = getFeishuApprovalPrefs();
-  const secrets = getFeishuApprovalSecrets();
-  const ready = feishuApprovalSettings.readiness(config, secrets);
-  const credentialEvaluation = feishuApprovalSettings.evaluateFeishuApprovalConfiguration(
-    config,
-    secrets,
-    {
-      requireEnabled: false,
-      requireApprover: false,
-    },
-  );
-  const setupEvaluation = feishuApprovalSettings.evaluateFeishuApprovalConfiguration(
-    config,
-    secrets,
-    {
-      requireEnabled: false,
-      requireApprover: true,
-    },
-  );
-  const clientStatus = feishuApprovalClient && typeof feishuApprovalClient.getStatus === "function"
-    ? feishuApprovalClient.getStatus()
-    : { status: "stopped" };
-  return {
-    ...clientStatus,
-    enabled: config.enabled === true,
-    // The platform the runtime actually resolved, so the settings page renders
-    // the right brand/guide and a mismatch is visible while troubleshooting.
-    platform: config.platform,
-    configured: ready.ready === true,
-    reason: ready.reason || "",
-    message: clientStatus.message || ready.message || "",
-    credentialReady: credentialEvaluation.ok === true,
-    credentialReason: credentialEvaluation.ok ? "" : credentialEvaluation.code || "invalid-config",
-    configurationReady: setupEvaluation.ok === true,
-    setupReason: setupEvaluation.ok ? "" : setupEvaluation.code || "invalid-config",
-    connectionTimeoutSeconds: config.connectionTimeoutSeconds,
-    // Two different questions, deliberately two fields:
-    //   secretsStored     — is ANY secret on disk? (drives render gating only)
-    //   secretsConfigured — are the two REQUIRED ones both present?
-    // Conflating them lets a half-written env file (App ID but no App Secret,
-    // or just a Verification Token) render as a complete setup.
-    secretsStored: !!(secrets.appId || secrets.appSecret || secrets.verificationToken || secrets.encryptKey),
-    secretsConfigured: !!(secrets.appId && secrets.appSecret),
-  };
-}
-
-function broadcastFeishuApprovalStatus() {
-  broadcastSettingsWindow("remoteApproval:status-changed", {
-    channel: "feishu",
-    status: getFeishuApprovalStatus(),
-  });
-}
-
-function writeFeishuApprovalSecrets(secrets) {
-  const paths = getFeishuApprovalPaths();
-  const nextRouteSignature = buildFeishuSessionAutomationRouteSignature(
-    getFeishuApprovalPrefs(),
-    secrets && typeof secrets === "object" ? secrets : {},
-    feishuApprovalSecretsRevision + 1
-  );
-  const result = feishuApprovalSettings.writeSecretsEnvFile({
-    fs,
-    path,
-    filePath: paths.secretsEnvFilePath,
-    secrets,
-    platform: process.platform,
-  });
-  if (result && result.status === "ok") {
-    prepareFeishuSessionAutomationRouteChange(nextRouteSignature);
-    feishuApprovalSecretsRevision += 1;
-    queueFeishuApprovalSync("secrets");
-    if (feishuApprovalMigrationNudge) {
-      void feishuApprovalMigrationNudge.sync({ allowNotify: false });
-    }
-  }
-  return result;
-}
-
-async function startFeishuApprovalClient(persisted = null) {
-  const config = persisted && persisted.config
-    ? persisted.config
-    : getFeishuApprovalPrefs();
-  const paths = getFeishuApprovalPaths();
-  const secrets = persisted && persisted.secrets
-    ? persisted.secrets
-    : getFeishuApprovalSecrets();
-  const ready = feishuApprovalSettings.readiness(config, secrets);
-  if (!ready.ready) {
-    if (feishuApprovalClient) stopFeishuApprovalClient();
-    if (ready.reason !== "disabled") {
-      feishuApprovalLog("info", ready.reason || "not configured", {
-        error: ready.message || "",
-      });
-    }
-    return false;
-  }
-  const signature = buildFeishuApprovalSignature(config, paths, secrets);
-  const routeSignature = buildFeishuSessionAutomationRouteSignature(config, secrets);
-  if (feishuApprovalClient && feishuApprovalConfigSignature === signature) {
-    try {
-      await feishuApprovalClient.start();
-      return true;
-    } catch (err) {
-      feishuApprovalLog("warn", "start failed", classifyFeishuSdkError(err, "runtime-start"));
-      return false;
-    }
-  }
-  const handoffCardWork = feishuApprovalClient
-    && feishuSessionAutomationRouteSignature === routeSignature
-    ? feishuApprovalClient.sessionAutomationCardWork
-    : null;
-  prepareFeishuSessionAutomationRouteChange(routeSignature);
-  stopFeishuApprovalClient({ routeChanging: false, preserveRouteSignature: !!handoffCardWork });
-  feishuApprovalClient = new FeishuApprovalClient({
-    appId: secrets.appId,
-    appSecret: secrets.appSecret,
-    verificationToken: secrets.verificationToken,
-    encryptKey: secrets.encryptKey,
-    approverId: config.approverId,
-    idType: config.idType,
-    platform: config.platform,
-    connectionTimeoutSeconds: config.connectionTimeoutSeconds,
-    getLang: () => _settingsController.get("lang") || lang || "en",
-    log: feishuApprovalLog,
-    onStatusChange: () => broadcastFeishuApprovalStatus(),
-    sessionAutomationCardWork: handoffCardWork,
-    onSessionGrantRevoke: (grantId) =>
-      sessionAutomationCoordinator
-        ? sessionAutomationCoordinator.revokeRemoteGrant({ grantId })
-        : { status: "stale" },
-  });
-  feishuApprovalConfigSignature = signature;
-  feishuSessionAutomationRouteSignature = routeSignature;
-  try {
-    await feishuApprovalClient.start();
-    feishuApprovalLog("info", "starting");
-    return true;
-  } catch (err) {
-    feishuApprovalLog("warn", "start failed", classifyFeishuSdkError(err, "runtime-start"));
-    return false;
-  }
-}
-
-function stopFeishuApprovalClient(options = {}) {
-  const client = feishuApprovalClient;
-  if (options.routeChanging !== false) {
-    prepareFeishuSessionAutomationRouteChange("");
-  }
-  feishuApprovalClient = null;
-  feishuApprovalConfigSignature = "";
-  if (options.preserveRouteSignature !== true) {
-    feishuSessionAutomationRouteSignature = "";
-  }
-  if (client && typeof client.close === "function") {
-    try {
-      const closeResult = client.close();
-      if (closeResult && typeof closeResult.then === "function") {
-        const drain = Promise.resolve(closeResult);
-        feishuApprovalCloseDrains.add(drain);
-        void drain.then(
-          () => feishuApprovalCloseDrains.delete(drain),
-          () => feishuApprovalCloseDrains.delete(drain)
-        );
-      }
-      return closeResult;
-    } catch (err) {
-      feishuApprovalLog("warn", "stop failed", classifyFeishuSdkError(err, "runtime-stop"));
-    }
-  }
-}
-
-function settleDrainWithin(drain, timeoutMs) {
-  return new Promise((resolve) => {
-    let settled = false;
-    let timer = null;
-    const finish = () => {
-      if (settled) return;
-      settled = true;
-      if (timer !== null) clearTimeout(timer);
-      resolve();
-    };
-    timer = setTimeout(finish, timeoutMs);
-    Promise.resolve(drain).then(finish, finish);
-  });
-}
-
-function drainRemoteSshAndFeishuBeforeQuit() {
-  const drains = [];
-  try {
-    settingsIpcRuntime.dispose();
-  } catch (err) {
-    console.error("settings IPC shutdown failed:", err && err.message);
-  }
-  if (_remoteSshRuntime && typeof _remoteSshRuntime.shutdown === "function") {
-    drains.push(
-      Promise.resolve(_remoteSshRuntime.shutdown({ timeoutMs: 5000 }))
-        .catch((err) => console.error("remote-ssh shutdown drain failed:", err && err.message))
-    );
-  }
-  stopFeishuApprovalClient();
-  drains.push(...Array.from(
-    feishuApprovalCloseDrains,
-    (drain) => settleDrainWithin(drain, 5000),
-  ));
-  return Promise.allSettled(drains);
-}
-
-async function syncFeishuApproval(reason = "settings", persisted = null) {
-  if (isQuitting) {
-    stopFeishuApprovalClient();
-    return false;
-  }
-  const config = persisted && persisted.config
-    ? persisted.config
-    : getFeishuApprovalPrefs();
-  const secrets = persisted && persisted.secrets
-    ? persisted.secrets
-    : getFeishuApprovalSecrets();
-  const ready = feishuApprovalSettings.readiness(config, secrets);
-  if (!ready.ready) {
-    stopFeishuApprovalClient();
-    return false;
-  }
-  const started = await startFeishuApprovalClient(persisted);
-  if (started) feishuApprovalLog("debug", `sync ${reason}`);
-  return started;
-}
-
-function queueFeishuApprovalSync(reason, persisted = null) {
-  feishuApprovalSyncPromise = feishuApprovalSyncPromise
-    .catch(() => {})
-    .then(() => syncFeishuApproval(reason, persisted));
-  return feishuApprovalSyncPromise;
-}
-
-// Brand-neutral: this channel now serves Feishu and Lark, and `message` is the
-// untranslated fallback shown when the renderer has no mapping for `code`.
-// Naming one brand here would tell half the users their working setup is wrong.
-function feishuApprovalUnavailableMessage(status) {
-  if (status && status.message) return status.message;
-  if (status && status.reason === "disabled") return "Remote approval is disabled";
-  if (status && status.reason === "missing-secret") return "App ID and App Secret are not configured";
-  if (status && status.reason === "invalid-config") return "Remote approval config is incomplete";
-  return "Remote approval client is not running";
-}
-
-// The `code` field lets the renderer map failures to localized, actionable
-// toasts; `message` stays as the untranslated fallback.
-function feishuApprovalUnavailableResult(status) {
-  return {
-    status: "error",
-    code: (status && status.reason) || "not-running",
-    message: feishuApprovalUnavailableMessage(status),
-  };
-}
-
-async function sendFeishuApprovalTest(persisted = null) {
-  const persistedReady = persisted && persisted.config && persisted.secrets
-    ? feishuApprovalSettings.readiness(persisted.config, persisted.secrets)
-    : null;
-  const beforeStatus = persistedReady
-    ? {
-      configured: persistedReady.ready === true,
-      reason: persistedReady.reason || "",
-      message: persistedReady.message || "",
-    }
-    : getFeishuApprovalStatus();
-  if (beforeStatus.configured !== true) {
-    return feishuApprovalUnavailableResult(beforeStatus);
-  }
-  await queueFeishuApprovalSync("test", persisted);
-  const client = getConfiguredFeishuApprovalClient();
-  if (!client || typeof client.requestApproval !== "function") {
-    return feishuApprovalUnavailableResult(persistedReady ? beforeStatus : getFeishuApprovalStatus());
-  }
-  if (typeof client.waitUntilConnected === "function") {
-    const config = persisted && persisted.config
-      ? persisted.config
-      : getFeishuApprovalPrefs();
-    const timeoutMs = Math.max(1, Number(config.connectionTimeoutSeconds) || 15) * 1000;
-    const connected = await client.waitUntilConnected(timeoutMs);
-    if (!connected) {
-      return {
-        ...feishuApprovalUnavailableResult(persistedReady ? beforeStatus : getFeishuApprovalStatus()),
-        code: "not-connected",
-      };
-    }
-  }
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 60 * 1000);
-  try {
-    // Title/detail go through the same dictionary the client uses for the
-    // buttons, so the test card can no longer mix an English heading with
-    // Chinese buttons.
-    const decision = await client.requestApproval({
-      title: translate("feishuCardTestTitle"),
-      detail: translate("feishuCardTestDetail"),
-    }, {
-      signal: controller.signal,
-      rejectOnSendError: true,
-      abortOutcome: { decision: "no-decision" },
-    });
-    if (decision === "allow" || decision === "deny") {
-      return { status: "ok", decision };
-    }
-    return { status: "error", code: "no-button-response", message: "Test card did not receive a button response" };
-  } catch (err) {
-    feishuApprovalLog("warn", "test card send failed", classifyFeishuSdkError(err, "send-card"));
-    return { status: "error", code: "card-send-failed" };
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-// --- Slack notifications (one-way) -----------------------------------------
-// Webhook / chat.postMessage are stateless HTTP, so there is no client to
-// restart on config change: the singleton reads current prefs+secrets lazily on
-// each send, and writing secrets just changes what the next read sees.
-function slackNotifyLog(level, message, meta = {}) {
-  const parts = [`slack notify ${level}: ${message}`];
-  if (meta && meta.errorClass) parts.push(`errorClass=${String(meta.errorClass).trim()}`);
-  if (meta && meta.error) parts.push(String(meta.error).trim());
-  if (meta && meta.id) parts.push(`id=${String(meta.id).trim()}`);
-  const config = getSlackNotifyPrefs();
-  const secrets = getSlackNotifySecrets();
-  const redactionSecrets = slackNotifySettings.redactionSecretsForSlackNotify(config, secrets);
-  for (const secret of redactionSecrets) {
-    if (!secret) continue;
-    for (let i = 0; i < parts.length; i += 1) {
-      parts[i] = String(parts[i]).split(String(secret)).join("<redacted>");
-    }
-  }
-  permLog(parts.filter(Boolean).join(" | "));
-}
-
-function getSlackNotifyPrefs() {
-  return slackNotifySettings.normalizeSlackNotify(_settingsController.get("slackNotify"));
-}
-
-// Canonical path only — no env-var override, mirroring the Feishu/Telegram
-// secret writers so a stray env var cannot redirect where the webhook lands.
-function getSlackNotifyPaths() {
-  const userDataDir = app.getPath("userData");
-  return {
-    userDataDir,
-    secretsEnvFilePath: slackNotifySettings.defaultSecretsEnvFilePath(userDataDir),
-  };
-}
-
-function getSlackNotifySecrets() {
-  const paths = getSlackNotifyPaths();
-  return slackNotifySettings.readSecretsEnvFile({ fs, filePath: paths.secretsEnvFilePath });
-}
-
-function getSlackNotifySecretInfo() {
-  const paths = getSlackNotifyPaths();
-  return slackNotifySettings.readMaskedSecrets({ fs, filePath: paths.secretsEnvFilePath });
-}
-
-function getSlackNotifyStatus() {
-  const config = getSlackNotifyPrefs();
-  const secrets = getSlackNotifySecrets();
-  const ready = slackNotifySettings.readiness(config, secrets);
-  // The UI needs these four apart, not collapsed: a stored-but-unusable
-  // credential, a usable one with sending switched off, and a fully live
-  // channel are three different things to say to the user.
-  const state = slackNotifySettings.describeTransport(config, secrets);
-  return {
-    credentialsPresent: state.credentialsPresent,
-    transportConfigured: !!state.transport,
-    transportReason: state.reason || "",
-    stored: state.stored,
-    enabled: config.enabled === true,
-    // `configured` remains as a compatibility alias, but means transport
-    // readiness rather than the master switch. `ready` is the live state.
-    configured: !!state.transport,
-    ready: ready.ready === true,
-    reason: ready.ready ? "ready" : (ready.reason || ""),
-    message: ready.message || "",
-    // From describeTransport, not readiness: readiness reports no transport
-    // whenever sending is switched off, which would contradict
-    // transportConfigured above and leave the card unable to name the
-    // credential it is about to use.
-    transport: state.transport,
-    notifyOnDone: config.notifyOnDone === true,
-    notifyOnError: config.notifyOnError === true,
-    notifyOnPermission: config.notifyOnPermission === true,
-    outputMode: config.outputMode,
-    secretsStored: !!(secrets.webhookUrl || secrets.botToken),
-    webhookConfigured: !!secrets.webhookUrl,
-    botTokenConfigured: !!secrets.botToken,
-  };
-}
-
-function broadcastSlackNotifyStatus() {
-  broadcastSettingsWindow("remoteApproval:status-changed", {
-    channel: "slack",
-    status: getSlackNotifyStatus(),
-  });
-}
-
-function writeSlackNotifySecrets(secrets) {
-  const paths = getSlackNotifyPaths();
-  const result = slackNotifySettings.writeSecretsEnvFile({
-    fs,
-    path,
-    filePath: paths.secretsEnvFilePath,
-    secrets,
-    platform: process.platform,
-  });
-  if (result && result.status === "ok") {
-    broadcastSlackNotifyStatus();
-  }
-  return result;
-}
-
-function getSlackNotifyClient() {
-  if (!slackNotifyClient) {
-    slackNotifyClient = createSlackNotifyClient({
-      getConfig: () => getSlackNotifyPrefs(),
-      getSecrets: () => getSlackNotifySecrets(),
-      getLang: () => _settingsController.get("lang") || lang || "en",
-      log: slackNotifyLog,
-    });
-  }
-  return slackNotifyClient;
-}
-
-async function sendSlackNotifyTest() {
-  const client = getSlackNotifyClient();
-  if (!client || typeof client.sendTest !== "function") {
-    return { status: "error", code: "not-running", message: "Slack notifier is not available" };
-  }
-  try {
-    return await client.sendTest();
-  } catch (err) {
-    return { status: "error", code: "threw", message: err && err.message ? err.message : String(err) };
-  }
-}
-
-function getTelegramApprovalTokenStatus() {
-  const paths = getTelegramApprovalPaths();
-  return telegramApprovalSettings.tokenStatus({
-    fs,
-    filePath: paths.tokenEnvFilePath,
-  });
-}
-
-function getTelegramApprovalTokenInfo() {
-  const paths = getTelegramApprovalPaths();
-  const status = telegramApprovalSettings.tokenStatus({
-    fs,
-    filePath: paths.tokenEnvFilePath,
-  });
-  if (!status.tokenStored) return { configured: false, masked: "" };
-  return {
-    configured: true,
-    masked: telegramApprovalSettings.readMaskedBotToken({
-      fs,
-      filePath: paths.tokenEnvFilePath,
-    }),
-  };
-}
-
-function getTelegramApprovalStatus() {
-  const config = getTelegramApprovalPrefs();
-  const token = getTelegramApprovalTokenStatus();
-  const migrationSnapshot = _telegramMigrationController && typeof _telegramMigrationController.getSnapshot === "function"
-    ? _telegramMigrationController.getSnapshot()
-    : null;
-  const nativePolling = telegramNativeRunner
-    && typeof telegramNativeRunner.isPolling === "function"
-    && telegramNativeRunner.isPolling();
-  return buildTelegramApprovalStatus({
-    config,
-    token,
-    migrationSnapshot,
-    nativePolling,
-  });
-}
-
-function getPendingTelegramApprovalCount() {
-  return pendingPermissions.filter((entry) => entry && !isPassiveNotifyEntry(entry)).length;
-}
-
-function getTelegramNativeRunnerStatus() {
-  if (telegramNativeRunner && typeof telegramNativeRunner.getStatus === "function") {
-    try { return telegramNativeRunner.getStatus(); } catch {}
-  }
-  return {
-    polling: !!(telegramNativeRunner
-      && typeof telegramNativeRunner.isPolling === "function"
-      && telegramNativeRunner.isPolling()),
-    pendingApprovalCount: telegramNativeRunner && telegramNativeRunner._pendingApprovals
-      ? telegramNativeRunner._pendingApprovals.size
-      : 0,
-    lastError: null,
-  };
-}
-
-function buildTelegramStatusCommandText(options = {}) {
-  const config = getTelegramApprovalPrefs();
-  const token = getTelegramApprovalTokenStatus();
-  const migrationSnapshot = _telegramMigrationController && typeof _telegramMigrationController.getSnapshot === "function"
-    ? _telegramMigrationController.getSnapshot()
-    : null;
-  const nativeRunnerStatus = getTelegramNativeRunnerStatus();
-  const nativePolling = nativeRunnerStatus && nativeRunnerStatus.polling === true;
-  const approvalStatus = buildTelegramApprovalStatus({
-    config,
-    token,
-    migrationSnapshot,
-    nativePolling,
-  });
-  const sessionSnapshot = _state && typeof _state.buildSessionSnapshot === "function"
-    ? _state.buildSessionSnapshot()
-    : null;
-  const diagnostic = buildTelegramStatusDiagnostic({
-    config,
-    token,
-    approvalStatus,
-    migrationSnapshot,
-    nativeRunnerStatus,
-    nativePolling,
-    pendingApprovalCount: getPendingTelegramApprovalCount(),
-    sessionSnapshot,
-    now: Date.now(),
-    all: options && options.all === true,
-  });
-  return formatTelegramStatusDiagnostic(diagnostic, {
-    all: options && options.all === true,
-    lang: _settingsController.get("lang") || lang || "en",
-  });
-}
-
-function handleTelegramNativeCommand({ command, args } = {}) {
-  if (command !== "status") return null;
-  return buildTelegramStatusCommandText({ all: true });
-}
-
-function telegramTokenFileDigest(filePath) {
-  try {
-    return crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
-  } catch {
-    return "";
-  }
-}
-
-function invalidateTelegramDirectSendMappings(reason, options = {}) {
-  if (!telegramDirectSend || typeof telegramDirectSend.invalidateMappings !== "function") return;
-  telegramDirectSend.invalidateMappings(options);
-  try { telegramApprovalLog("debug", "direct-send mappings invalidated", { reason }); } catch {}
-}
-
-function writeTelegramApprovalToken(token) {
-  const paths = getTelegramApprovalPaths();
-  const beforeDigest = telegramTokenFileDigest(paths.tokenEnvFilePath);
-  // Tighten active grants before mutating the credential. The temporary route
-  // also invalidates trust cards issued against the old token even if the
-  // replacement ultimately fails and leaves identical file metadata behind.
-  syncTelegramSessionAutomationRoute({
-    ...getTelegramSessionAutomationRoute(),
-    credentialWritePending: true,
-  });
-  let result;
-  try {
-    result = telegramApprovalSettings.writeTokenEnvFile({
-      fs,
-      path,
-      filePath: paths.tokenEnvFilePath,
-      token,
-      platform: process.platform,
-    });
-  } finally {
-    syncTelegramSessionAutomationRoute();
-  }
-  if (result && result.status === "ok") {
-    const identityChanged = beforeDigest !== telegramTokenFileDigest(paths.tokenEnvFilePath);
-    if (identityChanged) {
-      invalidateTelegramDirectSendMappings("token_changed");
-      if (telegramNativeRunner && typeof telegramNativeRunner.resetOffset === "function") {
-        telegramNativeRunner.resetOffset();
-      }
-    }
-    if (_telegramMigrationController
-      && typeof _telegramMigrationController.reconcileConfiguration === "function") {
-      void _telegramMigrationController.reconcileConfiguration({ identityChanged });
-    }
-  }
-  return result;
-}
-
-async function initTelegramMigrationController() {
-  if (_telegramMigrationController) return _telegramMigrationController;
-  const paths = getTelegramApprovalPaths();
-
-  // Native handle. The token remains in the canonical userData env file;
-  // neither migration state nor Settings snapshots receive its value.
-  const { envFileTokenStore } = require("./telegram-token-store");
-  const {
-    createClipboardFallbackDeliveryAdapter,
-    createTelegramDirectSend,
-  } = require("./telegram-direct-send");
-  const { createWindowsConsoleInputDeliveryAdapter } = require("./windows-console-input");
-  const { createCodexQueueDeliveryAdapter } = require("./codex-queue-delivery");
-  const { deriveCodexHomeFromTranscriptPath } = require("./codex-thread-id");
-  const {
-    isCodexCliOriginator,
-    isCodexDesktopOriginator,
-  } = require("../hooks/codex-originator");
-  const { createTelegramNativeRunner } = require("./telegram-native-runner");
-  const { createTelegramFetchTransport } = require("./telegram-fetch-transport");
-  const tokenStore = envFileTokenStore({ filePath: paths.tokenEnvFilePath });
-  const getTelegramDirectSendSnapshot = () => {
-    const snapshot = _state && typeof _state.buildSessionSnapshot === "function"
-      ? _state.buildSessionSnapshot()
-      : { sessions: [] };
-    const snapshotSessions = Array.isArray(snapshot.sessions) ? snapshot.sessions : [];
-    return {
-      ...snapshot,
-      sessions: snapshotSessions.map((entry) => {
-        const runtimeEntry = entry && entry.id ? sessions.get(String(entry.id)) : null;
-        return {
-          ...entry,
-          agentPid: runtimeEntry && runtimeEntry.agentPid || null,
-          // Direct Send keeps this main-process-only. It is derived from the
-          // authoritative rollout path and never enters the shared UI snapshot.
-          codexHome: deriveCodexHomeFromTranscriptPath(
-            runtimeEntry && runtimeEntry.transcriptPath,
-            process.platform,
-          ),
-        };
-      }),
-    };
-  };
-  const windowsConsoleDeliveryAdapter = createWindowsConsoleInputDeliveryAdapter();
-  const codexQueueDeliveryAdapter = createCodexQueueDeliveryAdapter({
-    osPlatform: process.platform,
-    log: telegramApprovalLog,
-  });
-  telegramDirectSend = createTelegramDirectSend({
-    getSessionSnapshot: getTelegramDirectSendSnapshot,
-    getPendingPermissions: () => pendingPermissions,
-    focusSession: (sessionId, options) => focusDashboardSession(sessionId, options),
-    deliveryAdapter: windowsConsoleDeliveryAdapter,
-    getDeliveryAdapter: ({ entry } = {}) => {
-      if (!entry || entry.agentId !== "codex") return windowsConsoleDeliveryAdapter;
-      const originator = entry.codexOriginator || entry.originator;
-      if (isCodexDesktopOriginator(originator)) return codexQueueDeliveryAdapter;
-      if (isCodexCliOriginator(originator) && entry.codexHome) return codexQueueDeliveryAdapter;
-      // A CLI session without store provenance keeps the established Windows
-      // Console path. On other hosts that adapter fails into clipboard fallback.
-      if (isCodexCliOriginator(originator)) return windowsConsoleDeliveryAdapter;
-      // An unknown originator must not inherit a known Codex delivery path.
-      // The queue adapter rejects it through canDeliver(), which sends this
-      // reply to the clipboard fallback without injecting OS input.
-      return codexQueueDeliveryAdapter;
-    },
-    fallbackAdapter: createClipboardFallbackDeliveryAdapter({ clipboard }),
-    isEnabled: () => {
-      const snap = _telegramMigrationController && typeof _telegramMigrationController.getSnapshot === "function"
-        ? _telegramMigrationController.getSnapshot()
-        : null;
-      return !!(snap && snap.state === "NATIVE_ACTIVE"
-        && telegramNativeRunner && typeof telegramNativeRunner.isPolling === "function"
-        && telegramNativeRunner.isPolling()
-        && getTelegramApprovalPrefs().r3DirectSendEnabled === true);
-    },
-    getRouteGeneration: () => (
-      telegramNativeRunner
-      && typeof telegramNativeRunner.getRouteGeneration === "function"
-        ? telegramNativeRunner.getRouteGeneration()
-        : null
-    ),
-    osPlatform: process.platform,
-    getLang: () => lang,
-    log: telegramApprovalLog,
-  });
-  const nativeRunner = createTelegramNativeRunner({
-    tokenStore,
-    // issue #359: route the bot's HTTP through Electron's Chromium net stack so
-    // it follows the OS system proxy (and PAC/SOCKS), instead of Node's global
-    // fetch which ignores system/env proxy. Dedicated in-memory session.
-    transport: createTelegramFetchTransport({
-      tokenStore,
-      sessionFactory: () => require("electron").session.fromPartition("clawd-telegram", { cache: false }),
-      log: telegramApprovalLog,
-    }),
-    getDispatch: () => _telegramMigrationController && _telegramMigrationController.dispatch,
-    getLang: () => lang,
-    getChatId: () => {
-      const cfg = getTelegramApprovalPrefs();
-      const key = cfg && cfg.targetSessionKey;
-      // targetSessionKey is "telegram:<chat>:..." — extract chat id.
-      const m = typeof key === "string" ? key.match(/^telegram:(-?\d+)/) : null;
-      return m ? m[1] : "";
-    },
-    getAllowedUserId: () => {
-      const cfg = getTelegramApprovalPrefs();
-      return (cfg && cfg.allowedTgUserId) || "";
-    },
-    isCommandEnabled: () => {
-      const snap = _telegramMigrationController && typeof _telegramMigrationController.getSnapshot === "function"
-        ? _telegramMigrationController.getSnapshot()
-        : null;
-      return !!(snap && snap.state === "NATIVE_ACTIVE");
-    },
-    onCommand: (payload) => handleTelegramNativeCommand(payload),
-    isTextMessageEnabled: () => {
-      const snap = _telegramMigrationController && typeof _telegramMigrationController.getSnapshot === "function"
-        ? _telegramMigrationController.getSnapshot()
-        : null;
-      return !!(snap && snap.state === "NATIVE_ACTIVE"
-        && telegramNativeRunner && typeof telegramNativeRunner.isPolling === "function"
-        && telegramNativeRunner.isPolling()
-        && getTelegramApprovalPrefs().r3DirectSendEnabled === true);
-    },
-    onTextMessage: (payload) => telegramDirectSend && telegramDirectSend.handleTextMessage(payload),
-    getLang: () => _settingsController.get("lang") || lang || "en",
-    log: telegramApprovalLog,
-    onSessionGrantRevoke: (grantId) =>
-      sessionAutomationCoordinator
-        ? sessionAutomationCoordinator.revokeRemoteGrant({ grantId })
-        : { status: "stale" },
-    onSessionAutomationRouteChange: (client) => {
-      if (sessionAutomationCoordinator) {
-        sessionAutomationCoordinator.onRemoteClientRouteChange(client);
-      }
-    },
-  });
-  nativeRunner.syncSessionAutomationRoute(getTelegramSessionAutomationRoute());
-  telegramNativeRunner = nativeRunner;
-
-  // R1a: completion notifications ride the existing snapshot fanout. The
-  // companion holds its own dedupe state (the snapshot carries no prev) and
-  // only sends while native is the active owner + the user left the toggle on.
-  const { createTelegramCompanion } = require("./telegram-companion");
-  telegramCompanion = createTelegramCompanion({
-    getClient: () => getTelegramCompanionClient(),
-    getLang: () => _settingsController.get("lang") || lang || "en",
-    getCompletionOutputMode: () => getTelegramApprovalPrefs().completionOutputMode || "off",
-    getNotifyOnComplete: () => {
-      const prefs = getTelegramApprovalPrefs();
-      // Direct replies need a Telegram message to bind to even when the user
-      // keeps assistant output disabled. Treat the explicit reply opt-in as a
-      // bare completion-ping opt-in without changing the stored legacy flag.
-      return prefs.notifyOnComplete === true || prefs.r3DirectSendEnabled === true;
-    },
-    // Native-active client present. The companion still advances its dedupe map
-    // while native is inactive, and internally decides whether to send a bare
-    // ping or require assistant output based on tgApproval prefs.
-    isEnabled: () => !!getTelegramCompanionClient(),
-    getNotificationContext: (entry) => (
-      telegramDirectSend
-      && typeof telegramDirectSend.createCompletionNotificationContext === "function"
-        ? telegramDirectSend.createCompletionNotificationContext(entry)
-        : null
-    ),
-    isNotificationRouteCurrent: (context) => (
-      telegramDirectSend
-      && typeof telegramDirectSend.isCompletionNotificationRouteCurrent === "function"
-        ? telegramDirectSend.isCompletionNotificationRouteCurrent(context)
-        : false
-    ),
-    onNotificationSent: ({ entry, messageId, chatId, notificationContext }) => {
-      if (telegramDirectSend && typeof telegramDirectSend.registerCompletionNotification === "function") {
-        // The notification context freezes the live agent PID when completion
-        // is observed. Keep this lookup only as a compatibility fallback for
-        // callers that do not provide that context; registration always
-        // prefers the earlier frozen identity so a reused session id cannot be
-        // rebound while Telegram delivery is in flight.
-        const runtimeEntry = entry && entry.id
-          ? sessions.get(String(entry.id))
-          : null;
-        telegramDirectSend.registerCompletionNotification({
-          messageId,
-          chatId,
-          sessionId: entry && entry.id,
-          agentId: entry && entry.agentId,
-          sourcePid: entry && entry.sourcePid,
-          agentPid: runtimeEntry && runtimeEntry.agentPid || (entry && entry.agentPid),
-          editor: entry && entry.editor,
-          wtHwnd: entry && entry.wtHwnd,
-          orcaPaneKey: entry && entry.orcaPaneKey,
-          notificationContext,
-        });
-      }
-    },
-    log: telegramApprovalLog,
-  });
-
-  // Seed before publishing the controller. If Settings changes the recipient
-  // while init awaits native startup, the subscription below must recognize
-  // that first edit as an identity change and queue reconciliation behind init.
-  telegramApprovalIdentitySignature = buildTelegramApprovalIdentitySignature(
-    getTelegramApprovalPrefs()
-  );
-  telegramDirectSendGateEnabled = getTelegramApprovalPrefs().r3DirectSendEnabled === true;
-  _telegramMigrationController = createTelegramMigrationController({
-    native: nativeRunner,
-    readPrefs: () => readTelegramMigrationPrefsForController(),
-    writePrefs: (patch) => persistTelegramMigrationPatch(patch),
-    readFiles: () => {
-      const cfg = getTelegramApprovalPrefs();
-      const tokenInfo = getTelegramApprovalTokenStatus();
-      const configComplete = hasCompleteTelegramApprovalConfig(cfg, tokenInfo);
-      return {
-        nativeConfigComplete: configComplete,
-      };
-    },
-    onSnapshotChanged: ({ revision }) => {
-      syncTelegramSessionAutomationRoute();
-      broadcastSettingsWindow("remoteApproval:status-changed", {
-        channel: "telegram",
-        revision,
-      });
-      // State changes may clear a previously persisted warning after the user
-      // activates native transport or explicitly turns Telegram approval off.
-      // Only the post-window startup check below is allowed to display a nudge.
-      if (telegramMigrationNudge) {
-        void telegramMigrationNudge.sync({ allowNotify: false });
-      }
-    },
-    log: telegramApprovalLog,
-  });
-
-  telegramMigrationNudge = createTelegramMigrationNudge({
-    getSnapshot: () => _telegramMigrationController.getSnapshot(),
-    getLastSignature: () => _settingsController.get("telegramMigrationLastNotified") || "",
-    setLastSignature: (value) =>
-      _settingsController.applyUpdate("telegramMigrationLastNotified", value),
-    showNotification: ({ kind, onClick }) => {
-      const title = t("telegramMigrationNudgeTitle");
-      const body = t(kind === "legacy"
-        ? "telegramMigrationNudgeLegacyBody"
-        : "telegramMigrationNudgeNativeBody");
-      try {
-        const tray = _menu && typeof _menu.getTray === "function" ? _menu.getTray() : null;
-        if (process.platform === "win32" && trayBalloonOwner.show(tray, {
-          iconType: "warning",
-          title,
-          content: body,
-          onClick,
-        })) {
-          return true;
-        }
-        if (Notification && typeof Notification.isSupported === "function" && Notification.isSupported()) {
-          const notification = new Notification({ title, body });
-          notification.once("click", onClick);
-          notification.show();
-          return true;
-        }
-      } catch (err) {
-        console.warn("Clawd: Telegram migration nudge failed:", err && err.message);
-      }
-      console.warn(`Clawd: ${body}`);
-      return false;
-    },
-    openSettings: () => settingsWindowRuntime.open(),
-  });
-
-  await _telegramMigrationController.init();
-  // Re-read after init so the baseline always matches the committed Settings
-  // snapshot, including an edit that raced with native startup.
-  telegramApprovalIdentitySignature = buildTelegramApprovalIdentitySignature(
-    getTelegramApprovalPrefs()
-  );
-  telegramDirectSendGateEnabled = getTelegramApprovalPrefs().r3DirectSendEnabled === true;
-  return _telegramMigrationController;
 }
 
 // In-process IPC bridge fed by the session-snapshot subscription.
@@ -4536,156 +2231,6 @@ function syncDiscordPresence(reason = "settings") {
   return startDiscordPresence();
 }
 
-function telegramApprovalUnavailableMessage(status) {
-  if (status && status.message) return status.message;
-  if (status && status.reason === "disabled") return translate("telegramApprovalDisabledMessage");
-  if (status && status.reason === "missing-token") return translate("telegramApprovalMissingTokenMessage");
-  if (status && status.reason === "invalid-config") return translate("telegramApprovalIncompleteConfigMessage");
-  if (status && status.reason === "native-inactive") return translate("telegramApprovalNativeInactiveMessage");
-  if (status && status.reason === "native-testing") return translate("telegramApprovalNativeTestingMessage");
-  if (status && status.transport === "native") return translate("telegramApprovalNativeInactiveMessage");
-  return translate("telegramApprovalNativeInactiveMessage");
-}
-
-async function sendTelegramApprovalTest() {
-  const beforeStatus = getTelegramApprovalStatus();
-  if (beforeStatus.configured !== true) {
-    return { status: "error", message: telegramApprovalUnavailableMessage(beforeStatus) };
-  }
-  const client = getTelegramApprovalClient();
-  if (!client || typeof client.requestApproval !== "function") {
-    return { status: "error", message: telegramApprovalUnavailableMessage(getTelegramApprovalStatus()) };
-  }
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 60 * 1000);
-  try {
-    const decision = await client.requestApproval({
-      title: translate("telegramSettingsTestTitle"),
-      detail: translate("telegramSettingsTestDetail"),
-    }, { signal: controller.signal });
-    if (decision === "allow" || decision === "deny") {
-      return { status: "ok", decision };
-    }
-    if (decision && (decision.action === "allow" || decision.action === "deny")) {
-      return { status: "ok", decision: decision.action };
-    }
-    return { status: "error", message: translate("telegramApprovalNoButtonResponseMessage") };
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-// ── Menu — delegated to src/menu.js ──
-//
-// Setters that previously assigned to module-level vars now route through
-// `_settingsController.applyUpdate(key, value)`. The mirror cache is updated
-// by the settings-effect-router subscriber after this ctx is built. Side
-// effects that used to live inside setters (e.g.
-// `syncPermissionShortcuts()` for hideBubbles) are now reactive and live in
-// the subscriber too.
-
-async function confirmDangerousMode(t) {
-  const parent = win && !win.isDestroyed() ? win : null;
-  const result = await electronDialog.showMessageBox(parent, {
-    type: "warning",
-    buttons: [t("confirm") || "Confirm", t("cancel") || "Cancel"],
-    defaultId: 1,
-    cancelId: 1,
-    title: t("dangerousConfirmTitle") || "Confirm Dangerous Mode",
-    message: t("dangerousConfirmMessage") || "Dangerous mode skips ALL permission checks.",
-  });
-  return result.response === 0;
-}
-
-// Await launchClaudeSession and surface failures instead of swallowing them:
-// show a localized error dialog so the user knows nothing happened, and log
-// for diagnosis. Never throws.
-async function runLaunchClaudeSession(t, mode, cwd, sessionId) {
-  let res;
-  try {
-    res = await launchClaudeSession(mode, cwd, sessionId);
-  } catch (err) {
-    console.error("[launch-claude] launch threw:", err);
-    res = { ok: false, message: (err && err.message) || String(err) };
-  }
-  if (res && res.ok) return res;
-  console.error("[launch-claude] launch failed:", res && res.message);
-  try {
-    const parent = win && !win.isDestroyed() ? win : null;
-    await electronDialog.showMessageBox(parent, {
-      type: "error",
-      buttons: [t("dismiss") || "OK"],
-      title: t("newSession") || "New Session",
-      message: t("launchFailed") || "Failed to launch Claude Code.",
-      detail: (res && res.message) || "",
-    });
-  } catch (err) {
-    console.error("[launch-claude] failed to show error dialog:", err);
-  }
-  return res;
-}
-
-function showResumeInput(t) {
-  return new Promise((resolve) => {
-    // data: URL — outside the file:// zoom map, so the scale is baked into the
-    // window size and an inline body zoom instead.
-    const resumeScale = getTextScaleForPetWindows();
-    const inputWin = new BrowserWindow({
-      width: scaleWidth(420, resumeScale),
-      height: scaleHeight(180, resumeScale),
-      resizable: false,
-      alwaysOnTop: true,
-      frame: false,
-      transparent: true,
-      skipTaskbar: true,
-      parent: win && !win.isDestroyed() ? win : undefined,
-      modal: true,
-      webPreferences: { nodeIntegration: false, contextIsolation: true },
-    });
-    const title = t("resumeSessionTitle") || "Resume Session";
-    const hint = t("resumeSessionHint") || "Enter Session ID";
-    const confirmLabel = t("confirm") || "OK";
-    const cancelLabel = t("dismiss") || "Cancel";
-    const html = `<!DOCTYPE html><html><head><style>
-      *{margin:0;padding:0;box-sizing:border-box}
-      body{zoom:${resumeScale};font-family:system-ui,-apple-system,sans-serif;background:#1e1e2e;color:#cdd6f4;display:flex;flex-direction:column;height:calc(100vh / ${resumeScale});padding:16px;border-radius:12px;overflow:hidden}
-      .title{font-size:14px;font-weight:600;margin-bottom:12px}
-      input{width:100%;padding:8px 12px;border:1px solid #45475a;border-radius:6px;background:#313244;color:#cdd6f4;font-size:13px;outline:none}
-      input:focus{border-color:#89b4fa}
-      input::placeholder{color:#6c7086}
-      .btns{display:flex;gap:8px;margin-top:14px;justify-content:flex-end}
-      button{padding:6px 16px;border:none;border-radius:6px;font-size:12px;cursor:pointer}
-      .ok{background:#89b4fa;color:#1e1e2e;font-weight:600}
-      .cancel{background:#45475a;color:#cdd6f4}
-    </style></head><body>
-      <div class="title">${title}</div>
-      <input id="sid" type="text" placeholder="${hint}" autofocus />
-      <div class="btns">
-        <button class="cancel" onclick="result(null)">${cancelLabel}</button>
-        <button class="ok" onclick="result(document.getElementById('sid').value)">${confirmLabel}</button>
-      </div>
-      <script>
-        function result(v){window._resolve(v)}
-        document.getElementById('sid').addEventListener('keydown',e=>{
-          if(e.key==='Enter')result(document.getElementById('sid').value);
-          if(e.key==='Escape')result(null);
-        });
-      </script>
-    </body></html>`;
-    inputWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
-    inputWin.webContents.on("did-finish-load", () => {
-      inputWin.webContents.executeJavaScript(
-        "new Promise(r=>{window._resolve=r})"
-      ).then((val) => {
-        const sessionId = typeof val === "string" ? val.trim() : "";
-        resolve(sessionId || null);
-        try { inputWin.close(); } catch {}
-      });
-    });
-    inputWin.on("closed", () => resolve(null));
-  });
-}
-
 const _menuCtx = {
   get win() { return win; },
   get petAlwaysOnTop() { return getPetAlwaysOnTopEffective(); },
@@ -4707,49 +2252,11 @@ const _menuCtx = {
   set showTray(v) { _settingsController.applyUpdate("showTray", v); },
   get showDock() { return showDock; },
   set showDock(v) { _settingsController.applyUpdate("showDock", v); },
-  get manageClaudeHooksAutomatically() { return manageClaudeHooksAutomatically; },
-  get autoStartWithClaude() { return autoStartWithClaude; },
-  set autoStartWithClaude(v) { _settingsController.applyUpdate("autoStartWithClaude", v); },
   get openAtLogin() { return openAtLogin; },
   set openAtLogin(v) { _settingsController.applyUpdate("openAtLogin", v); },
-  get bubbleFollowPet() { return bubbleFollowPet; },
-  set bubbleFollowPet(v) { _settingsController.applyUpdate("bubbleFollowPet", v); },
-  get hideBubbles() { return getAllBubblesHidden(); },
-  set hideBubbles(v) { _settingsController.applyCommand("setAllBubblesHidden", { hidden: !!v }).catch((err) => {
-    console.warn("Clawd: setAllBubblesHidden failed:", err && err.message);
-  }); },
-  get permissionAutomationMode() {
-    return _settingsController.get("permissionAutomationMode") || "off";
-  },
-  isPermissionAutomationWarningDismissed(mode) {
-    const key = mode === "auto-tools"
-      ? "permissionAutomationAutoToolsWarningDismissed"
-      : (mode === "unattended"
-        ? "permissionAutomationUnattendedWarningDismissed"
-        : null);
-    return key ? _settingsController.get(key) === true : false;
-  },
-  setPermissionAutomationMode(mode, options = {}) {
-    return _settingsController.applyCommand("setPermissionAutomationMode", {
-      mode,
-      confirmed: options.confirmed === true,
-      suppressFutureConfirmation: options.suppressFutureConfirmation === true,
-    }).catch((err) => {
-      console.warn("Clawd: setPermissionAutomationMode failed:", err && err.message);
-      return { status: "error", message: err && err.message };
-    });
-  },
-  confirmPermissionAutomation: (payload) => (
-    permissionAutomationConfirmationRuntime.confirmPermissionAutomation(payload)
-  ),
-  showPermissionAutomationError: (payload) => (
-    permissionAutomationConfirmationRuntime.showPermissionAutomationError(payload)
-  ),
   get soundMuted() { return soundMuted; },
   set soundMuted(v) { _settingsController.applyUpdate("soundMuted", v); },
   get soundVolume() { return soundVolume; },
-  get pendingPermissions() { return pendingPermissions; },
-  repositionBubbles: () => repositionFloatingBubbles(),
   get petHidden() { return petWindowRuntime.isPetEffectivelyHidden(); },
   setPetVisibility: (visible) => setPetVisibility(visible),
   bringPetToPrimaryDisplay: () => bringPetToPrimaryDisplay(),
@@ -4777,82 +2284,13 @@ const _menuCtx = {
   getMiniTransitioning: () => _mini.getMiniTransitioning(),
   miniHandleResize: (sizeKey) => _mini.handleResize(sizeKey),
   openDashboard: () => showDashboard(),
-  launchClaudeSession: (mode, cwd, sessionId) => launchClaudeSession(mode, cwd, sessionId),
-  newSessionWithFolder: async (t) => {
-    const parent = win && !win.isDestroyed() ? win : null;
-    const result = await electronDialog.showOpenDialog(parent, {
-      title: t("selectFolder"),
-      properties: ["openDirectory"],
-    });
-    if (result.canceled || !result.filePaths.length) return;
-    const folder = result.filePaths[0];
-    const mode = await electronDialog.showMessageBox(parent, {
-      type: "question",
-      buttons: [t("newSessionNormal"), t("newSessionDangerous"), t("newSessionContinue"), t("newSessionResume"), t("dismiss")],
-      defaultId: 0,
-      cancelId: 4,
-      title: t("newSession"),
-      message: t("newSession"),
-      detail: folder,
-    });
-    if (mode.response === 4) return;
-    if (mode.response === 3) {
-      const sessionId = await showResumeInput(t);
-      if (!sessionId) return;
-      const resumeMode = await electronDialog.showMessageBox(parent, {
-        type: "question",
-        buttons: [t("modeNormal"), t("modeDangerous"), t("dismiss")],
-        defaultId: 0,
-        cancelId: 2,
-        title: t("newSessionResume"),
-        message: sessionId,
-      });
-      if (resumeMode.response === 2) return;
-      if (resumeMode.response === 1 && !(await confirmDangerousMode(t))) return;
-      await runLaunchClaudeSession(t, resumeMode.response === 1 ? "resume-dangerous" : "resume", folder, sessionId);
-      return;
-    }
-    if (mode.response === 1 && !(await confirmDangerousMode(t))) return;
-    const modes = ["normal", "dangerous", "continue"];
-    await runLaunchClaudeSession(t, modes[mode.response], folder);
-  },
-  newSessionInCurrentDir: async (t) => {
-    const parent = win && !win.isDestroyed() ? win : null;
-    const mode = await electronDialog.showMessageBox(parent, {
-      type: "question",
-      buttons: [t("newSessionNormal"), t("newSessionDangerous"), t("newSessionContinue"), t("newSessionResume"), t("dismiss")],
-      defaultId: 0,
-      cancelId: 4,
-      title: t("newSession"),
-      message: t("newSession"),
-    });
-    if (mode.response === 4) return;
-    if (mode.response === 3) {
-      const sessionId = await showResumeInput(t);
-      if (!sessionId) return;
-      const resumeMode = await electronDialog.showMessageBox(parent, {
-        type: "question",
-        buttons: [t("modeNormal"), t("modeDangerous"), t("dismiss")],
-        defaultId: 0,
-        cancelId: 2,
-        title: t("newSessionResume"),
-        message: sessionId,
-      });
-      if (resumeMode.response === 2) return;
-      if (resumeMode.response === 1 && !(await confirmDangerousMode(t))) return;
-      await runLaunchClaudeSession(t, resumeMode.response === 1 ? "resume-dangerous" : "resume", undefined, sessionId);
-      return;
-    }
-    if (mode.response === 1 && !(await confirmDangerousMode(t))) return;
-    const modes = ["normal", "dangerous", "continue"];
-    await runLaunchClaudeSession(t, modes[mode.response]);
-  },
   // The settings controller is the only writer of persisted prefs. Toggle
   // setters above route through it; resize/sendToDisplay use
   // flushRuntimeStateToPrefs to capture window bounds after movement.
   flushRuntimeStateToPrefs,
   settings: _settingsController,
   syncHitWin,
+  repositionBubbles: () => repositionAnchoredFloatingSurfaces(),
   getPetWindowBounds,
   applyPetWindowBounds,
   getCurrentPixelSize,
@@ -4882,29 +2320,15 @@ const { t, buildContextMenu, buildTrayMenu, rebuildAllMenus, createTray,
 // ── Settings effect router ──
 const SETTINGS_MIRROR_SETTERS = {
   lang: (v) => { lang = v; }, size: (v) => { currentSize = v; resetKeepSizeFrozen(); }, showTray: (v) => { showTray = v; },
-  showDock: (v) => { showDock = v; if (macHideController) macHideController.noteManualChange(); }, manageClaudeHooksAutomatically: (v) => { manageClaudeHooksAutomatically = v; },
-  autoStartWithClaude: (v) => { autoStartWithClaude = v; }, openAtLogin: (v) => { openAtLogin = v; },
-  bubbleFollowPet: (v) => { bubbleFollowPet = v; },
-  bubbleFollowPreference: (v) => { bubbleFollowPreference = v; },
-  bubbleFixedCorner: (v) => { bubbleFixedCorner = v; },
+  showDock: (v) => { showDock = v; if (macHideController) macHideController.noteManualChange(); },
+  openAtLogin: (v) => { openAtLogin = v; },
   sessionHudEnabled: (v) => { sessionHudEnabled = v; },
   sessionHudShowStateLabels: (v) => { sessionHudShowStateLabels = v; },
   sessionHudShowElapsed: (v) => { sessionHudShowElapsed = v; },
   sessionHudShowContextUsage: (v) => { sessionHudShowContextUsage = v; },
-  sessionHudShowQuota: (v) => { sessionHudShowQuota = v; },
-  quotaRingDisplayMode: (v) => { quotaRingDisplayMode = v; },
-  // Normalized to an array here as well as in prefs: this mirror also takes the
-  // value straight from a settings broadcast, and every consumer indexes it.
-  quotaRingHiddenProviders: (v) => { quotaRingHiddenProviders = Array.isArray(v) ? v : []; },
-  claudeQuotaCollectionEnabled: (v) => { claudeQuotaCollectionEnabled = v; },
-  kimiQuotaCollectionEnabled: (v) => { kimiQuotaCollectionEnabled = v; },
-  quotaMergeSources: (v) => { quotaMergeSources = v; },
   sessionHudCleanupDetached: (v) => { sessionHudCleanupDetached = v; },
-  sessionHudHideCompletedCodexEphemeral: (v) => { sessionHudHideCompletedCodexEphemeral = v; },
-  sessionHudHideActiveCodexEphemeral: (v) => { sessionHudHideActiveCodexEphemeral = v; },
   sessionHudPinned: (v) => { sessionHudPinned = v; },
   sessionStaleMs: (v) => { sessionStaleMs = v; }, workingStaleMs: (v) => { workingStaleMs = v; },
-  codexWorkingStaleMs: (v) => { codexWorkingStaleMs = v; },
   detachedIdleStaleMs: (v) => { detachedIdleStaleMs = v; },
   soundMuted: (v) => { soundMuted = v; }, soundVolume: (v) => { soundVolume = v; }, lowPowerIdleMode: (v) => { lowPowerIdleMode = v; },
   keepAwakeWhileWorking: (v) => { keepAwakeWhileWorking = v; },
@@ -4931,13 +2355,11 @@ const SETTINGS_MIRROR_SETTERS = {
 
 function updateSettingsMirrors(changes) { for (const [key, value] of Object.entries(changes)) if (SETTINGS_MIRROR_SETTERS[key]) SETTINGS_MIRROR_SETTERS[key](value); }
 
-function callRuntimeMethod(owner, method, ...args) { return owner && typeof owner[method] === "function" ? owner[method](...args) : undefined; }
-
 function reclampPetAfterEdgePinningChange() {
   if (!win || win.isDestroyed() || petWindowRuntime.isDragLocked() || _mini.getMiniMode() || _mini.getMiniTransitioning()) return;
   const clamped = computeFinalDragBounds(getPetWindowBounds(), getEffectiveCurrentPixelSize(), clampToScreenVisual);
   if (clamped) applyPetWindowBounds(clamped);
-  syncHitWin(); repositionFloatingBubbles();
+  syncHitWin();
 }
 
 const holidayAccessoryRuntime = createHolidayAccessoryRuntime({
@@ -4970,22 +2392,8 @@ const settingsEffectRouter = createSettingsEffectRouter({
   },
   emitSessionSnapshot: (options) => _state.emitSessionSnapshot(options),
   cleanStaleSessions: () => _state.cleanStaleSessions(),
-  refreshPendingAttention: () => _state.refreshPendingAttention(),
-  syncPermissionShortcuts,
-  dismissInteractivePermissionBubbles: () => callRuntimeMethod(_perm, "dismissInteractivePermissionBubbles"),
-  clearCodexNotifyBubbles,
-  clearCodexRemoteFallbackNotices: (reason) => (
-    _codexRemoteFallbackNotice ? _codexRemoteFallbackNotice.clearAll(reason) : 0
-  ),
-  clearCodexUserInputBubbles,
-  clearClaudeTurnAskBubbles,
-  clearKimiNotifyBubbles,
-  clearKiroDesktopReminderCards: (reason) => agentRuntime?.clearKiroDesktopReminderCards(reason),
-  resyncKiroDesktopReminderCards: () => agentRuntime?.resyncKiroDesktopReminderCards(),
-  refreshPassiveNotifyAutoClose: () => callRuntimeMethod(_perm, "refreshPassiveNotifyAutoClose"),
-  refreshPermissionAutoCloseForPolicy: () => callRuntimeMethod(_perm, "refreshPermissionAutoCloseForPolicy"),
-  repositionFloatingBubbles,
   applyTextScale: () => applyTextScaleNow(),
+  repositionFloatingBubbles: () => repositionAnchoredFloatingSurfaces(),
   syncSessionHudVisibility: () => syncSessionHudVisibility(),
   handleSessionHudPinnedChanged: (next) => {
     if (_sessionHud && typeof _sessionHud.handlePinnedChanged === "function") {
@@ -5010,87 +2418,14 @@ const settingsEffectRouter = createSettingsEffectRouter({
     _state.applyState("idle", _state.getSvgOverride("idle"));
   },
   refreshDisplayedVisual: refreshDisplayedVisualForLowPowerMode,
-  refreshPetPresentation: () => _state.refreshPetPresentation(),
   rebuildAllMenus,
   reconcilePowerSaveBlocker,
-  disableMobilePermissionObservation: () => setMobilePermissionObservationEnabled(false),
-  enqueueMobilePreviewReconcile,
   setRecapEnabled: (enabled) => recapRuntime.setEnabled(enabled),
   logWarn: console.warn,
 });
 settingsEffectRouter.start();
-feishuApprovalMigrationNudge = createFeishuApprovalMigrationNudge({
-  getConfig: () => getFeishuApprovalPrefs(),
-  getSecrets: () => getFeishuApprovalSecrets(),
-  getLastSignature: () => _settingsController.get("feishuApprovalMigrationLastNotified") || "",
-  setLastSignature: (value) =>
-    _settingsController.applyUpdate("feishuApprovalMigrationLastNotified", value),
-  showNotification: ({ onClick }) => {
-    const title = translate("feishuApprovalMigrationNudgeTitle");
-    const body = translate("feishuApprovalMigrationNudgeBody");
-    try {
-      const tray = _menu && typeof _menu.getTray === "function" ? _menu.getTray() : null;
-      if (process.platform === "win32" && trayBalloonOwner.show(tray, {
-        iconType: "warning",
-        title,
-        content: body,
-        onClick,
-      })) {
-        return true;
-      }
-      if (Notification && typeof Notification.isSupported === "function" && Notification.isSupported()) {
-        const notification = new Notification({ title, body });
-        notification.once("click", onClick);
-        notification.show();
-        return true;
-      }
-    } catch (err) {
-      console.warn("Clawd: Feishu/Lark upgrade nudge failed:", err && err.message);
-    }
-    console.warn(`Clawd: ${body}`);
-    return false;
-  },
-  openSettings: () => settingsWindowRuntime.open(),
-});
-_settingsController.subscribeKey("tgApproval", (value) => {
-  syncTelegramSessionAutomationRoute();
-  if (suppressTelegramMigrationReconcile > 0) return;
-  const normalized = telegramApprovalSettings.normalizeTelegramApproval(value);
-  const nextDirectSendEnabled = normalized.r3DirectSendEnabled === true;
-  const directSendGateChanged = telegramDirectSendGateEnabled !== null
-    && nextDirectSendEnabled !== telegramDirectSendGateEnabled;
-  telegramDirectSendGateEnabled = nextDirectSendEnabled;
-  if (directSendGateChanged) {
-    invalidateTelegramDirectSendMappings("direct_send_toggle_changed", {
-      notificationRouteChanged: false,
-    });
-  }
-  const nextSignature = buildTelegramApprovalIdentitySignature(value);
-  const identityChanged = telegramApprovalIdentitySignature !== ""
-    && nextSignature !== telegramApprovalIdentitySignature;
-  telegramApprovalIdentitySignature = nextSignature;
-  if (!identityChanged) return;
-  invalidateTelegramDirectSendMappings("recipient_changed");
-  if (_telegramMigrationController
-    && typeof _telegramMigrationController.reconcileConfiguration === "function") {
-    void _telegramMigrationController.reconcileConfiguration({ identityChanged: true });
-  }
-});
 _settingsController.subscribeKey("discordPresence", () => {
   syncDiscordPresence("settings");
-});
-_settingsController.subscribeKey("feishuApproval", () => {
-  prepareFeishuSessionAutomationRouteChange(buildFeishuSessionAutomationRouteSignature(
-    getFeishuApprovalPrefs(),
-    getFeishuApprovalSecrets()
-  ));
-  queueFeishuApprovalSync("settings");
-  if (feishuApprovalMigrationNudge) {
-    void feishuApprovalMigrationNudge.sync({ allowNotify: false });
-  }
-});
-_settingsController.subscribeKey("slackNotify", () => {
-  broadcastSlackNotifyStatus();
 });
 animationOverridesMain = createSettingsAnimationOverridesMain({
   app,
@@ -5114,7 +2449,6 @@ registerSettingsAnimationOverridesIpc({
 });
 // ── Doctor tab IPC ──
 const { registerDoctorIpc } = require("./doctor-ipc");
-let _remoteSshRuntime = null;
 registerDoctorIpc({
   ipcMain,
   app,
@@ -5124,44 +2458,8 @@ registerDoctorIpc({
   getPrefsReadFailure: () => _settingsController.hasReadFailure(),
   getPrefsRecovered: () => _initialPrefsRecovered && !_settingsController.hasReadFailure(),
   getPrefsRecoveryBackupFailed: () => _initialPrefsRecoveryBackupFailed,
-  getFeishuApprovalSecrets: () => getFeishuApprovalSecrets(),
   getDoNotDisturb: () => doNotDisturb,
   getLocale: () => _settingsController.get("lang") || "en",
-  resolveAgentDisplayName: _resolveAgentDisplayName,
-  getRemoteSshStatuses: () => _remoteSshRuntime
-    ? _remoteSshRuntime.listStatuses()
-    : [],
-});
-
-// ── Remote SSH (Phase 2) ──
-//
-// Runtime owner of background SSH tunnels. Profile CRUD goes through
-// settings-controller (commands "remoteSsh.add" / .update / .delete);
-// runtime state (Connect / Disconnect / Deploy / Authenticate / Open
-// Terminal) goes through `remote-ssh-ipc.js`. Cleanup on app quit kills
-// any spawned ssh / scp children.
-const { createRemoteSshRuntime } = require("./remote-ssh-runtime");
-const { registerRemoteSshIpc } = require("./remote-ssh-ipc");
-const { inspectEffectiveTransport } = require("./remote-ssh-transport");
-const { createRemoteSshTransportCoordinator } = require("./remote-ssh-transport-coordinator");
-_remoteSshTransportCoordinator = createRemoteSshTransportCoordinator({
-  inspectEffectiveTransport: (profile) => inspectEffectiveTransport(profile),
-});
-_remoteSshRuntime = createRemoteSshRuntime({
-  getHookServerPort: () => getHookServerPort(),
-  createProfileIngress: (options) => _server.openRemoteSshIngress(options),
-  transportCoordinator: _remoteSshTransportCoordinator,
-  log: (...args) => console.warn("Clawd remote-ssh:", ...args),
-});
-const _remoteSshIpc = registerRemoteSshIpc({
-  ipcMain,
-  settingsController: _settingsController,
-  remoteSshRuntime: _remoteSshRuntime,
-  transportCoordinator: _remoteSshTransportCoordinator,
-  BrowserWindow,
-  isPackaged: app.isPackaged,
-  getInstallationIdentity: ensureRemoteSshInstallationIdentity,
-  enableProfileIsolation: process.env.CLAWD_ENABLE_EXPERIMENTAL_REMOTE_ISOLATION === "1",
 });
 
 // ── Settings panel window ──
@@ -5207,23 +2505,7 @@ const settingsSizePreviewSession = createSettingsSizePreviewSession({
   },
 });
 
-const quotaNotifications = createQuotaNotificationPresenter({
-  Notification, platform: process.platform, trayBalloonOwner, getTray: () => _menu.getTray(),
-  isSuppressed: () => doNotDisturb || isQuitting || !app.isReady(),
-  isMuted: () => soundMuted, getLang: () => lang, openSettings: () => settingsWindowRuntime.open({ tab: "sessions" }),
-});
-const quotaNotificationIpc = registerQuotaNotificationIpc({
-  ipcMain, settingsController: _settingsController, getSettingsWindow,
-  testNotification: () => quotaNotifications.test(),
-});
-quotaAlertsRuntime = createQuotaAlertsRuntime({
-  settingsController: _settingsController, state: _state,
-  getDoNotDisturb: () => doNotDisturb, notifyQuota: showQuotaAlert,
-  historyPath: path.join(app.getPath("userData"), "quota-alert-history.json"),
-  powerMonitor, logWarn: (message) => console.warn(message),
-});
-
-const settingsIpcRuntime = registerSettingsIpc({
+registerSettingsIpc({
   ipcMain,
   app,
   BrowserWindow,
@@ -5233,14 +2515,7 @@ const settingsIpcRuntime = registerSettingsIpc({
   path,
   settingsController: _settingsController,
   recapRuntime,
-  getQuotaSourceCount: () => _state.getQuotaSourceCount(),
-  getQuotaRingProviders: () => _ringGeom.listQuotaRingProviders(
-    _state.buildSessionSnapshot(),
-    quotaRingHiddenProviders
-  ),
   themeLoader,
-  codexPetMain,
-  officialThemeMain,
   getSettingsWindow,
   getActiveTheme: () => getActiveTheme(),
   getLang: () => lang,
@@ -5262,82 +2537,23 @@ const settingsIpcRuntime = registerSettingsIpc({
   getDoNotDisturb: () => doNotDisturb,
   getSoundMuted: () => soundMuted,
   getSoundVolume: () => soundVolume,
-  saveFeishuApproverByEmail: ({ email, signal }) => saveFeishuApproverByEmail({ email, signal }, {
-    getFeishuApprovalPrefs,
-    getFeishuApprovalSecrets,
-    getFeishuApprovalSecretsRevision: () => feishuApprovalSecretsRevision,
-    lookupFeishuApproverByEmail: (params) => lookupOpenIdByEmail({
-      ...params,
-      log: feishuApprovalLog,
-    }),
-    commitResolvedApprover: (payload) => _settingsController.applyCommand(
-      "feishuApproval.commitResolvedApprover",
-      payload,
-    ),
-  }),
   getAllAgents,
-  getHookServerPort: () => getHookServerPort(),
   getRecentHookEvents: (options) => _server.getRecentHookEvents(options),
-  kimiQuotaRuntime: _kimiQuotaRuntime,
   showTutorial: () => {
     _tutorial.open();
     return { status: "ok" };
   },
   aboutHeroSvgPath: path.join(__dirname, "..", "assets", "svg", "clawd-about-hero.svg"),
-  getLanWsServer: () => _lanWss,
-});
-
-const sessionHistoryRuntime = createSessionHistoryRuntime({
-  getSessions: () => _state.sessions,
-  isAgentEnabled: (agentId) => (
-    _runtimeAgentGate.isAgentEnabled(agentId)
-    && _runtimeAgentGate.isAgentIntegrationInstalled(agentId)
-  ),
-  launchClaudeSession: (mode, cwd, sessionId, profile) => (
-    launchClaudeSession(mode, cwd, sessionId, {}, profile)
-  ),
-});
-
-const openOpencodeSessionInTerminal = createOpencodeSessionAttacher({
-  getSession: (sessionId) => _state.sessions.get(sessionId),
-  isAgentEnabled: (agentId) => _runtimeAgentGate.isAgentEnabled(agentId),
 });
 
 registerSessionIpc({
   ipcMain,
   getSessionSnapshot: () => _state.buildSessionSnapshot(),
   getI18n: () => getDashboardI18nPayload(),
-  getDashboardWebContents: () => _dashboard.getWebContents(),
-  quickMode: _dashboard.quick,
-  getKimiQuotaStatus: () => _kimiQuotaRuntime.getStatus(),
-  refreshKimiQuota: () => _kimiQuotaRuntime.refresh(),
   focusSession: (sessionId, options) => focusDashboardSession(sessionId, options),
   hideSession: (sessionId) => hideDashboardSession(sessionId),
   openSessionFolder: (sessionId) => openDashboardSessionFolder(sessionId),
-  ...(process.platform === "win32" ? { openSessionInTerminal: openOpencodeSessionInTerminal } : {}),
-  ackSessionCompletion: (sessionId) => _state.ackSessionCompletion(sessionId),
   setSessionAlias: (payload) => _settingsController.applyCommand("setSessionAlias", payload),
-  setSessionAutomationOverride: (payload, context) => {
-    // The Dashboard page can live in a WebContentsView, where
-    // BrowserWindow.fromWebContents() returns null and the warning would fall
-    // back to the always-on-top pet — visible but not interactive on Windows.
-    // Resolve the owner instead, and make sure a quick round is ended so the
-    // modal parents onto a real ordinary window.
-    let warningParent = null;
-    try {
-      const sender = context && context.sender;
-      if (_dashboard.getHostForWebContents(sender)) {
-        warningParent = _dashboard.promoteToOrdinaryWindow();
-      } else {
-        warningParent = BrowserWindow.fromWebContents(sender);
-      }
-    } catch {}
-    return sessionAutomationCoordinator.setSessionAutomationOverride(payload, { warningParent });
-  },
-  clearSessionAutomationGrant: (payload) =>
-    sessionAutomationCoordinator.clearSessionAutomationGrant(payload),
-  getSessionHistory: () => sessionHistoryRuntime.getHistory(),
-  resumeSessionFromHistory: (payload) => sessionHistoryRuntime.resume(payload),
   showDashboard: (options) => showDashboard(options),
   setSessionHudPinned: (value) => {
     const result = _settingsController.applyUpdate("sessionHudPinned", !!value);
@@ -5351,7 +2567,6 @@ registerSessionIpc({
       console.warn("Clawd: failed to pin Session HUD:", result.message);
     }
   },
-  getLanWsServer: () => _lanWss,
 });
 
 function createWindow() {
@@ -5525,7 +2740,7 @@ function createWindow() {
     flushRuntimeStateToPrefs: () => flushRuntimeStateToPrefs(),
     reassertWinTopmost: () => reassertWinTopmost(),
     scheduleHwndRecovery: () => scheduleHwndRecovery(),
-    repositionFloatingBubbles: () => repositionFloatingBubbles(),
+    repositionFloatingBubbles: () => repositionAnchoredFloatingSurfaces(),
     exitMiniMode: () => exitMiniMode(),
     getFocusableLocalHudSessionIds: () => getFocusableLocalHudSessionIds(),
     focusLog: (message) => focusLog(message),
@@ -5541,51 +2756,9 @@ function createWindow() {
     dropLog: (message) => console.log(`Clawd: ${message}`),
   });
 
-  registerPermissionIpc({
-    ipcMain,
-    permission: _perm,
-  });
-
   initFocusHelper();
   startMainTick();
-  // Silently connect any remote SSH profile flagged "connect on launch" once
-  // the hook server is ACTUALLY listening and its real port is known.
-  // runtime.connect() reads getHookServerPort() synchronously to build the SSH
-  // reverse tunnel, and listen() is async — sweeping before the 'listening'
-  // event would read a stale fallback port and tunnel to the wrong local port
-  // if the bind drifted (port in use, multi-instance). startHttpServer()
-  // resolves null when no port could be bound, in which case we skip the sweep.
-  // Best-effort: failures fall back to the runtime's own reconnect/backoff and
-  // never block startup.
-  startHttpServer().then((port) => {
-    if (port == null) return;
-    const restoredSessionIds = restoreSessionsFromRecoveryLeases(_state, {
-      isAgentEnabled: (agentId) => (
-        _runtimeAgentGate.isAgentEnabled(agentId)
-        && _runtimeAgentGate.isAgentIntegrationInstalled(agentId)
-      ),
-    });
-    if (restoredSessionIds.length > 0) {
-      const recoveredSnapshot = _state.buildSessionSnapshot();
-      reconcilePowerSaveBlocker();
-      broadcastDashboardSessionSnapshot(recoveredSnapshot);
-      broadcastSessionHudSnapshot(recoveredSnapshot);
-      // The Slack notifier is not on the broadcast above, so without this its
-      // first snapshot would be some later event — which its priming branch
-      // swallows, losing the first completion after a restart. Prime it with
-      // what is already history instead.
-      try { getSlackNotifyClient().prime(recoveredSnapshot); } catch {}
-      if (!doNotDisturb && !_mini.getMiniMode()) {
-        const recoveredState = resolveDisplayState();
-        applyState(recoveredState, getSvgOverride(recoveredState));
-      }
-      sessionLog(`startup recovery restored sessions=${restoredSessionIds.join(",")}`);
-    }
-    void _remoteSshIpc.connectOnLaunchProfiles().catch((err) => {
-      console.warn("Clawd remote-ssh: connect-on-launch failed:", err && err.message);
-    });
-  }).catch(() => {});
-  enqueueMobilePreviewReconcile(_settingsController.getSnapshot());
+  startHttpServer().catch(() => {});
   startStaleCleanup();
   // Wait for renderer to be ready before sending initial state
   // If hooks arrived during startup, respect them instead of forcing idle
@@ -5695,23 +2868,6 @@ function getPrimaryWorkAreaSafe() {
   }
 }
 
-function getBubbleWorkArea(followPet, petBounds) {
-  return resolveBubbleWorkArea({
-    followPet,
-    petBounds: petBounds || getPetWindowBounds(),
-    getPrimaryWorkArea: getPrimaryWorkAreaSafe,
-    getNearestWorkArea,
-    syntheticWorkArea: SYNTHETIC_WORK_AREA,
-  });
-}
-
-function getTextScaleForBubbleWorkArea(workArea) {
-  const displayKey = isUsableBubbleWorkArea(workArea)
-    ? getDisplayKeyForBounds(workArea)
-    : null;
-  return effectiveTextScaleForKey(displayKey || getPetDisplayKey());
-}
-
 function getNearestWorkArea(cx, cy) {
   return findNearestWorkArea(screen.getAllDisplays(), getPrimaryWorkAreaSafe(), cx, cy);
 }
@@ -5725,8 +2881,6 @@ function computeFinalDragBounds(bounds, size, clampPosition = clampToScreenVisua
 
 // ── Mini Mode — initialized here after state module ──
 const _miniCtx = {
-  hasPendingReminderAttention: () => _state.hasPendingReminderAttention(),
-  getReminderReselectionOptions: (state) => _state.getReminderReselectionOptions(state),
   get theme() { return getActiveTheme(); },
   get win() { return win; },
   get currentSize() { return currentSize; },
@@ -5758,10 +2912,7 @@ const _miniCtx = {
   // Issue #690 plan §4.3.10's mini transition+animation reconcile protection
   // period release point (mirrors _roamCtx's identical wiring below).
   releaseReconcileProtection: () => petWindowRuntime.releaseReconcileProtection(),
-  get bubbleFollowPet() { return bubbleFollowPet; },
-  get pendingPermissions() { return pendingPermissions; },
-  repositionBubbles: () => repositionFloatingBubbles(),
-  syncSessionHudVisibility: () => syncSessionHudVisibilityAndBubbles(),
+  syncSessionHudVisibility: () => syncSessionHudVisibility(),
   repositionSessionHud: () => repositionSessionHud(),
   buildContextMenu: () => buildContextMenu(),
   buildTrayMenu: () => buildTrayMenu(),
@@ -5777,16 +2928,6 @@ const _miniCtx = {
 };
 const _mini = require("./mini")(_miniCtx);
 
-const handleTestResult = createTestReactionHandler({
-  getEnabled: () => _settingsController.get("testReactionsEnabled") === true,
-  getDoNotDisturb: () => doNotDisturb,
-  isPetHidden: () => petWindowRuntime.isPetEffectivelyHidden(),
-  getMiniMode: () => _mini.getMiniMode(),
-  getMiniTransitioning: () => _mini.getMiniTransitioning(),
-  isDragging: () => petWindowRuntime.isDragLocked(),
-  hasPetWindow: () => !!(win && !win.isDestroyed()),
-  sendToRenderer,
-});
 const { enterMiniMode, exitMiniMode, enterMiniViaMenu, miniPeekIn, miniPeekOut,
         checkMiniModeSnap, cancelMiniTransition, animateWindowX, animateWindowParabola } = _mini;
 
@@ -5805,9 +2946,6 @@ const _roamCtx = {
   releaseReconcileProtection: () => petWindowRuntime.releaseReconcileProtection(),
   repositionSessionHud: () => repositionSessionHud(),
   repositionAnchoredSurfaces: () => repositionAnchoredFloatingSurfaces(),
-  repositionBubbles: () => repositionFloatingBubbles(),
-  get bubbleFollowPet() { return bubbleFollowPet; },
-  get pendingPermissions() { return pendingPermissions; },
   getNearestWorkArea,
   clampToScreenVisual,
   getMiniMode: () => _mini.getMiniMode(),
@@ -5836,15 +2974,6 @@ const _roamCtx = {
       sendToRenderer("state-change", "roam", roamSvg);
     }
   },
-  // #640: hold still while the user types into a bubble text field (macOS)
-  isImeEditingActive: () => pendingPermissions.some(
-    (p) => p
-      && p.bubble
-      && !p.bubble.isDestroyed()
-      && p.bubble.isVisible()
-      && p.bubble.__clawdMacImeEditing
-  ),
-  hasVisiblePermissionBubbles: () => _perm.hasVisiblePermissionBubbles(),
   // #810: optional roam fence — validated async loader for
   // ~/.omp-pet/roam-area.json; roam reads its in-memory cache at target pick
   // time and kicks refresh() when scheduling walks (see src/roam-fence.js).
@@ -5881,17 +3010,10 @@ function canPlayIdleActivity() {
   if (petWindowRuntime.isDragLocked()) return false;
   if (_mini.getMiniMode() || _mini.getMiniTransitioning()) return false;
   if (anySessionInProgress()) return false;
-  if (_perm.hasVisiblePermissionBubbles()) return false;
   if (petWindowRuntime.isSettingsSizePreviewActive()) return false;
   if (petWindowRuntime.isPetEffectivelyHidden()) return false;
   if (typeof win.isVisible === "function" && !win.isVisible()) return false;
   if (_state.isSettingsPreviewVisual()) return false;
-  // #640: hold still while the user types into a bubble text field (macOS IME).
-  if (pendingPermissions.some((entry) => entry
-    && entry.bubble
-    && !entry.bubble.isDestroyed()
-    && entry.bubble.isVisible()
-    && entry.bubble.__clawdMacImeEditing)) return false;
   // Same sleep guard as Free roam: do not start a beat that the sleep
   // sequence is about to interrupt.
   const theme = getActiveTheme();
@@ -5932,80 +3054,12 @@ Object.defineProperties(this || {}, {}); // no-op placeholder
 // injected deps. main.js remains the composition root; theme-runtime owns the
 // active theme source and the cleanup/refresh/reload protocol.
 
-// ── Auto-install VS Code / Cursor terminal-focus extension ──
-const EXT_ID = "clawd.clawd-terminal-focus";
-const EXT_VERSION = "0.1.1";
-const EXT_DIR_NAME = `${EXT_ID}-${EXT_VERSION}`;
-
-function installTerminalFocusExtension() {
-  const os = require("os");
-  const home = os.homedir();
-
-  // Extension source — in dev: ../extensions/vscode/, in packaged: app.asar.unpacked/
-  let extSrc = path.join(__dirname, "..", "extensions", "vscode");
-  extSrc = extSrc.replace("app.asar" + path.sep, "app.asar.unpacked" + path.sep);
-
-  if (!fs.existsSync(extSrc)) {
-    console.log("Clawd: terminal-focus extension source not found, skipping auto-install");
-    return;
-  }
-
-  const targets = [
-    path.join(home, ".vscode", "extensions"),
-    path.join(home, ".cursor", "extensions"),
-  ];
-
-  const filesToCopy = ["package.json", "extension.js"];
-  let installed = 0;
-
-  for (const extRoot of targets) {
-    if (!fs.existsSync(extRoot)) continue; // editor not installed
-    const dest = path.join(extRoot, EXT_DIR_NAME);
-    // Skip if already installed (check package.json exists)
-    if (fs.existsSync(path.join(dest, "package.json"))) continue;
-    try {
-      fs.mkdirSync(dest, { recursive: true });
-      for (const file of filesToCopy) {
-        fs.copyFileSync(path.join(extSrc, file), path.join(dest, file));
-      }
-      installed++;
-      console.log(`Clawd: installed terminal-focus extension to ${dest}`);
-    } catch (err) {
-      console.warn(`Clawd: failed to install extension to ${dest}:`, err.message);
-    }
-  }
-  if (installed > 0) {
-    console.log(`Clawd: terminal-focus extension installed to ${installed} editor(s). Restart VS Code/Cursor to activate.`);
-  }
-}
-
 // ── Single instance lock ──
-app.on("open-url", (event, url) => {
-  event.preventDefault();
-  codexPetMain.enqueueImportUrl(url);
-});
-
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
-  if (process.argv.includes(REGISTER_PROTOCOL_DEV_ARG)) {
-    const protocolRegistered = codexPetMain.registerProtocolClient();
-    console.log(`Clawd: clawd:// dev protocol registration ${protocolRegistered ? "succeeded" : "failed"}`);
-  }
   // Another instance is already running — quit silently
   app.quit();
 } else {
-  // Only the winning instance may publish the startup gate. A losing instance
-  // can have a stale/default prefs snapshot and must never become the final
-  // writer after the active instance has disabled Codex.
-  // A future-version, recovered, or partially malformed snapshot is not
-  // authoritative enough to publish an enabled external gate. The evaluator
-  // latches that decision for this process; only a clean restart can reopen it.
-  const startupGateSnapshot = (
-    _initialPrefsLoad.locked === true
-    || _initialPrefsLoad.recovered === true
-    || _initialPrefsLoad.codexAutoStartAuthoritative === false
-  ) ? null : _initialPrefsLoad.snapshot;
-  _syncCodexAutoStartGate(startupGateSnapshot, "startup");
   app.on("second-instance", (_event, commandLine) => {
     if (petWindowRuntime.isPetEffectivelyHidden()) {
       prepManualPetVisibility();
@@ -6027,7 +3081,6 @@ if (!gotTheLock) {
     if (shouldOpenSettingsWindowFromArgv(commandLine)) {
       settingsWindowRuntime.openWhenReady();
     }
-    codexPetMain.enqueueImportUrlsFromArgv(commandLine);
     reapplyMacVisibility();
   });
 
@@ -6035,54 +3088,6 @@ if (!gotTheLock) {
   if (isMac && app.dock) {
     if (_settingsController.get("showDock") === false) {
       app.dock.hide();
-    }
-  }
-
-  // ── Codex official-hook health nudge ──
-  //
-  // Codex approval awareness now depends entirely on the official
-  // PermissionRequest hook (the JSONL approval heuristic was removed). If that
-  // hook silently failed to register — or [features].hooks=false, or it needs
-  // Codex /hooks review — the user gets NO approval prompts and no fallback.
-  // Nudge once, edge-triggered: notify only when the breakage KIND changes
-  // (deduped via the persisted signature) and reset when healthy, so a broken
-  // hook warns at most once per distinct breakage, never every launch. The
-  // Windows tray balloon is the active nudge; the Agents-tab badge is the
-  // always-on, cross-platform surface.
-  function fireCodexHookNudge(verdict) {
-    try {
-      const tray = _menu && typeof _menu.getTray === "function" ? _menu.getTray() : null;
-      if (process.platform === "win32") {
-        const { getCodexHookNudgeKeys } = require("./codex-hook-health");
-        const keys = getCodexHookNudgeKeys(verdict);
-        trayBalloonOwner.show(tray, {
-          iconType: "warning",
-          title: t(keys.title),
-          content: t(keys.body),
-        });
-      }
-    } catch (err) {
-      console.warn("Clawd: Codex hook balloon failed:", err && err.message);
-    }
-    console.warn(`Clawd: Codex official hook needs attention (${verdict.signature}): ${verdict.detailText || ""}`);
-  }
-
-  function maybeNudgeCodexHookHealth() {
-    try {
-      const { getCodexHookHealth, decideCodexHookNotification } = require("./codex-hook-health");
-      const snapshot = _settingsController.getSnapshot();
-      const verdict = getCodexHookHealth({ prefs: snapshot });
-      const prevSignature = _settingsController.get("codexHookHealthLastNotified") || "";
-      const decision = decideCodexHookNotification(verdict, prevSignature, {
-        codexEnabled: _runtimeAgentGate.isAgentEnabled("codex"),
-        notifyEnabled: _settingsController.get("codexHookHealthNotifyEnabled") !== false,
-      });
-      if (decision.nextSignature !== prevSignature) {
-        _settingsController.applyUpdate("codexHookHealthLastNotified", decision.nextSignature);
-      }
-      if (decision.shouldNotify) fireCodexHookNudge(verdict);
-    } catch (err) {
-      console.warn("Clawd: Codex hook health nudge failed:", err && err.message);
     }
   }
 
@@ -6145,13 +3150,6 @@ if (!gotTheLock) {
       installRuntimeIcon: installRuntimeDockIcon,
     });
 
-    const protocolRegistered = codexPetMain.registerProtocolClient();
-    if (process.argv.includes(REGISTER_PROTOCOL_DEV_ARG)) {
-      console.log(`Clawd: clawd:// dev protocol registration ${protocolRegistered ? "succeeded" : "failed"}`);
-      app.quit();
-      return;
-    }
-
     // Import system-backed settings (openAtLogin) into prefs on first run.
     // Must run before createWindow() so the first menu draw sees the
     // hydrated value rather than the schema default.
@@ -6159,25 +3157,10 @@ if (!gotTheLock) {
     // First-run only: seed UI language from the device locale, before createWindow
     // so the very first menu/tray render is already in the user's language.
     hydrateFreshInstallLanguage();
-    // Remote SSH installation identity is intentionally lazy. Loading it uses
-    // macOS Keychain through safeStorage, so ordinary Clawd startup must not
-    // request credential access when no Remote SSH action is being performed.
-    // Explicit Remote SSH status/actions and connect-on-launch profiles load it
-    // through the single-flight provider injected into remote-ssh-ipc above.
-    permDebugLog = path.join(app.getPath("userData"), "permission-debug.log");
     sessionDebugLog = path.join(app.getPath("userData"), "session-debug.log");
     focusDebugLog = path.join(app.getPath("userData"), "focus-debug.log");
-    const { createWindowsProcessChainShadowLogger } = require("./windows-process-chain-shadow-log");
-    recordWindowsProcessChainShadow = createWindowsProcessChainShadowLogger({
-      filePath: path.join(app.getPath("userData"), "windows-process-chain-shadow.log"),
-    });
-    const telegramMigrationInit = initTelegramMigrationController().catch((err) => {
-      console.warn("Clawd: migration controller init failed:", err && err.message);
-      return null;
-    });
     try { syncDiscordPresence("startup"); }
     catch (err) { console.warn("Clawd: discord presence startup failed:", err && err.message); }
-    queueFeishuApprovalSync("startup");
     createWindow();
     try { recapRuntime.start(); }
     catch (err) { console.warn("Clawd: local recap startup failed:", err && err.code ? err.code : "storage-error"); }
@@ -6190,23 +3173,7 @@ if (!gotTheLock) {
     if (win && !win.isDestroyed()) {
       win.webContents.once("did-finish-load", () => themeRuntime.syncActiveThemeAppearance());
     }
-    // Reconcile the local quota binding only after the app has visible UI.
-    // initialize() reads opaque credential metadata but never decrypts the key
-    // or performs a network request, so ordinary startup cannot be held behind
-    // a Keychain/DPAPI prompt.
-    void _kimiQuotaRuntime.initialize().catch((err) => {
-      console.warn("Clawd: Kimi quota startup reconciliation failed:", err && err.message);
-    });
     notifyPrefsAuthorityFailure();
-    if (feishuApprovalMigrationNudge) {
-      void feishuApprovalMigrationNudge.sync({ allowNotify: true });
-    }
-    void telegramMigrationInit.then((controller) => {
-      if (!controller || !telegramMigrationNudge) return;
-      return telegramMigrationNudge.sync({ allowNotify: true });
-    }).catch((err) => {
-      console.warn("Clawd: Telegram migration startup nudge failed:", err && err.message);
-    });
     holidayAccessoryRuntime.start();
     // WSL agent detection is NOT started here: scanning runs a command inside
     // every installed distro, which boots each stopped VM — too aggressive for
@@ -6266,82 +3233,28 @@ if (!gotTheLock) {
     } catch (err) {
       console.warn("Clawd: failed to open first-run tutorial:", err && err.message);
     }
-    codexPetMain.enqueueImportUrlsFromArgv(process.argv);
-    codexPetMain.flushPendingImportUrls().catch((err) => {
-      console.warn("Clawd: Codex Pet import queue failed:", err && err.message);
-    });
-
     // Register persistent global shortcuts from the validated prefs snapshot.
     shortcutRuntime.registerPersistentShortcutsFromSettings();
-    quotaAlertsRuntime.start();
 
-    // Construct log monitors. We always instantiate them so toggling the
-    // agent on/off later can call start()/stop() without paying the require
-    // cost at click time. Whether we call .start() right now depends on the
-    // agent-gate snapshot — a user who disabled Codex at last shutdown
-    // shouldn't see its file watcher spin up on the next launch.
-    agentRuntime.startCodexLogMonitor();
-    if (_runtimeAgentGate.isAgentEnabled("kiro-desktop") && _runtimeAgentGate.isAgentIntegrationInstalled("kiro-desktop")) {
-      agentRuntime.startMonitorForAgent("kiro-desktop", { integrationInstalled: true });
-    }
-
-    // Auto-install VS Code/Cursor terminal-focus extension
-    try { installTerminalFocusExtension(); } catch (err) {
-      console.warn("Clawd: failed to auto-install terminal-focus extension:", err.message);
-    }
-
-    // Deferred so any startup Codex hook sync has settled before we read the
-    // on-disk hook state; unref'd so it never blocks a fast quit.
-    const codexHookNudgeTimer = setTimeout(maybeNudgeCodexHookHealth, 4000);
-    if (codexHookNudgeTimer && typeof codexHookNudgeTimer.unref === "function") codexHookNudgeTimer.unref();
   });
 
-  app.on("before-quit", (event) => {
-    quotaNotificationIpc.dispose();
+  app.on("before-quit", () => {
     isQuitting = true;
-    if (!appQuitDrainReady) {
-      event.preventDefault();
-      if (!appQuitDrainStarted) {
-        appQuitDrainStarted = true;
-        void drainRemoteSshAndFeishuBeforeQuit()
-          .finally(() => {
-            appQuitDrainReady = true;
-            app.quit();
-          });
-      }
-    }
     if (quitCleanupStarted) return;
     quitCleanupStarted = true;
-    quotaAlertsRuntime?.dispose();
-    quotaNotifications.dispose();
-    // Cancel any live official-theme download and drop this round's `.part`.
-    if (officialThemeMain) {
-      try { officialThemeMain.cancelInstall(); } catch {}
-    }
     trayBalloonOwner.dispose();
     holidayAccessoryRuntime.dispose();
     if (systemWakeRecovery) systemWakeRecovery.dispose();
     // #525: release the IVirtualDesktopManager COM ref and pay back our own
     // CoInitializeEx count (see win-cloak-recovery.js dispose()).
     _cloakInspector.dispose();
-    try { stopUpdateScheduler(); } catch {}
     releasePowerSaveBlocker();
     flushRuntimeStateToPrefs();
     globalShortcut.unregisterAll();
     void settingsSizePreviewSession.cleanup();
-    permissionAutomationConfirmationRuntime.dispose();
     roamFencePickerRuntime.dispose();
-    if (_telegramMigrationController
-      && typeof _telegramMigrationController.dispose === "function") {
-      void _telegramMigrationController.dispose();
-    }
     if (discordPresenceBridge) discordPresenceBridge.stop();
-    stopFeishuApprovalClient();
-    if (_codexRemoteFallbackNotice) _codexRemoteFallbackNotice.dispose();
-    claudeTurnAskReminder.dispose();
-    _perm.cleanup();
     _server.cleanup();
-    if (_lanWss) _lanWss.cleanup();
     if (displayedVisualProjection) displayedVisualProjection.dispose();
     try { recapRuntime.dispose(); } catch {}
     _state.cleanup();
@@ -6358,10 +3271,6 @@ if (!gotTheLock) {
     }
     _focus.cleanup();
     if (animationOverridesMain) animationOverridesMain.cleanup();
-    try { _remoteSshIpc.dispose(); } catch {}
-    if (!_remoteSshRuntime || typeof _remoteSshRuntime.shutdown !== "function") {
-      try { _remoteSshRuntime.cleanup(); } catch {}
-    }
     _hitWindowActivationRuntime.controller.dispose();
     if (hitWin && !hitWin.isDestroyed()) hitWin.destroy();
   });

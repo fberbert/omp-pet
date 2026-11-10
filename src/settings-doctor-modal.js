@@ -133,11 +133,7 @@
       "prefs-readability": "doctorCheckPrefsReadability",
       "local-server": "doctorCheckLocalServer",
       "agent-integrations": "doctorCheckAgentIntegrations",
-      "permission-bubble-policy": "doctorCheckPermissionBubbles",
-      "feishu-approval": "doctorCheckFeishuApproval",
       "theme-health": "doctorCheckTheme",
-      "remote-ssh-ingress": "doctorCheckRemoteSshIngress",
-      "remote-ssh-isolation": "doctorCheckRemoteSshIsolation",
     };
     return t(core, map[check.id] || "doctorCheckUnknown");
   }
@@ -183,58 +179,24 @@
     return (test && test.detail) || t(core, "doctorConnectionInstruction");
   }
 
-  function pushIfValue(lines, label, value) {
-    if (value === null || value === undefined || value === "") return;
-    lines.push(`${label}: ${value}`);
-  }
 
-  function formatKiroScan(scan) {
-    if (!scan || typeof scan !== "object") return null;
-    const parts = [];
-    if (Array.isArray(scan.fullyValidFiles) && scan.fullyValidFiles.length) {
-      parts.push(`valid=${scan.fullyValidFiles.join(", ")}`);
-    }
-    if (Array.isArray(scan.brokenFiles) && scan.brokenFiles.length) {
-      parts.push(`broken=${scan.brokenFiles.join(", ")}`);
-    }
-    if (Array.isArray(scan.corruptFiles) && scan.corruptFiles.length) {
-      parts.push(`corrupt=${scan.corruptFiles.join(", ")}`);
-    }
-    if (Array.isArray(scan.noMarkerFiles) && scan.noMarkerFiles.length) {
-      parts.push(`no-marker=${scan.noMarkerFiles.length}`);
-    }
-    return parts.length ? parts.join("; ") : null;
-  }
 
   function agentDetailText(detail) {
     if (!detail || typeof detail !== "object") return "";
     const lines = [];
     if (detail.detail) lines.push(detail.detail);
-    pushIfValue(lines, "permission", detail.permissionBubbleDetail);
     if (detail.supplementary && typeof detail.supplementary === "object") {
       const key = detail.supplementary.key || "supplementary";
       const value = detail.supplementary.value || "unknown";
       const suffix = detail.supplementary.detail ? ` (${detail.supplementary.detail})` : "";
       lines.push(`${key}=${value}${suffix}`);
     }
-    if (detail.codexHookTrust && typeof detail.codexHookTrust === "object") {
-      const key = detail.codexHookTrust.key || "codex_hook_trust";
-      const value = detail.codexHookTrust.value || "unknown";
-      const suffix = detail.codexHookTrust.detail ? ` (${detail.codexHookTrust.detail})` : "";
-      lines.push(`${key}=${value}${suffix}`);
-    }
-    pushIfValue(lines, "kiro", formatKiroScan(detail.kiroScan));
-    pushIfValue(lines, "hook issue", detail.hookCommandIssue);
-    // Agent-neutral labels: mimocode shares these fields (R9 F3).
-    pushIfValue(lines, "plugin issue", detail.opencodeEntryIssue);
-    pushIfValue(lines, "plugin entry", detail.opencodeEntry);
     return lines.filter(Boolean).join("; ");
   }
 
   function fixActionKey(action) {
     if (!action || typeof action !== "object") return "";
-    const forceCodex = action.forceCodexHooksFeature ? "force-codex-hooks" : "";
-    return `${action.type || "unknown"}:${action.agentId || ""}:${forceCodex}`;
+    return `${action.type || "unknown"}:${action.agentId || ""}`;
   }
 
   function rememberFixAction(action) {
@@ -258,12 +220,7 @@
 
   function requiresFixConfirmation(action) {
     if (!action || typeof action !== "object") return false;
-    if (action.type === "restart-clawd") return true;
-    return !!(
-      action.type === "agent-integration"
-      && action.agentId === "codex"
-      && action.forceCodexHooksFeature === true
-    );
+    return action.type === "restart-clawd";
   }
 
   function renderRepairFeedback(core, action) {
@@ -277,10 +234,9 @@
   function renderFixConfirm(core) {
     const action = state.pendingConfirmAction;
     if (!requiresFixConfirmation(action)) return "";
-    const restart = action.type === "restart-clawd";
-    const titleKey = restart ? "doctorRestartConfirmTitle" : "doctorFixConfirmCodexTitle";
-    const detailKey = restart ? "doctorRestartConfirmDetail" : "doctorFixConfirmCodexDetail";
-    const actionKey = restart ? "doctorRestartConfirmAction" : "doctorFixConfirmCodexAction";
+    const titleKey = "doctorRestartConfirmTitle";
+    const detailKey = "doctorRestartConfirmDetail";
+    const actionKey = "doctorRestartConfirmAction";
     return (
       `<div class="doctor-fix-confirm">` +
         `<div>` +
@@ -506,7 +462,6 @@
     const labels = [
       t(core, "doctorCheckLocalServer"),
       t(core, "doctorCheckAgentIntegrations"),
-      t(core, "doctorCheckPermissionBubbles"),
       t(core, "doctorCheckTheme"),
     ];
     return labels.map((label, index) => (
@@ -774,13 +729,7 @@
       if (!result || result.status !== "ok") {
         throw new Error((result && result.message) || t(core, "doctorFixFailed"));
       }
-      let message = (result && result.message) || t(core, "doctorFixApplied");
-      // Codex hooks need an explicit user review pass in the codex TUI before
-      // they go live (sha256 trusted_hash gate). Append the reminder so users
-      // don't have to discover the dead zone themselves.
-      if (action && action.type === "agent-integration" && action.agentId === "codex") {
-        message = `${message} ${t(core, "codexHookReviewReminder")}`;
-      }
+      const message = (result && result.message) || t(core, "doctorFixApplied");
       state.repairFeedback[repairKey] = { status: "ok", message };
       state.lastRepairFeedback = { status: "ok", message };
       showToast(core, message);

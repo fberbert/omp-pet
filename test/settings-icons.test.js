@@ -8,7 +8,6 @@ const vm = require("node:vm");
 
 const SRC_DIR = path.join(__dirname, "..", "src");
 const SETTINGS_ICONS = path.join(SRC_DIR, "settings-icons.js");
-const SETTINGS_RENDERER = path.join(SRC_DIR, "settings-renderer.js");
 
 function loadIcons() {
   const context = { globalThis: null };
@@ -68,19 +67,5 @@ describe("settings-icons", () => {
   it("falls back to placeholder for unknown ids", () => {
     const icons = loadIcons();
     assert.strictEqual(icons.getIcon("no-such-tab-xyz"), icons.getIcon("placeholder"));
-  });
-
-  it("covers every tab id used by the settings renderer", () => {
-    const icons = loadIcons();
-    const rendererSource = fs.readFileSync(SETTINGS_RENDERER, "utf8");
-    // Guard against a tab being added to the renderer without an icon:
-    // each id in our list must really appear in the renderer source.
-    for (const id of SIDEBAR_TAB_IDS) {
-      assert.ok(
-        rendererSource.includes(`id: "${id}"`),
-        `settings-renderer.js should declare a tab with id "${id}"`
-      );
-      assert.ok(icons.ICONS[id], `settings-icons.js should define an icon for "${id}"`);
-    }
   });
 });

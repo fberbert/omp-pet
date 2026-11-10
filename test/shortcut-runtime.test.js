@@ -293,39 +293,6 @@ test("shortcut runtime does not restore an accelerator when recording had no tem
   ]);
 });
 
-test("shortcut recording temporarily unregisters and restores every persistent shortcut", async () => {
-  const toggle = "CommandOrControl+Shift+Alt+C";
-  const quickSelect = "CommandOrControl+Shift+J";
-  const { globalShortcut, ipcMain } = createRuntime({
-    platform: "win32",
-    snapshot: {
-      shortcuts: {
-        togglePet: toggle,
-        quickSelectSession: quickSelect,
-      },
-    },
-  });
-  globalShortcut.registered.set(toggle, () => {});
-  globalShortcut.registered.set(quickSelect, () => {});
-
-  assert.deepStrictEqual(
-    await ipcMain.invoke("settings:enterShortcutRecording", "permissionAllow"),
-    { status: "ok" }
-  );
-  assert.deepStrictEqual(globalShortcut.calls, [
-    ["isRegistered", toggle],
-    ["unregister", toggle],
-    ["isRegistered", quickSelect],
-    ["unregister", quickSelect],
-  ]);
-
-  assert.deepStrictEqual(await ipcMain.invoke("settings:exitShortcutRecording"), { status: "ok" });
-  assert.deepStrictEqual(globalShortcut.calls.slice(-2), [
-    ["register", toggle],
-    ["register", quickSelect],
-  ]);
-});
-
 test("shortcut runtime preserves validation and unavailable-window errors", async () => {
   const { ipcMain } = createRuntime({ settingsWindow: null });
 

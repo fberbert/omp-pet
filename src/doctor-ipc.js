@@ -1,8 +1,6 @@
 const os = require("os");
 const path = require("path");
 const { runDoctorChecks } = require("./doctor");
-const { getCodexHookHealth } = require("./codex-hook-health");
-const { classifyClaudeHookHealthStatus } = require("./claude-hook-health-badge");
 const { formatDiagnosticReport, redactDoctorResult } = require("./doctor-report");
 const { createConnectionTestDeduper, runConnectionTest } = require("./doctor-hook-activity");
 const { openClawdLog } = require("./doctor-logs");
@@ -54,35 +52,6 @@ function createDoctorRunChecksDeduper(runChecks, options = {}) {
   };
 }
 
-// Windows Doctor runs use the static registry snapshot, so the running app must
-// warm it once before the checks read it. Failures are ignored: the checks
-// still run, just with a pending/unknown desktop verdict.
-function defaultDshDesktopPreheat(platform) {
-  return async () => {
-    if ((platform || process.platform) !== "win32") return;
-    const { refreshDshDesktopDiscovery } = require("../hooks/dsh-install.js");
-    await refreshDshDesktopDiscovery({});
-  };
-}
-
-// Compose the preheat with the single-flight so the whole preheat+checks run is
-// deduped, not just the checks. The platform gate lives here so callers on
-// non-Windows never even invoke an injected preheat.
-function createDoctorRunChecksRunner(options = {}) {
-  const platform = options.platform || process.platform;
-  const preheat = typeof options.preheatDshDesktopDiscovery === "function"
-    ? options.preheatDshDesktopDiscovery
-    : defaultDshDesktopPreheat(platform);
-  return createDoctorRunChecksDeduper(async () => {
-    if (platform === "win32") {
-      try {
-        await preheat();
-      } catch {}
-    }
-    return options.runChecks();
-  }, { onResult: options.onResult });
-}
-
 function registerDoctorIpc({
   ipcMain,
   app,
@@ -92,13 +61,7 @@ function registerDoctorIpc({
   getPrefsReadFailure,
   getPrefsRecovered,
   getPrefsRecoveryBackupFailed,
-  getFeishuApprovalSecrets,
-  getDoNotDisturb,
   getLocale,
-  resolveAgentDisplayName,
-  getRemoteSshStatuses,
-  platform,
-  preheatDshDesktopDiscovery,
 }) {
   let lastDoctorResult = null;
   let lastDoctorConnectionTest = null;
@@ -108,8 +71,6 @@ function registerDoctorIpc({
       server,
       durationMs: payload && payload.durationMs,
       homeDir: os.homedir(),
-      resolveAgentDisplayName,
-      getCodexHookHealth: () => getCodexHookHealth({ prefs: getPrefsSnapshot() }),
     }),
     {
       onResult: (result) => {
@@ -119,12 +80,6 @@ function registerDoctorIpc({
   );
 
   function buildDoctorResult() {
-    let feishuApprovalSecrets = {};
-    try {
-      feishuApprovalSecrets = typeof getFeishuApprovalSecrets === "function"
-        ? getFeishuApprovalSecrets()
-        : {};
-    } catch {}
     lastDoctorResult = runDoctorChecks({
       server,
       prefs: getPrefsSnapshot(),
@@ -132,9 +87,6 @@ function registerDoctorIpc({
       prefsRecovered: typeof getPrefsRecovered === "function" && getPrefsRecovered() === true,
       prefsRecoveryBackupFailed: typeof getPrefsRecoveryBackupFailed === "function"
         && getPrefsRecoveryBackupFailed() === true,
-      feishuApprovalSecrets,
-      doNotDisturb: getDoNotDisturb(),
-      getRemoteSshStatuses,
     });
     return lastDoctorResult;
   }
@@ -148,49 +100,11 @@ function registerDoctorIpc({
     };
   }
 
-  const runDedupedDoctorChecks = createDoctorRunChecksRunner({
-    platform,
-    preheatDshDesktopDiscovery,
-    runChecks: buildDoctorResult,
-  });
+  const runDedupedDoctorChecks = createDoctorRunChecksDeduper(buildDoctorResult);
 
   ipcMain.handle("doctor:run-checks", async () => (
     redactDoctorResult(await runDedupedDoctorChecks(), getDoctorRedactionOptions(app))
   ));
-
-  // Lightweight Codex-only hook-health probe for the Agents tab badge. Reuses
-  // the same per-agent integration check the Doctor uses, but skips the full
-  // doctor sweep so opening the Agents tab stays cheap. Returns a render-safe
-  // subset (no raw fs paths — detailText/error stay main-side).
-  ipcMain.handle("doctor:codex-hook-health", () => {
-    const verdict = getCodexHookHealth({ prefs: getPrefsSnapshot() });
-    return {
-      available: verdict.available,
-      healthy: verdict.healthy,
-      signature: verdict.signature,
-      reasonKey: verdict.reasonKey,
-      status: verdict.status,
-      fixAction: verdict.fixAction,
-    };
-  });
-
-  // Claude counterpart of the Codex badge probe. Reuses the live health the
-  // claude-settings-watcher supervisor already maintains (via the server) so
-  // the badge, Doctor, and auto-repair all read one status. Returns a
-  // render-safe subset — no raw fs paths, which stay main-side.
-  ipcMain.handle("doctor:claude-hook-health", () => {
-    const healthStatus = server && typeof server.getClaudeHookHealthStatus === "function"
-      ? server.getClaudeHookHealthStatus()
-      : null;
-    const verdict = classifyClaudeHookHealthStatus(healthStatus);
-    return {
-      available: verdict.available,
-      healthy: verdict.healthy,
-      signature: verdict.signature,
-      reasonKey: verdict.reasonKey,
-      status: verdict.status,
-    };
-  });
 
   ipcMain.handle("doctor:test-connection", async (_event, payload) => {
     const result = await runDedupedDoctorConnectionTest(normalizeDoctorConnectionTestPayload(payload));
@@ -223,7 +137,6 @@ module.exports = {
   registerDoctorIpc,
   __test: {
     createDoctorRunChecksDeduper,
-    createDoctorRunChecksRunner,
     normalizeDoctorConnectionTestPayload,
     normalizeDoctorOpenLogPayload,
   },

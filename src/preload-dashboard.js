@@ -10,7 +10,7 @@ const quickDismissedListeners = new Set();
 
 // The Dashboard keyboard mode only exists on darwin/win32, where main registers
 // its channels. Anywhere else the bridge must not expose methods that would
-// invoke an unregistered channel — the renderer feature-detects on this.
+// invoke an unregistered channel; the renderer feature-detects on this.
 const QUICK_MODE_SUPPORTED = process.platform === "darwin" || process.platform === "win32";
 
 function notify(listeners, payload, label) {
@@ -65,22 +65,10 @@ const quickModeApi = QUICK_MODE_SUPPORTED ? {
 contextBridge.exposeInMainWorld("dashboardAPI", {
   getSnapshot: () => ipcRenderer.invoke("dashboard:get-snapshot"),
   getI18n: () => ipcRenderer.invoke("dashboard:get-i18n"),
-  getKimiQuotaStatus: () => ipcRenderer.invoke("dashboard:get-kimi-quota-status"),
-  refreshKimiQuota: () => ipcRenderer.invoke("dashboard:refresh-kimi-quota"),
   focusSession: (sessionId) => ipcRenderer.send("dashboard:focus-session", sessionId),
   hideSession: (sessionId) => ipcRenderer.invoke("dashboard:hide-session", sessionId),
-  ...(process.platform === "win32" ? {
-    openSessionInTerminal: (sessionId) => ipcRenderer.invoke("dashboard:open-session-terminal", sessionId),
-  } : {}),
   openSessionFolder: (sessionId) => ipcRenderer.invoke("dashboard:open-session-folder", sessionId),
   setSessionAlias: (payload) => ipcRenderer.invoke("dashboard:set-session-alias", payload),
-  setSessionAutomationOverride: (payload) =>
-    ipcRenderer.invoke("dashboard:set-session-automation", payload),
-  clearSessionAutomationGrant: (payload) =>
-    ipcRenderer.invoke("dashboard:clear-session-automation-grant", payload),
-  getSessionHistory: () => ipcRenderer.invoke("dashboard:get-session-history"),
-  resumeSession: (payload) => ipcRenderer.invoke("dashboard:resume-session", payload),
-  ackCompletion: (sessionId) => ipcRenderer.invoke("session:ack-completion", sessionId),
   onSessionSnapshot: (cb) => {
     if (typeof cb !== "function") return () => {};
     snapshotListeners.add(cb);

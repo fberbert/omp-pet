@@ -4,8 +4,18 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert");
 
 const core = require("../hooks/omp-extension-core");
-const piCore = require("../hooks/pi-extension-core");
-const { NESTED_TERMINAL_ENV } = require("../hooks/shared-process");
+const NESTED_TERMINAL_ENV = [
+  "WT_SESSION",
+  "ALACRITTY_WINDOW_ID",
+  "WEZTERM_PANE",
+  "KITTY_WINDOW_ID",
+  "KONSOLE_VERSION",
+  "GNOME_TERMINAL_SCREEN",
+  "ConEmuPID",
+  "TMUX",
+  "STY",
+  "ZELLIJ",
+];
 
 function makeCtx(overrides = {}) {
   return {
@@ -420,24 +430,11 @@ describe("omp-extension-core", () => {
     });
   });
 
-  // The two cores solve the same problem for forks of the same agent. Keeping
-  // the shared surface identical is what makes the diff between them readable.
-  describe("parity with pi-extension-core", () => {
-    it("exposes the same shared API", () => {
-      const shared = ["attach", "buildPayload", "isInteractiveMode", "parseMode", "shouldReport"];
-      for (const key of shared) {
-        assert.strictEqual(typeof core[key], typeof piCore[key], key);
-      }
+  describe("session ids", () => {
+    it("namespaces session ids with omp:", () => {
       assert.strictEqual(core.OMP_AGENT_ID, "omp");
-      assert.strictEqual(piCore.PI_AGENT_ID, "pi");
-    });
-
-    it("namespaces its session ids away from Pi's", () => {
-      const ctx = makeCtx();
-      const ompPayload = core.buildPayload({ state: "idle", event: "SessionStart", ctx, env: {} });
-      const piPayload = piCore.buildPayload({ state: "idle", event: "SessionStart", ctx, env: {} });
-      assert.notStrictEqual(ompPayload.session_id, piPayload.session_id);
-      assert.ok(ompPayload.session_id.startsWith("omp:"));
+      const payload = core.buildPayload({ state: "idle", event: "SessionStart", ctx: makeCtx(), env: {} });
+      assert.ok(payload.session_id.startsWith("omp:"));
     });
   });
 });

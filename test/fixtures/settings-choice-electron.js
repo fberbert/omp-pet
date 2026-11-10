@@ -54,7 +54,7 @@ async function main() {
     await win.webContents.debugger.sendCommand("Accessibility.enable");
     const tree = await win.webContents.debugger.sendCommand("Accessibility.getFullAXTree");
     const tabs = tree.nodes.filter((node) => !node.ignored && node.role?.value === "tab");
-    assert.equal(tabs.length, 13);
+    assert.equal(tabs.length, 11);
     assert.equal(tabs.filter((node) => node.properties.some((prop) => prop.name === "selected" && prop.value.value)).length, 1);
     assert.equal(tree.nodes.filter((node) => !node.ignored && node.role?.value === "tabpanel").length, 1);
     win.webContents.debugger.detach();

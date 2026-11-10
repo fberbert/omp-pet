@@ -3,19 +3,7 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert");
 
-const {
-  SESSION_STALE_MS,
-  WORKING_STALE_MS,
-  DETACHED_IDLE_STALE_MS,
-  CODEX_LOCAL_WORKING_STALE_FLOOR_MS,
-  isWorkingLikeState,
-  isLocalCodexWorkingLikeSession,
-  isLocalQueueableCodexCliIdleSession,
-  isLocalZcodeDesktopIdleSession,
-  isLocalTraeDesktopIdleSession,
-  isLocalWorkBuddyDesktopIdleSession,
-  getStaleSessionDecision,
-} = require("../src/state-stale-cleanup");
+const { SESSION_STALE_MS, WORKING_STALE_MS, DETACHED_IDLE_STALE_MS, CODEX_LOCAL_WORKING_STALE_FLOOR_MS, getStaleSessionDecision } = require("../src/state-stale-cleanup");
 
 function session(overrides = {}) {
   return {
@@ -299,22 +287,6 @@ describe("state stale cleanup decisions", () => {
     }
   });
 
-  it("keeps working-like state set explicit", () => {
-    assert.strictEqual(isWorkingLikeState("working"), true);
-    assert.strictEqual(isWorkingLikeState("thinking"), true);
-    assert.strictEqual(isWorkingLikeState("juggling"), true);
-    assert.strictEqual(isWorkingLikeState("idle"), false);
-    assert.strictEqual(isLocalCodexWorkingLikeSession(session({
-      state: "working",
-      agentId: "codex",
-    })), true);
-    assert.strictEqual(isLocalCodexWorkingLikeSession(session({
-      state: "working",
-      agentId: "codex",
-      host: "ssh:example.com",
-    })), false);
-  });
-
   it("falls back to module defaults when no staleConfig provided", () => {
     // Regression: passing no staleConfig must behave identically to before.
     const { result } = decision(session({
@@ -343,64 +315,6 @@ describe("state stale cleanup decisions", () => {
     });
 
     assert.deepStrictEqual(result, { action: null });
-  });
-
-  it("deletes an idle Codex Desktop thread after timeout even while its shared pid is alive", () => {
-    const { result, calls } = decision(desktopSession({
-      updatedAt: 1000000 - 60_001,
-    }), {
-      alivePids: new Set([10]),
-      staleConfig: { sessionStaleMs: 60_000 },
-    });
-
-    assert.deepStrictEqual(result, { action: "delete", reason: "codex-desktop-idle-timeout" });
-    assert.deepStrictEqual(calls, [10]);
-  });
-
-  it("keeps an expired-age Codex Desktop thread while a completion reply mapping is valid", () => {
-    const target = desktopSession({
-      updatedAt: 1000000 - 60_001,
-    });
-    const checked = [];
-    const { result } = decision(target, {
-      alivePids: new Set([10]),
-      staleConfig: { sessionStaleMs: 60_000 },
-      hasReplyableCompletionMapping: (value) => {
-        checked.push(value);
-        return true;
-      },
-    });
-
-    assert.deepStrictEqual(result, { action: null });
-    assert.deepStrictEqual(checked, [target]);
-  });
-
-  it("deletes an expired-age Codex Desktop thread after its completion mapping expires", () => {
-    const { result } = decision(desktopSession({
-      updatedAt: 1000000 - 60_001,
-    }), {
-      alivePids: new Set([10]),
-      staleConfig: { sessionStaleMs: 60_000 },
-      hasReplyableCompletionMapping: () => false,
-    });
-
-    assert.deepStrictEqual(result, { action: "delete", reason: "codex-desktop-idle-timeout" });
-  });
-
-  it("retains a PID-less queueable Codex CLI session while its completion mapping is valid", () => {
-    const target = queueableCliSession({ updatedAt: 1000000 - 60_001 });
-    assert.strictEqual(isLocalQueueableCodexCliIdleSession(target), true);
-    const checked = [];
-    const { result } = decision(target, {
-      staleConfig: { sessionStaleMs: 60_000 },
-      hasReplyableCompletionMapping: (value) => {
-        checked.push(value);
-        return true;
-      },
-    });
-
-    assert.deepStrictEqual(result, { action: null });
-    assert.deepStrictEqual(checked, [target]);
   });
 
   it("retires a PID-less Codex CLI session when its mapping or store provenance is absent", () => {
@@ -463,19 +377,6 @@ describe("state stale cleanup decisions", () => {
     }
   });
 
-  it("deletes an idle local ZCode conversation after timeout even while shared pids are alive", () => {
-    const { result, calls } = decision(zcodeDesktopSession({
-      updatedAt: 1000000 - 60_001,
-    }), {
-      alivePids: new Set([30, 31]),
-      staleConfig: { sessionStaleMs: 60_000 },
-    });
-
-    assert.strictEqual(isLocalZcodeDesktopIdleSession(zcodeDesktopSession()), true);
-    assert.deepStrictEqual(result, { action: "delete", reason: "zcode-desktop-idle-timeout" });
-    assert.deepStrictEqual(calls, [30]);
-  });
-
   it("keeps ZCode conversations before the cutoff or when the cutoff is disabled", () => {
     const alivePids = new Set([30, 31]);
     assert.deepStrictEqual(decision(zcodeDesktopSession({
@@ -505,19 +406,6 @@ describe("state stale cleanup decisions", () => {
       const result = decision(target, { alivePids, staleConfig }).result;
       assert.notStrictEqual(result.reason, "zcode-desktop-idle-timeout");
     }
-  });
-
-  it("deletes an idle local TraeCode conversation after timeout even while the IDE pid is alive", () => {
-    const { result, calls } = decision(traeDesktopSession({
-      updatedAt: 1000000 - 60_001,
-    }), {
-      alivePids: new Set([40, 41]),
-      staleConfig: { sessionStaleMs: 60_000 },
-    });
-
-    assert.strictEqual(isLocalTraeDesktopIdleSession(traeDesktopSession()), true);
-    assert.deepStrictEqual(result, { action: "delete", reason: "traecode-desktop-idle-timeout" });
-    assert.deepStrictEqual(calls, [40]);
   });
 
   it("keeps TraeCode conversations before the cutoff or when the cutoff is disabled", () => {
@@ -551,19 +439,6 @@ describe("state stale cleanup decisions", () => {
       const result = decision(target, { alivePids, staleConfig }).result;
       assert.notStrictEqual(result.reason, "traecode-desktop-idle-timeout");
     }
-  });
-
-  it("issue #655: deletes an idle local WorkBuddy conversation after timeout even while the main process is alive", () => {
-    const { result, calls } = decision(workbuddyDesktopSession({
-      updatedAt: 1000000 - 60_001,
-    }), {
-      alivePids: new Set([50, 51]),
-      staleConfig: { sessionStaleMs: 60_000 },
-    });
-
-    assert.strictEqual(isLocalWorkBuddyDesktopIdleSession(workbuddyDesktopSession()), true);
-    assert.deepStrictEqual(result, { action: "delete", reason: "workbuddy-desktop-idle-timeout" });
-    assert.deepStrictEqual(calls, [50]);
   });
 
   it("issue #655: keeps WorkBuddy conversations before the cutoff or when the cutoff is disabled", () => {
@@ -607,23 +482,6 @@ describe("state stale cleanup decisions", () => {
     );
   });
 
-  it("issue #655: applies the WorkBuddy idle timeout when agent_pid and source_pid are the same main process", () => {
-    const updatedAt = 1000000 - 60_001;
-    const target = workbuddyDesktopSession({ agentPid: 50, sourcePid: 50, updatedAt });
-    const staleConfig = { sessionStaleMs: 60_000 };
-
-    assert.deepStrictEqual(
-      decision(target, { alivePids: new Set([50]), staleConfig }).result,
-      { action: "delete", reason: "workbuddy-desktop-idle-timeout" },
-      "a live main-process pid cannot keep a finished conversation forever",
-    );
-    assert.deepStrictEqual(
-      decision(target, { alivePids: new Set(), staleConfig }).result,
-      { action: "delete", reason: "agent-exit" },
-      "the same pid dying is agent-exit, checked first",
-    );
-  });
-
   it("issue #655: still deletes a WorkBuddy session by agent-exit before any idle timeout", () => {
     const { result } = decision(workbuddyDesktopSession({
       updatedAt: 1000000 - 60_001,
@@ -660,104 +518,6 @@ describe("state stale cleanup decisions", () => {
     assert.deepStrictEqual(result, { action: null });
   });
 
-  it("keeps local Codex working through the default short stale windows", () => {
-    const { result } = decision(desktopSession({
-      state: "working",
-      updatedAt: 1000000 - 11 * 60 * 1000,
-    }), {
-      alivePids: new Set([10]),
-      staleConfig: { sessionStaleMs: 60_000, workingStaleMs: 60_000 },
-    });
-    assert.deepStrictEqual(result, { action: null });
-  });
-
-  it("uses the explicit local Codex timeout independently of idle retention", () => {
-    const now = 2_000_000;
-    const alivePids = new Set([10]);
-    const target = desktopSession({
-      state: "working",
-      updatedAt: now - 30 * 60 * 1000,
-    });
-
-    const kept = decision(target, {
-      now,
-      alivePids,
-      staleConfig: {
-        sessionStaleMs: 10 * 60 * 1000,
-        workingStaleMs: 5 * 60 * 1000,
-        codexWorkingStaleMs: 60 * 60 * 1000,
-      },
-    }).result;
-    assert.deepStrictEqual(kept, { action: null });
-
-    const expired = decision(target, {
-      now,
-      alivePids,
-      staleConfig: {
-        sessionStaleMs: 10 * 60 * 1000,
-        workingStaleMs: 5 * 60 * 1000,
-        codexWorkingStaleMs: 20 * 60 * 1000,
-      },
-    }).result;
-    assert.deepStrictEqual(expired, {
-      action: "idle",
-      reason: "working-timeout",
-      updateTimestamp: true,
-    });
-  });
-
-  it("allows local Codex silence expiry to be disabled without masking process death", () => {
-    const now = 100 * 60 * 60 * 1000;
-    const target = desktopSession({
-      state: "thinking",
-      updatedAt: 1,
-    });
-    const staleConfig = { codexWorkingStaleMs: 0 };
-
-    assert.deepStrictEqual(decision(target, {
-      now,
-      alivePids: new Set([10]),
-      staleConfig,
-    }).result, { action: null });
-    assert.deepStrictEqual(decision(target, {
-      now,
-      alivePids: new Set(),
-      staleConfig,
-    }).result, { action: "delete", reason: "agent-exit" });
-  });
-
-  it("keeps source-exit cleanup with Codex age expiry disabled and no agent pid", () => {
-    const now = 100 * 60 * 60 * 1000;
-    for (const state of ["working", "thinking", "juggling"]) {
-      for (const updatedAt of [now - 1_000, 1]) {
-        for (const codexOriginator of [null, "codex_work_desktop"]) {
-          const { result, calls } = decision(session({
-            state, agentId: "codex", codexOriginator,
-            agentPid: null, sourcePid: 20, updatedAt,
-          }), { now, staleConfig: { codexWorkingStaleMs: 0 } });
-          assert.deepStrictEqual(result, { action: "delete", reason: "working-source-exit" });
-          assert.deepStrictEqual(calls, [20]);
-        }
-      }
-    }
-  });
-
-  it("does not age out live or unprobeable sources when Codex age expiry is disabled", () => {
-    const now = 100 * 60 * 60 * 1000;
-    const target = session({
-      state: "working", agentId: "codex", agentPid: null, sourcePid: 20, updatedAt: 1,
-    });
-    const options = { now, staleConfig: { codexWorkingStaleMs: 0 } };
-    const live = decision(target, { ...options, alivePids: new Set([20]) });
-    assert.deepStrictEqual(live.result, { action: null });
-    assert.deepStrictEqual(live.calls, [20]);
-    for (const overrides of [{ sourcePid: null }, { pidReachable: false }]) {
-      const unprobeable = decision({ ...target, ...overrides }, options);
-      assert.deepStrictEqual(unprobeable.result, { action: null });
-      assert.deepStrictEqual(unprobeable.calls, []);
-    }
-  });
-
   it("lets a live Codex agent override a dead wrapper while preserving agent death", () => {
     const target = session({
       state: "working", agentId: "codex", agentPid: 10, sourcePid: 20,
@@ -769,59 +529,6 @@ describe("state stale cleanup decisions", () => {
     const agentDead = decision(target, { staleConfig, alivePids: new Set([20]) });
     assert.deepStrictEqual(agentDead.result, { action: "delete", reason: "agent-exit" });
     assert.deepStrictEqual(agentDead.calls, [10]);
-  });
-
-  it("starts Codex Desktop idle retention from the stamped timeout transition", () => {
-    const now = 2_000_000;
-    const staleConfig = { sessionStaleMs: 10 * 60 * 1000 };
-    const justIdled = desktopSession({ state: "idle", updatedAt: now });
-
-    assert.deepStrictEqual(decision(justIdled, {
-      now: now + 9 * 60 * 1000,
-      alivePids: new Set([10]),
-      staleConfig,
-    }).result, { action: null });
-    assert.deepStrictEqual(decision(justIdled, {
-      now: now + 10 * 60 * 1000 + 1,
-      alivePids: new Set([10]),
-      staleConfig,
-    }).result, { action: "delete", reason: "codex-desktop-idle-timeout" });
-  });
-
-  it("keeps a local OpenCode tool active at the captured 305-second failure point", () => {
-    const now = 2_000_000;
-    const { result } = decision(session({
-      state: "working",
-      agentId: "opencode",
-      agentPid: 10,
-      sourcePid: 20,
-      pidReachable: true,
-      updatedAt: now - 305_656,
-    }), {
-      now,
-      alivePids: new Set([10, 20]),
-      staleConfig: { sessionStaleMs: 600_000, workingStaleMs: 300_000 },
-    });
-
-    assert.deepStrictEqual(result, { action: null });
-  });
-
-  it("keeps local OpenCode thinking active at the captured 305-second failure point", () => {
-    const now = 2_000_000;
-    const { result } = decision(session({
-      state: "thinking",
-      agentId: "opencode",
-      agentPid: 10,
-      sourcePid: 20,
-      pidReachable: true,
-      updatedAt: now - 305_656,
-    }), {
-      now,
-      alivePids: new Set([10, 20]),
-      staleConfig: { sessionStaleMs: 600_000, workingStaleMs: 300_000 },
-    });
-
-    assert.deepStrictEqual(result, { action: null });
   });
 
   it("preserves a longer configured stale timeout for local OpenCode work", () => {
@@ -841,23 +548,6 @@ describe("state stale cleanup decisions", () => {
         sessionStaleMs: configuredStaleMs,
         workingStaleMs: configuredStaleMs,
       },
-    });
-
-    assert.deepStrictEqual(result, { action: null });
-  });
-
-  it("keeps local OpenCode work active immediately before the fixed 20-minute stale floor", () => {
-    const now = 2_000_000;
-    const { result } = decision(session({
-      state: "working",
-      agentId: "opencode",
-      agentPid: 10,
-      sourcePid: 20,
-      pidReachable: true,
-      updatedAt: now - (20 * 60 * 1000 - 1),
-    }), {
-      now,
-      alivePids: new Set([10, 20]),
     });
 
     assert.deepStrictEqual(result, { action: null });
@@ -1030,19 +720,6 @@ describe("state stale cleanup decisions", () => {
     assert.deepStrictEqual(result, { action: "delete", reason: "unreachable" });
   });
 
-  it("acked session age uses Math.max(updatedAt, ackedAt) globally (not just inside ack-pending branch)", () => {
-    // Flag already cleared post-ack; updatedAt is ancient, but ackedAt is
-    // recent — referenceTs hoist must rescue the session in branch 3 too.
-    const { result } = decision(session({
-      updatedAt: 1000000 - 11 * 60 * 1000,
-      ackedAt: 1000000 - 30 * 1000,
-      pidReachable: false,
-    }), {
-      staleConfig: { sessionStaleMs: 10 * 60 * 1000 },
-    });
-    assert.deepStrictEqual(result, { action: null });
-  });
-
   it("requiresCompletionAck within the session timeout is kept (done badge stays visible)", () => {
     // Completion already pushed a notification; the session lingers only long
     // enough for the user to spot the `done` badge — bounded by sessionStaleMs.
@@ -1096,83 +773,4 @@ describe("state stale cleanup decisions", () => {
   });
 
   // ── WSL sessions never probe the Windows host with Linux PIDs ──
-
-  it("never probes WSL session PIDs and retires them only by idle age", () => {
-    const now = 2_000_000;
-    const wsl = {
-      agentId: "claude-code",
-      wslDistro: "Ubuntu",
-      host: "wsl:Ubuntu",
-      agentPid: 10,
-      sourcePid: 20,
-    };
-
-    const fresh = decision(session({ ...wsl, state: "idle", updatedAt: now }), {
-      now,
-      alivePids: new Set([10, 20]),
-    });
-    assert.deepStrictEqual(fresh.result, { action: null });
-    assert.deepStrictEqual(fresh.calls, []);
-
-    const working = decision(session({
-      ...wsl,
-      state: "working",
-      updatedAt: now - WORKING_STALE_MS - 1,
-    }), {
-      now,
-      alivePids: new Set([10, 20]),
-    });
-    assert.deepStrictEqual(working.result, {
-      action: "idle",
-      reason: "working-timeout",
-      updateTimestamp: true,
-    });
-    assert.deepStrictEqual(working.calls, []);
-
-    const stale = decision(session({
-      ...wsl,
-      state: "idle",
-      updatedAt: now - SESSION_STALE_MS - 1,
-    }), {
-      now,
-      alivePids: new Set([10, 20]),
-    });
-    assert.deepStrictEqual(stale.result, { action: "delete", reason: "unreachable" });
-    assert.deepStrictEqual(stale.calls, []);
-  });
-
-  it("recognizes a WSL session from either the wslDistro or the wsl: host marker", () => {
-    const now = 2_000_000;
-    for (const marker of [{ wslDistro: "Ubuntu" }, { host: "wsl:Ubuntu" }]) {
-      const { result, calls } = decision(session({
-        state: "idle",
-        agentId: "kimi-cli",
-        agentPid: 10,
-        sourcePid: 20,
-        updatedAt: now - SESSION_STALE_MS - 1,
-        ...marker,
-      }), { now, alivePids: new Set([10]) });
-      assert.deepStrictEqual(result, { action: "delete", reason: "unreachable" });
-      assert.deepStrictEqual(calls, []);
-    }
-  });
-
-  it("keeps a WSL session of any age when sessionStaleMs is disabled", () => {
-    const now = 2_000_000;
-    const { result, calls } = decision(session({
-      state: "idle",
-      agentId: "claude-code",
-      wslDistro: "Ubuntu",
-      host: "wsl:Ubuntu",
-      agentPid: 10,
-      sourcePid: 20,
-      updatedAt: now - 86_400_000,
-    }), {
-      now,
-      staleConfig: { sessionStaleMs: 0 },
-      alivePids: new Set([10, 20]),
-    });
-    assert.deepStrictEqual(result, { action: null });
-    assert.deepStrictEqual(calls, []);
-  });
 });

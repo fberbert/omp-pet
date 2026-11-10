@@ -16,12 +16,8 @@ function controller(snapshot) {
   };
 }
 
-test("recap is enabled by default and v18 upgrades opt in locally", () => {
-  assert.equal(prefs.CURRENT_VERSION, 21);
+test("recap is enabled by default and only accepts a boolean toggle", () => {
   assert.equal(prefs.getDefaults().recapEnabled, true);
-  const upgraded = prefs.migrate({ version: 18 });
-  assert.equal(upgraded.recapEnabled, true);
-  assert.equal(upgraded.version, prefs.CURRENT_VERSION);
   assert.deepEqual(updateRegistry.recapEnabled(false), { status: "ok" });
   assert.equal(updateRegistry.recapEnabled("false").status, "error");
 });
@@ -38,15 +34,4 @@ test("settings effect router applies recap toggle after the preference commit", 
   settingsController.emit({ changes: { recapEnabled: true } });
   assert.deepEqual(values, [false, true]);
   router.dispose();
-});
-
-test("main owns recap runtime lifecycle and wires it to state and Settings IPC", () => {
-  const source = require("node:fs").readFileSync(require.resolve("../src/main"), "utf8");
-  assert.match(source, /const recapRuntime = createRecapRuntime\(/);
-  assert.match(source, /recapSink: recapRuntime/);
-  assert.match(source, /registerSettingsIpc\(\{[\s\S]*?settingsController: _settingsController,\s*recapRuntime,/);
-  assert.match(source, /createWindow\(\);\s*try \{ recapRuntime\.start\(\); \}/);
-  assert.match(source, /try \{ recapRuntime\.dispose\(\); \} catch \{}\s*_state\.cleanup\(\);/);
-  assert.match(source, /getEnabled: \(\) => !_recapStartupAuthorityLost/);
-  assert.match(source, /onRecorded: \(\) => settingsWindowRuntime\.notifyRecapChanged\(\)/);
 });

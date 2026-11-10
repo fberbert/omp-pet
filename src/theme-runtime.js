@@ -50,7 +50,6 @@ function createThemeRuntime(options = {}) {
   const bumpAnimationOverridePreviewPosterGeneration =
     options.bumpAnimationOverridePreviewPosterGeneration || (() => {});
   const rebuildAllMenus = options.rebuildAllMenus || (() => {});
-  const isManagedTheme = options.isManagedTheme || (() => false);
 
   let activeTheme = null;
   let activeThemeContext = null;
@@ -394,10 +393,6 @@ function createThemeRuntime(options = {}) {
     return {
       builtin: !!entry.builtin,
       active: activeTheme && activeTheme._id === themeId,
-      managedCodexPet: isManagedTheme(themeId),
-      managedOfficialTheme: typeof options.isOfficialManagedTheme === "function"
-        ? options.isOfficialManagedTheme(themeId)
-        : false,
     };
   }
 

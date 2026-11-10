@@ -79,16 +79,6 @@ describe("main default idle visual wiring", () => {
     assert.ok(mainSource.includes("holidayAccessoryRuntime.dispose();"));
   });
 
-  it("wires hit-renderer mirror changes back into accessory geometry", () => {
-    const registration = sectionBetween(
-      mainSource,
-      "registerPetInteractionIpc({",
-      "registerPermissionIpc({"
-    );
-    assert.ok(registration.includes("setAccessoryMirror: setAccessoryMirrored,"));
-    assert.ok(registration.includes("refreshIdleVisualAfterDrag,"));
-  });
-
   it("accepts visual settlement only from the live renderer main frame", () => {
     const registration = sectionBetween(
       mainSource,

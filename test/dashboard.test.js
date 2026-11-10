@@ -1007,7 +1007,6 @@ describe("dashboard window", () => {
     );
   });
 
-
   it("resolves the borrowed page scale against the quick host it moved to", () => {
     const scales = [];
     const { quickWindow } = borrowedHarness({
@@ -1625,19 +1624,6 @@ describe("dashboard window", () => {
     assert.deepStrictEqual(saved, []);
   });
 
-  it("exposes a Clawd-only hide action instead of a terminal close action", () => {
-    const rendererSource = fs.readFileSync(path.join(__dirname, "..", "src", "dashboard-renderer.js"), "utf8");
-    const preloadSource = fs.readFileSync(path.join(__dirname, "..", "src", "preload-dashboard.js"), "utf8");
-
-    assert.match(rendererSource, /dashboardHideSessionTitle/);
-    assert.match(rendererSource, /hideSession\(session\.id\)/);
-    assert.match(rendererSource, /session\.canFocus !== true/);
-    assert.match(rendererSource, /dashboardOpenCodexSession/);
-    assert.match(rendererSource, /dashboardOpenDshDesktop/);
-    assert.doesNotMatch(rendererSource, /session\.platform === "webui"/);
-    assert.match(preloadSource, /dashboard:hide-session/);
-  });
-
   it("wires Dashboard persistence to the Dashboard bounds key in main", () => {
     const mainSource = fs.readFileSync(path.join(__dirname, "..", "src", "main.js"), "utf8");
     const start = mainSource.indexOf('const _dashboard = require("./dashboard")({');
@@ -1654,75 +1640,5 @@ describe("dashboard window", () => {
       /onSaveBounds:\s*\(bounds\)\s*=>\s*_settingsController\.applyUpdate\("dashboardWindowBounds", bounds\)/,
     );
     assert.doesNotMatch(wiring, /settingsWindowBounds/);
-  });
-
-  it("wires account quota (including Dashboard-only Spark) into the dashboard header", () => {
-    const rendererSource = fs.readFileSync(path.join(__dirname, "..", "src", "dashboard-renderer.js"), "utf8");
-    const htmlSource = fs.readFileSync(path.join(__dirname, "..", "src", "dashboard.html"), "utf8");
-    const preloadSource = fs.readFileSync(path.join(__dirname, "..", "src", "preload-dashboard.js"), "utf8");
-
-    assert.match(htmlSource, /id="quotaSummary" class="quota-summary" hidden/);
-    // Quota renders from the session-independent per-source store
-    // (snapshot.accountQuota), grouped local + one row per remote host —
-    // never from per-session fields.
-    assert.match(rendererSource, /renderQuotaSummary\(snapshot\)/);
-    assert.match(rendererSource, /snapshot\.accountQuota/);
-    assert.doesNotMatch(rendererSource, /resolveQuotaForDisplay/);
-    assert.match(rendererSource, /buildQuotaSourceHeader/);
-    // Wall-clock expiry: a bucket whose resetAt passed must not keep showing
-    // the pre-reset high between snapshots.
-    assert.match(rendererSource, /isExpiredBucket/);
-    // Quiet sources are labeled instead of presenting old numbers as live.
-    assert.match(rendererSource, /QUOTA_STALE_AFTER_MS/);
-    // Codex can change which rate-limit windows it exposes. The Dashboard
-    // must use reporter metadata rather than the legacy slot label.
-    assert.match(rendererSource, /formatQuotaWindowLabel/);
-    assert.match(rendererSource, /bucket && bucket\.windowMinutes/);
-    assert.match(rendererSource, /source\.codexSparkQuota/);
-    assert.match(rendererSource, /refreshKimiQuotaFromDashboard/);
-    assert.match(rendererSource, /quota-refresh-button/);
-    assert.match(preloadSource, /dashboard:refresh-kimi-quota/);
-    for (const key of [
-      "dashboardQuotaSectionAntigravity",
-      "dashboardQuotaGroupGemini",
-      "dashboardQuotaGroupThirdParty",
-      "dashboardQuotaSectionClaudeCode",
-      "dashboardQuotaSectionCodex",
-      "dashboardQuotaSectionCodexSpark",
-      "dashboardQuotaSourceLocal",
-      "dashboardQuotaAsOf",
-      "dashboardQuotaFiveHour",
-      "dashboardQuotaWeekly",
-      "dashboardQuotaResetIn",
-      "dashboardQuotaResetOn",
-      "dashboardQuotaResetHoursMinutes",
-      "dashboardQuotaResetMinutes",
-    ]) {
-      assert.match(rendererSource, new RegExp(key));
-    }
-  });
-
-  it("memoizes the quota summary rebuild instead of rebuilding on every 1s render tick", () => {
-    const rendererSource = fs.readFileSync(path.join(__dirname, "..", "src", "dashboard-renderer.js"), "utf8");
-
-    assert.match(rendererSource, /computeQuotaSummarySignature\(accountQuota\)/);
-    assert.match(rendererSource, /if \(signature === lastQuotaSummarySignature\) return;/);
-    assert.match(rendererSource, /resetDateFormatterLang !== lang/);
-  });
-
-  it("does not replace an open session automation picker on the one-second render tick", () => {
-    const rendererSource = fs.readFileSync(path.join(__dirname, "..", "src", "dashboard-renderer.js"), "utf8");
-    const dashboardHtml = fs.readFileSync(path.join(__dirname, "..", "src", "dashboard.html"), "utf8");
-
-    assert.match(rendererSource, /function hasOpenSessionAutomationPicker\(/);
-    assert.match(rendererSource, /element\.classList\.contains\("open"\)/);
-    assert.match(rendererSource, /disposeSessionAutomationPickers\(\);/);
-    assert.match(
-      rendererSource,
-      /\(activeEdit \|\| hasOpenSessionAutomationPicker\(\)\) && !options\.force/
-    );
-    assert.match(dashboardHtml, /style-src 'self' 'unsafe-inline'/);
-    assert.match(dashboardHtml, /<link rel="stylesheet" href="language-picker\.css">/);
-    assert.match(dashboardHtml, /<script src="\.\/language-picker\.js"><\/script>/);
   });
 });

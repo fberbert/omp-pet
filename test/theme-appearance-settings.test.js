@@ -2,8 +2,6 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
 
 const prefs = require("../src/prefs");
 const {
@@ -47,13 +45,5 @@ describe("issue #1323: theme appearance preferences", () => {
       Object.prototype.hasOwnProperty.call(commit.themeAppearance, "night"),
       false
     );
-  });
-
-  it("issue #1323: Codex Pet cleanup clears the appearance preference too", () => {
-    const source = fs.readFileSync(path.join(__dirname, "..", "src", "codex-pet-main.js"), "utf8");
-    const start = source.indexOf("async function clearThemeScopedPreferences");
-    assert.ok(start >= 0, "clearThemeScopedPreferences must exist");
-    const body = source.slice(start, start + 600);
-    assert.match(body, /"themeAppearance"/);
   });
 });

@@ -19,15 +19,6 @@ const {
 const MENU_AFFECTING_KEYS = new Set([
   "lang",
   "soundMuted",
-  "bubbleFollowPet",
-  "hideBubbles",
-  "permissionBubblesEnabled",
-  "permissionAutomationMode",
-  "notificationBubbleAutoCloseSeconds",
-  "permissionBubbleAutoCloseSeconds",
-  "updateBubbleAutoCloseSeconds",
-  "manageClaudeHooksAutomatically",
-  "autoStartWithClaude",
   "openAtLogin",
   "showTray",
   "showDock",
@@ -35,12 +26,6 @@ const MENU_AFFECTING_KEYS = new Set([
   "size",
   "sessionAliases",
   "disableMiniMode",
-]);
-
-const BUBBLE_PLACEMENT_KEYS = new Set([
-  "bubbleFollowPet",
-  "bubbleFollowPreference",
-  "bubbleFixedCorner",
 ]);
 
 function requiredDependency(value, name) {
@@ -81,19 +66,6 @@ function createSettingsEffectRouter(options = {}) {
   const emitSessionSnapshot = options.emitSessionSnapshot || noop;
   const cleanStaleSessions = options.cleanStaleSessions || noop;
   const refreshPendingAttention = options.refreshPendingAttention || noop;
-  const syncPermissionShortcuts = options.syncPermissionShortcuts || noop;
-  const dismissInteractivePermissionBubbles = options.dismissInteractivePermissionBubbles || noop;
-  const clearCodexNotifyBubbles = options.clearCodexNotifyBubbles || noop;
-  const clearCodexRemoteFallbackNotices = options.clearCodexRemoteFallbackNotices || noop;
-  const clearCodexUserInputBubbles = options.clearCodexUserInputBubbles || noop;
-  const clearClaudeTurnAskBubbles = options.clearClaudeTurnAskBubbles || noop;
-  const clearKiroDesktopReminderCards = options.clearKiroDesktopReminderCards || noop;
-  const resyncKiroDesktopReminderCards = options.resyncKiroDesktopReminderCards || noop;
-  const clearKimiNotifyBubbles = options.clearKimiNotifyBubbles || noop;
-  const refreshPassiveNotifyAutoClose = options.refreshPassiveNotifyAutoClose || noop;
-  const refreshPermissionAutoCloseForPolicy = options.refreshPermissionAutoCloseForPolicy || noop;
-  const hideUpdateBubbleForPolicy = options.hideUpdateBubbleForPolicy || noop;
-  const refreshUpdateBubbleAutoClose = options.refreshUpdateBubbleAutoClose || noop;
   const repositionFloatingBubbles = options.repositionFloatingBubbles || noop;
   const applyTextScale = options.applyTextScale || noop;
   const syncSessionHudVisibility = options.syncSessionHudVisibility || noop;
@@ -107,11 +79,8 @@ function createSettingsEffectRouter(options = {}) {
   const syncHitWin = options.syncHitWin || noop;
   const refreshIdleVisual = options.refreshIdleVisual || noop;
   const refreshDisplayedVisual = options.refreshDisplayedVisual || noop;
-  const refreshPetPresentation = options.refreshPetPresentation || noop;
   const rebuildAllMenus = options.rebuildAllMenus || noop;
   const reconcilePowerSaveBlocker = options.reconcilePowerSaveBlocker || noop;
-  const disableMobilePermissionObservation = options.disableMobilePermissionObservation || noop;
-  const enqueueMobilePreviewReconcile = options.enqueueMobilePreviewReconcile || noop;
   const setRecapEnabled = options.setRecapEnabled || noop;
   const now = options.now || (() => new Date());
 
@@ -137,7 +106,7 @@ function createSettingsEffectRouter(options = {}) {
         throw new Error("renderer unavailable");
       }
     } catch (err) {
-      warn(logWarn, "Clawd: accessory renderer delivery failed:", err);
+      warn(logWarn, "omp-pet: accessory renderer delivery failed:", err);
       return false;
     }
 
@@ -155,7 +124,7 @@ function createSettingsEffectRouter(options = {}) {
       repositionPetAccessoryFloatingSurfaces();
       return true;
     } catch (err) {
-      warn(logWarn, "Clawd: accessory geometry apply failed:", err);
+      warn(logWarn, "omp-pet: accessory geometry apply failed:", err);
       return false;
     }
   }
@@ -169,26 +138,26 @@ function createSettingsEffectRouter(options = {}) {
     if ("showTray" in changes) {
       safeCall(
         logWarn,
-        "Clawd: tray toggle failed:",
+        "omp-pet: tray toggle failed:",
         changes.showTray ? createTray : destroyTray
       );
     }
     if ("showDock" in changes) {
-      safeCall(logWarn, "Clawd: applyDockVisibility failed:", applyDockVisibility);
+      safeCall(logWarn, "omp-pet: applyDockVisibility failed:", applyDockVisibility);
     }
     if ("lowPowerIdleMode" in changes) {
       sendToRenderer("low-power-idle-mode-change", changes.lowPowerIdleMode);
       // The renderer owns the media-channel substitution, but main must own
       // the request generation and settlement. Re-request only after the mode
       // IPC so the next state-change resolves against the new low-power flag.
-      safeCall(logWarn, "Clawd: low-power visual refresh failed:", refreshDisplayedVisual);
-      // If the HUD/ring were already hidden when low-power mode was enabled,
+      safeCall(logWarn, "omp-pet: low-power visual refresh failed:", refreshDisplayedVisual);
+      // If the HUD was already hidden when low-power mode was enabled,
       // no visibility transition would otherwise schedule their delayed
       // destruction. Re-sync after mirrors update so hidden windows are
       // reclaimed under the new policy.
       safeCall(
         logWarn,
-        "Clawd: low-power Session HUD sync failed:",
+        "omp-pet: low-power Session HUD sync failed:",
         syncSessionHudVisibility
       );
     }
@@ -200,7 +169,7 @@ function createSettingsEffectRouter(options = {}) {
     if ("themeAppearance" in changes) {
       // Prefs are already committed here, so the runtime reads the new value
       // itself; no appearance argument needs to be threaded through commands.
-      safeCall(logWarn, "Clawd: theme appearance sync failed:", syncActiveThemeAppearance);
+      safeCall(logWarn, "omp-pet: theme appearance sync failed:", syncActiveThemeAppearance);
     }
     if (
       "petAccessory" in changes
@@ -212,203 +181,57 @@ function createSettingsEffectRouter(options = {}) {
       applyAccessoryCandidate(activeTheme, snapshot);
     }
     if ("keepAwakeWhileWorking" in changes) {
-      safeCall(logWarn, "Clawd: reconcilePowerSaveBlocker failed:", reconcilePowerSaveBlocker);
+      safeCall(logWarn, "omp-pet: reconcilePowerSaveBlocker failed:", reconcilePowerSaveBlocker);
     }
     if ("recapEnabled" in changes) {
-      safeCall(logWarn, "Clawd: recap recording toggle failed:", setRecapEnabled, changes.recapEnabled);
+      safeCall(logWarn, "omp-pet: recap recording toggle failed:", setRecapEnabled, changes.recapEnabled);
     }
     if ("lang" in changes) {
-      safeCall(logWarn, "Clawd: dashboard lang broadcast failed:", sendDashboardI18n);
-      safeCall(logWarn, "Clawd: session HUD lang broadcast failed:", sendSessionHudI18n);
-      safeCall(logWarn, "Clawd: window title sync failed:", syncWindowTitles);
+      safeCall(logWarn, "omp-pet: dashboard lang broadcast failed:", sendDashboardI18n);
+      safeCall(logWarn, "omp-pet: session HUD lang broadcast failed:", sendSessionHudI18n);
+      safeCall(logWarn, "omp-pet: window title sync failed:", syncWindowTitles);
     }
     // Localized display labels live in snapshots. Refresh after mirrors and
     // dictionaries, also coalescing a simultaneous alias change into one send.
-    // Claude profile labels come from agents["claude-code"].configDirs.
     if ("lang" in changes || "sessionAliases" in changes || "agents" in changes) {
       safeCall(
         logWarn,
-        "Clawd: session title snapshot broadcast failed:",
+        "omp-pet: session title snapshot broadcast failed:",
         emitSessionSnapshot,
         { force: true }
       );
     }
-    if ("permissionAutomationMode" in changes) {
-      safeCall(
-        logWarn,
-        "Clawd: session automation effective-mode snapshot refresh failed:",
-        emitSessionSnapshot,
-        { force: true }
-      );
-    }
-    if ("mobilePreviewEnabled" in changes || "mobilePermissionPreviewEnabled" in changes) {
-      const snapshot = settingsController.getSnapshot();
-      const effectivePermissionPreview = snapshot.mobilePreviewEnabled === true
-        && snapshot.mobilePermissionPreviewEnabled === true;
-      // Consent withdrawal is synchronous; network teardown may be queued but
-      // the canonical disclosure projection must disappear immediately.
-      if (!effectivePermissionPreview) {
-        safeCall(
-          logWarn,
-          "Clawd: disable mobile permission observation failed:",
-          disableMobilePermissionObservation
-        );
-      }
-      safeCall(
-        logWarn,
-        "Clawd: enqueue mobile preview reconciliation failed:",
-        enqueueMobilePreviewReconcile,
-        snapshot
-      );
-    }
-
     // 2. Reactive side effects.
     if ("agents" in changes) {
-      safeCall(logWarn, "Clawd: pending attention refresh failed:", refreshPendingAttention);
-    }
-    const suppressKiroReminders = changes.notificationBubbleAutoCloseSeconds === 0
-      || changes.hideBubbles === true
-      || changes.permissionBubblesEnabled === false;
-    if (suppressKiroReminders) {
-      safeCall(logWarn, "Clawd: clear Kiro reminders failed:", clearKiroDesktopReminderCards, "settings-policy-disabled");
-    }
-    const resumeKiroReminders = changes.notificationBubbleAutoCloseSeconds > 0
-      || changes.hideBubbles === false
-      || changes.permissionBubblesEnabled === true
-      || changes.agents?.["kiro-desktop"]?.permissionsEnabled === true;
-    if (!suppressKiroReminders && resumeKiroReminders) {
-      safeCall(logWarn, "Clawd: resync Kiro reminders failed:", resyncKiroDesktopReminderCards);
-    }
-    if ("hideBubbles" in changes || "permissionBubblesEnabled" in changes) {
-      safeCall(logWarn, "Clawd: syncPermissionShortcuts failed:", syncPermissionShortcuts);
-    }
-    if (
-      ("permissionBubblesEnabled" in changes && changes.permissionBubblesEnabled === false) ||
-      ("hideBubbles" in changes && changes.hideBubbles === true)
-    ) {
-      safeCall(
-        logWarn,
-        "Clawd: dismiss interactive bubbles failed:",
-        dismissInteractivePermissionBubbles
-      );
-    }
-    if (
-      ("notificationBubbleAutoCloseSeconds" in changes && changes.notificationBubbleAutoCloseSeconds === 0) ||
-      ("hideBubbles" in changes && changes.hideBubbles === true)
-    ) {
-      try {
-        clearCodexNotifyBubbles(undefined, "settings-policy-disabled");
-        clearCodexUserInputBubbles(undefined, undefined, "settings-policy-disabled");
-        clearClaudeTurnAskBubbles(undefined, "settings-policy-disabled");
-        clearKimiNotifyBubbles(undefined, "settings-policy-disabled");
-      } catch (err) {
-        warn(logWarn, "Clawd: clear notification bubbles failed:", err);
-      }
-    } else if (
-      "notificationBubbleAutoCloseSeconds" in changes &&
-      changes.notificationBubbleAutoCloseSeconds > 0
-    ) {
-      safeCall(
-        logWarn,
-        "Clawd: refresh notification bubble timers failed:",
-        refreshPassiveNotifyAutoClose
-      );
-    }
-    // A remote Codex fallback notice is owned by the notification channel but
-    // also disappears with the Codex bubble gate. Clear both queued and shown
-    // notices so a later re-enable cannot resurrect a stale one.
-    if (
-      (("permissionBubblesEnabled" in changes) && changes.permissionBubblesEnabled === false) ||
-      (("hideBubbles" in changes) && changes.hideBubbles === true) ||
-      (("notificationBubbleAutoCloseSeconds" in changes) && changes.notificationBubbleAutoCloseSeconds === 0)
-    ) {
-      safeCall(
-        logWarn,
-        "Clawd: clear Codex remote fallback notices failed:",
-        clearCodexRemoteFallbackNotices,
-        "settings-policy-disabled"
-      );
-    }
-    if (
-      ("updateBubbleAutoCloseSeconds" in changes && changes.updateBubbleAutoCloseSeconds === 0) ||
-      ("hideBubbles" in changes && changes.hideBubbles === true)
-    ) {
-      safeCall(logWarn, "Clawd: hide update bubble failed:", hideUpdateBubbleForPolicy);
-    } else if (
-      "updateBubbleAutoCloseSeconds" in changes &&
-      changes.updateBubbleAutoCloseSeconds > 0
-    ) {
-      safeCall(
-        logWarn,
-        "Clawd: refresh update bubble timer failed:",
-        refreshUpdateBubbleAutoClose
-      );
-    }
-    // Permission autoclose: any change (including 0 = disable) needs to be
-    // pushed into pending entries so they re-arm or clear timers.
-    if ("permissionBubbleAutoCloseSeconds" in changes) {
-      safeCall(
-        logWarn,
-        "Clawd: refresh permission bubble timer failed:",
-        refreshPermissionAutoCloseForPolicy
-      );
-    }
-    if (Object.keys(changes).some((key) => BUBBLE_PLACEMENT_KEYS.has(key))) {
-      safeCall(logWarn, "Clawd: repositionFloatingBubbles failed:", repositionFloatingBubbles);
+      safeCall(logWarn, "omp-pet: pending attention refresh failed:", refreshPendingAttention);
     }
     if ("textScale" in changes || "textScaleByDisplay" in changes) {
       // applyTextScale owns the whole cascade: per-display zoom on live text
-      // windows, fixed-width window resize, and bubble/HUD repositioning.
-      safeCall(logWarn, "Clawd: applyTextScale failed:", applyTextScale);
+      // windows, fixed-width window resize, and HUD repositioning.
+      safeCall(logWarn, "omp-pet: applyTextScale failed:", applyTextScale);
     }
     if ("sessionHudPinned" in changes) {
       // Pinned transitions are handled inside session-hud.js so the visible
       // state can be inspected BEFORE the new mirror takes effect during a
       // generic sync. handlePinnedChanged internally calls syncSessionHud,
-      // which triggers reposition via the reserved-offset callback — no
+      // which triggers reposition via the reserved-offset callback, so there is no
       // need to call repositionFloatingBubbles here as well.
       try {
         handleSessionHudPinnedChanged(changes.sessionHudPinned);
       } catch (err) {
-        warn(logWarn, "Clawd: session HUD pinned change failed:", err);
+        warn(logWarn, "omp-pet: session HUD pinned change failed:", err);
       }
     }
     if (
       "sessionHudEnabled" in changes
       || "sessionHudShowStateLabels" in changes
       || "sessionHudShowElapsed" in changes
-      || "sessionHudShowContextUsage" in changes
-      || "sessionHudShowQuota" in changes
-      || "quotaRingDisplayMode" in changes
-      // Hiding a provider changes the COIN COUNT, so this has to re-measure and
-      // re-place the cluster window, not just repaint it — a repaint alone
-      // would leave the transparent window (and its auto-hide hot zone) sized
-      // for coins that no longer draw.
-      || "quotaRingHiddenProviders" in changes
     ) {
       try {
         syncSessionHudVisibility();
         repositionFloatingBubbles();
       } catch (err) {
-        warn(logWarn, "Clawd: session HUD setting sync failed:", err);
-      }
-    }
-    if ("quotaMergeSources" in changes) {
-      try {
-        // Snapshot CONTENT changes (merged vs per-source accountQuota), so a
-        // forced re-emit is needed for the Dashboard/HUD to pick it up.
-        emitSessionSnapshot({ force: true });
-      } catch (err) {
-        warn(logWarn, "Clawd: quota merge mode re-emit failed:", err);
-      }
-    }
-    if ("sessionHudHideCompletedCodexEphemeral" in changes || "sessionHudHideActiveCodexEphemeral" in changes) {
-      // Rebuild the snapshot immediately;
-      // never run lifecycle cleanup, acknowledge completion or touch approvals.
-      safeCall(logWarn, "Clawd: Codex ephemeral HUD preference refresh failed:",
-        emitSessionSnapshot, { force: true });
-      if ("sessionHudHideActiveCodexEphemeral" in changes) {
-        safeCall(logWarn, "Clawd: Codex ephemeral pet preference refresh failed:", refreshPetPresentation);
+        warn(logWarn, "omp-pet: session HUD setting sync failed:", err);
       }
     }
     if ("sessionHudCleanupDetached" in changes && changes.sessionHudCleanupDetached === true) {
@@ -416,12 +239,12 @@ function createSettingsEffectRouter(options = {}) {
         cleanStaleSessions();
         emitSessionSnapshot({ force: true });
       } catch (err) {
-        warn(logWarn, "Clawd: detached session cleanup sweep failed:", err);
+        warn(logWarn, "omp-pet: detached session cleanup sweep failed:", err);
       }
     } else if ("sessionHudCleanupDetached" in changes) {
       safeCall(
         logWarn,
-        "Clawd: detached session cleanup snapshot refresh failed:",
+        "omp-pet: detached session cleanup snapshot refresh failed:",
         emitSessionSnapshot,
         { force: true }
       );
@@ -429,45 +252,44 @@ function createSettingsEffectRouter(options = {}) {
     if (
       "sessionStaleMs" in changes
       || "workingStaleMs" in changes
-      || "codexWorkingStaleMs" in changes
       || "detachedIdleStaleMs" in changes
     ) {
       try {
         cleanStaleSessions();
         emitSessionSnapshot({ force: true });
       } catch (err) {
-        warn(logWarn, "Clawd: stale cleanup config refresh failed:", err);
+        warn(logWarn, "omp-pet: stale cleanup config refresh failed:", err);
       }
     }
     if ("allowEdgePinning" in changes) {
       safeCall(
         logWarn,
-        "Clawd: allowEdgePinning re-clamp failed:",
+        "omp-pet: allowEdgePinning re-clamp failed:",
         reclampPetAfterEdgePinningChange
       );
     }
     if ("disableMiniMode" in changes && changes.disableMiniMode && getMiniMode()) {
-      safeCall(logWarn, "Clawd: disableMiniMode exit failed:", exitMiniMode);
+      safeCall(logWarn, "omp-pet: disableMiniMode exit failed:", exitMiniMode);
     }
     if ("eyeTrackingEnabled" in changes) {
       // #1276: park the gaze forward (or force a resend when re-enabled) so
       // the toggle applies without waiting for the next cursor move.
       safeCall(
         logWarn,
-        "Clawd: eyeTrackingEnabled change failed:",
+        "omp-pet: eyeTrackingEnabled change failed:",
         applyEyeTrackingEnabledChange,
         changes.eyeTrackingEnabled
       );
     }
     if ("idleVisual" in changes) {
-      safeCall(logWarn, "Clawd: idle visual refresh failed:", refreshIdleVisual);
+      safeCall(logWarn, "omp-pet: idle visual refresh failed:", refreshIdleVisual);
     }
 
     // 3. Menu rebuild: only for menu-affecting keys to avoid thrashing on
     // window position / mini state changes.
     for (const key of Object.keys(changes)) {
       if (MENU_AFFECTING_KEYS.has(key)) {
-        safeCall(logWarn, "Clawd: rebuildAllMenus failed:", rebuildAllMenus);
+        safeCall(logWarn, "omp-pet: rebuildAllMenus failed:", rebuildAllMenus);
         break;
       }
     }
@@ -483,7 +305,7 @@ function createSettingsEffectRouter(options = {}) {
         }
       }
     } catch (err) {
-      warn(logWarn, "Clawd: settings-changed broadcast failed:", err);
+      warn(logWarn, "omp-pet: settings-changed broadcast failed:", err);
     }
   }
 
@@ -491,7 +313,7 @@ function createSettingsEffectRouter(options = {}) {
     const nextTogglePetShortcut = (snapshot && snapshot.shortcuts && snapshot.shortcuts.togglePet) || null;
     if (nextTogglePetShortcut === lastTogglePetShortcut) return;
     lastTogglePetShortcut = nextTogglePetShortcut;
-    safeCall(logWarn, "Clawd: rebuildAllMenus failed:", rebuildAllMenus);
+    safeCall(logWarn, "omp-pet: rebuildAllMenus failed:", rebuildAllMenus);
   }
 
   function start() {

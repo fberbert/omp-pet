@@ -78,11 +78,9 @@
     },
     mountedControls: {
       generalSwitches: new Map(),
-      bubblePolicyControls: new Map(),
       sessionCleanupControls: new Map(),
       agentSwitches: new Map(),
       agentStatusLines: new Map(),
-      agentPermissionModes: new Map(),
       agentIntegrationActions: new Map(),
       animMapSwitches: new Map(),
       animMapReset: null,
@@ -94,17 +92,11 @@
       roamMovementStyle: null,
       idleBehavior: null,
       idleActivityFrequency: null,
-      bubblePlacement: null,
-      quotaAlertThresholds: null,
       roamArea: null,
       settingsSelects: new Set(),
       segmentedRadios: new Set(),
       formFields: new Set(),
       disposableScopes: new Map(),
-      quotaRingDisplayMode: null,
-      permissionAutomationMode: null,
-      aboutAutoUpdate: null,
-      aboutUpdateStatus: null,
     },
     shortcutRecordingActionId: null,
     shortcutRecordingError: "",
@@ -126,27 +118,6 @@
     agentInstallationHintsPromise: null,
     themeList: null,
     themeListPromise: null,
-    officialThemeList: null,
-    officialThemePromise: null,
-    officialThemeListFetched: false,
-    officialThemeCatalogStatus: null,
-    officialThemeCatalogVersion: null,
-    officialThemeCatalogRetrying: false,
-    officialThemeOperation: null,
-    officialThemePendingThemeId: null,
-    // Bumped every time an operation end is observed, and mirrored onto a list
-    // read that actually replaced the official list. When the two differ, the
-    // cached per-card progress snapshots predate the observed end and must not
-    // be trusted as "an install is still running".
-    officialThemeEndCount: 0,
-    officialThemeListEndCount: 0,
-    // De-dupes the post-operation list refresh so the two back-to-back idle
-    // events share one read and one completion render.
-    officialThemeEndRefresh: null,
-    codexPetsRefreshPending: false,
-    codexPetZipImportPending: false,
-    userThemeZipImportPending: false,
-    codexPetRemovalPendingThemeId: null,
     animationOverridesData: null,
     petTintOptions: [],
     petAccessoryOptions: [],
@@ -160,10 +131,6 @@
     animOverridesSubtab: "map",
     settingsTabScrollPositions: new Map(),
     persistedSettingsTab: "general",
-    // null = not chosen yet; the Agents tab resolves it from what is connected.
-    agentsSubtab: null,
-    agentsUnavailableQuery: "",
-    permissionsSubtab: "local",
     expandedOverrideRowIds: new Set(),
     assetPicker: {
       state: null,
@@ -226,43 +193,11 @@
     return entry ? entry.integrationInstalled === true : true;
   }
 
-  function readAgentPermissionMode(agentId) {
-    const entry = state.snapshot && state.snapshot.agents && state.snapshot.agents[agentId];
-    if (agentId === "codex" && entry && entry.permissionMode === "intercept") return "intercept";
-    return "auto";
-  }
 
-  function readAgentCustomPermissionUrl(agentId) {
-    const entry = state.snapshot && state.snapshot.agents && state.snapshot.agents[agentId];
-    return entry && typeof entry.customPermissionUrl === "string" ? entry.customPermissionUrl : "";
-  }
 
-  function readAgentCustomDiscoveryPaths(agentId) {
-    if (agentId === "custom") {
-      const value = state.snapshot && state.snapshot.customToolDiscoveryPaths;
-      return Array.isArray(value) ? value.filter((item) => typeof item === "string") : [];
-    }
-    const entry = state.snapshot && state.snapshot.agents && state.snapshot.agents[agentId];
-    const value = entry && entry.customDiscoveryPaths;
-    return Array.isArray(value) ? value.filter((item) => typeof item === "string") : [];
-  }
 
-  function readCustomToolDetectionResults() {
-    const hints = runtime.agentInstallationHints;
-    const value = hints && hints.customTools;
-    return Array.isArray(value) ? value.filter((item) => item && typeof item.path === "string") : [];
-  }
 
-  function readCustomAgentDetectionResults() {
-    const hints = runtime.agentInstallationHints;
-    const value = hints && hints.customAgents;
-    return Array.isArray(value) ? value.filter((item) => item && typeof item.agentId === "string") : [];
-  }
 
-  function readCustomApplications() {
-    const value = state.snapshot && state.snapshot.customApplications;
-    return Array.isArray(value) ? value.filter((item) => item && typeof item.id === "string") : [];
-  }
 
   function getShortcutValue(actionId) {
     const shortcuts = state.snapshot && state.snapshot.shortcuts;
@@ -2184,11 +2119,9 @@
     state.mountedControls.formFields.clear();
     disposeMountedDisposables();
     state.mountedControls.generalSwitches.clear();
-    state.mountedControls.bubblePolicyControls.clear();
     state.mountedControls.sessionCleanupControls.clear();
     state.mountedControls.agentSwitches.clear();
     state.mountedControls.agentStatusLines.clear();
-    state.mountedControls.agentPermissionModes.clear();
     state.mountedControls.agentIntegrationActions.clear();
     state.mountedControls.animMapSwitches.clear();
     state.mountedControls.animMapReset = null;
@@ -2200,10 +2133,6 @@
     state.mountedControls.roamMovementStyle = null;
     state.mountedControls.idleBehavior = null;
     state.mountedControls.idleActivityFrequency = null;
-    state.mountedControls.bubblePlacement = null;
-    state.mountedControls.quotaRingDisplayMode = null;
-    state.mountedControls.quotaAlertThresholds = null;
-    state.mountedControls.permissionAutomationMode = null;
     state.mountedControls.roamArea = null;
   }
 
@@ -2402,12 +2331,7 @@
     try {
       const parsed = JSON.parse(localStorage.getItem(NAVIGATION_STORAGE_KEY) || "null");
       if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false;
-      // Compatibility for the pre-merge sidebar id; remove in the next major.
-      if (parsed.activeTab === "telegram-approval") {
-        state.activeTab = "permissions";
-        runtime.persistedSettingsTab = "permissions";
-        runtime.permissionsSubtab = "channels";
-      } else if (typeof parsed.activeTab === "string" && tabs[parsed.activeTab]) {
+      if (typeof parsed.activeTab === "string" && tabs[parsed.activeTab]) {
         state.activeTab = parsed.activeTab;
         runtime.persistedSettingsTab = parsed.activeTab;
       }
@@ -2493,13 +2417,6 @@
     const normalized = {
       checkedAt: Number.isFinite(source.checkedAt) ? source.checkedAt : null,
       agents: Array.isArray(source.agents) ? source.agents : [],
-      customAgents: Array.isArray(source.customAgents) ? source.customAgents : [],
-      customTools: Array.isArray(source.customTools) ? source.customTools : [],
-      skippedAgentIds: Array.isArray(source.skippedAgentIds) ? source.skippedAgentIds : [],
-      wslAgents: Array.isArray(source.wslAgents) ? source.wslAgents : [],
-      wslDistros: Array.isArray(source.wslDistros) ? source.wslDistros : [],
-      wslPending: source.wslPending === true,
-      wslSupported: source.wslSupported === true,
     };
     if (typeof source.error === "string" && source.error) normalized.error = source.error;
     return normalized;
@@ -2509,35 +2426,16 @@
     const result = {
       checkedAt: null,
       agents: [],
-      customAgents: [],
-      customTools: [],
-      skippedAgentIds: [],
-      wslAgents: [],
-      wslDistros: [],
-      wslPending: false,
-      wslSupported: false,
     };
     if (error) result.error = error;
     return result;
   }
 
-  function fetchAgentInstallationHints({ force = false, refreshWsl = false } = {}) {
+  function fetchAgentInstallationHints({ force = false } = {}) {
     if (runtime.agentInstallationHintsPending) {
-      const inFlight = runtime.agentInstallationHintsPromise || Promise.resolve(runtime.agentInstallationHints);
-      // A manual WSL rescan must not be swallowed by a passive fetch that
-      // happens to be in flight (e.g. the tab's mount-time poll while
-      // wslPending) — chain one real rescan after it settles.
-      if (refreshWsl && !runtime.agentInstallationHintsWslRefreshQueued) {
-        runtime.agentInstallationHintsWslRefreshQueued = true;
-        return inFlight.then(() => {
-          runtime.agentInstallationHintsWslRefreshQueued = false;
-          return fetchAgentInstallationHints({ refreshWsl: true });
-        });
-      }
-      return inFlight;
+      return runtime.agentInstallationHintsPromise || Promise.resolve(runtime.agentInstallationHints);
     }
-    // refreshWsl always re-fetches; plain force only if not already done
-    if (!force && !refreshWsl && runtime.agentInstallationHintsFetched) {
+    if (!force && runtime.agentInstallationHintsFetched) {
       return Promise.resolve(runtime.agentInstallationHints);
     }
     if (!window.settingsAPI || typeof window.settingsAPI.detectAgentInstallations !== "function") {
@@ -2545,13 +2443,8 @@
       runtime.agentInstallationHintsFetched = true;
       return Promise.resolve(runtime.agentInstallationHints);
     }
-
-    // refreshWsl triggers a backend WSL re-scan; force just bypasses the
-    // frontend cache. The backend only inspects refreshWsl — passing force
-    // in the IPC payload would be dead weight.
-    const opts = refreshWsl ? { refreshWsl: true } : undefined;
     runtime.agentInstallationHintsPending = true;
-    runtime.agentInstallationHintsPromise = window.settingsAPI.detectAgentInstallations(opts)
+    runtime.agentInstallationHintsPromise = window.settingsAPI.detectAgentInstallations()
       .then((result) => {
         runtime.agentInstallationHints = normalizeAgentInstallationHints(result);
         return runtime.agentInstallationHints;
@@ -2568,47 +2461,12 @@
         runtime.agentInstallationHintsFetched = true;
         runtime.agentInstallationHintsPromise = null;
         if (state.activeTab === "agents") requestRender({ content: true });
-        // wslPending means no WSL scan has ever completed. Startup does not
-        // pre-scan (running a command in each distro boots every stopped VM),
-        // so the first Agents-tab visit kicks off the real scan here. No loop:
-        // the scan marks the cache detected on success AND failure, so
-        // wslPending is false on the next fetch either way.
-        if (
-          !refreshWsl &&
-          runtime.agentInstallationHints &&
-          runtime.agentInstallationHints.wslPending &&
-          runtime.agentInstallationHints.wslSupported
-        ) {
-          if (state.activeTab === "agents") {
-            fetchAgentInstallationHints({ refreshWsl: true });
-          } else {
-            // User left the tab before this fetch resolved. Re-arm the
-            // fetched flag so the next Agents-tab visit takes the full
-            // fetch path again and reaches this trigger — otherwise the
-            // flag short-circuits every later plain fetch and the auto
-            // scan is permanently lost for this settings session.
-            runtime.agentInstallationHintsFetched = false;
-          }
-        }
       });
     return runtime.agentInstallationHintsPromise;
   }
 
   function fetchThemes() {
     if (runtime.themeListPromise) return runtime.themeListPromise;
-    // Official metadata is network-backed. Start it beside the local scan, but
-    // never join it to the promise that gates the Theme tab's first paint.
-    void fetchOfficialThemes()
-      .then(() => {
-        // If the official list wins the race, the local-list completion owns
-        // the first paint. Rendering while themeList is still null would
-        // re-enter fetchThemes from renderThemeTab and can starve the pending
-        // listThemes IPC reply with an all-microtask render/fetch loop.
-        if (state.activeTab === "theme" && runtime.themeList !== null) {
-          requestRender({ content: true, preserveScroll: true });
-        }
-      })
-      .catch(() => {});
     if (!window.settingsAPI || typeof window.settingsAPI.listThemes !== "function") {
       runtime.themeList = [];
       return Promise.resolve([]);
@@ -2636,42 +2494,6 @@
     return themeListPromise;
   }
 
-  // The official catalog is fetched independently from the local theme list.
-  // A failed list keeps whatever was rendered before, exactly like listThemes.
-  function fetchOfficialThemes() {
-    if (runtime.officialThemePromise) return runtime.officialThemePromise;
-    if (!window.settingsAPI || typeof window.settingsAPI.listOfficialThemes !== "function") {
-      runtime.officialThemeList = Array.isArray(runtime.officialThemeList) ? runtime.officialThemeList : [];
-      runtime.officialThemeListFetched = true;
-      return Promise.resolve(runtime.officialThemeList);
-    }
-    const previous = Array.isArray(runtime.officialThemeList) ? runtime.officialThemeList : [];
-    const endCountAtRequest = runtime.officialThemeEndCount;
-    const officialThemePromise = window.settingsAPI.listOfficialThemes().then((result) => {
-      const themes = result && Array.isArray(result.themes) ? result.themes : [];
-      const keepPrevious = themes.length === 0 && previous.length > 0 && !(result && result.status === "ok");
-      runtime.officialThemeList = keepPrevious ? previous : themes;
-      runtime.officialThemeCatalogStatus = (result && result.catalogStatus) || "offline";
-      runtime.officialThemeCatalogVersion = result ? result.catalogVersion : null;
-      runtime.officialThemeListFetched = true;
-      // Only a real replacement proves the returned snapshots are newer than the
-      // operation end observed while this read was in flight. Keeping the old
-      // list (or catching below) leaves the cached snapshots untrusted.
-      if (!keepPrevious) runtime.officialThemeListEndCount = endCountAtRequest;
-      return runtime.officialThemeList;
-    }).catch((err) => {
-      console.warn("settings: listOfficialThemes failed", err);
-      runtime.officialThemeList = previous;
-      runtime.officialThemeCatalogStatus = "offline";
-      runtime.officialThemeListFetched = true;
-      return previous;
-    });
-    runtime.officialThemePromise = officialThemePromise;
-    void officialThemePromise.finally(() => {
-      if (runtime.officialThemePromise === officialThemePromise) runtime.officialThemePromise = null;
-    });
-    return officialThemePromise;
-  }
 
   function emptyAnimationOverridesData() {
     return { theme: null, assets: [], sections: [], cards: [], sounds: [] };
@@ -2853,89 +2675,8 @@
     if (state.activeTab === "shortcuts") requestRender({ content: true });
   }
 
-  // A cached per-card progress snapshot can only be read as "still installing"
-  // until an operation end has been observed. A list read that replaced the
-  // official list after that end proves the snapshot is fresh (or gone); a read
-  // that merely kept the old list, or failed, does not.
-  function officialProgressSnapshotsTrusted() {
-    return runtime.officialThemeEndCount === runtime.officialThemeListEndCount;
-  }
 
-  // Post-operation refresh. The list read that is already in flight may have
-  // started before the operation ended, so it can still return a live-download
-  // snapshot; wait for the in-flight local/official reads to settle, then issue
-  // a genuinely new read. The read itself and its single completion render are
-  // shared by the duplicate idle the main process broadcasts.
-  function refreshThemesAfterOfficialOperation() {
-    if (runtime.officialThemeEndRefresh) return runtime.officialThemeEndRefresh;
-    const inFlight = [runtime.themeListPromise, runtime.officialThemePromise].filter(Boolean);
-    const refresh = Promise.allSettled(inFlight)
-      .then(() => {
-        // fetchThemes() resolves on the local scan, but the terminal state lives
-        // in the official catalog read it kicks off beside it. Wait for both so
-        // the completion render sees the post-operation list.
-        const local = fetchThemes();
-        const official = runtime.officialThemePromise;
-        const pending = official ? [local, official] : [local];
-        return Promise.allSettled(pending);
-      })
-      .then(() => {
-        // Clear before the completion render so buttons settle on the fresh
-        // list instead of still reading this refresh as an in-flight install.
-        if (runtime.officialThemeEndRefresh === refresh) runtime.officialThemeEndRefresh = null;
-        if (state.activeTab === "theme") requestRender({ content: true, preserveScroll: true });
-      })
-      .finally(() => {
-        if (runtime.officialThemeEndRefresh === refresh) runtime.officialThemeEndRefresh = null;
-      });
-    runtime.officialThemeEndRefresh = refresh;
-    return refresh;
-  }
 
-  // main owns the single official-theme operation; the renderer only mirrors
-  // its phase so a Settings reload can never restart or lose a live download.
-  function applyOfficialThemeProgress(progress) {
-    if (!progress || typeof progress !== "object") return;
-    const previousOperation = runtime.officialThemeOperation;
-    runtime.officialThemeOperation = progress.phase && progress.phase !== "idle" ? progress : null;
-    // A Settings reload mid-download loses the install promise that would
-    // otherwise refresh the list in its .finally, so the card can stay parked on
-    // a stale per-card progress snapshot after the operation ends. Observing the
-    // end marks cached snapshots untrusted and, when no in-page install owns the
-    // refresh, schedules one. The two back-to-back idle events share that
-    // refresh, and the second one no longer looks like another end.
-    const hasSnapshot = Array.isArray(runtime.officialThemeList)
-      && runtime.officialThemeList.some((theme) => theme && theme.officialThemeProgress);
-    const operationEnded = runtime.officialThemeOperation === null
-      && (
-        previousOperation !== null
-        || (officialProgressSnapshotsTrusted() && hasSnapshot)
-        // A Settings page that opened after the last progress event has no
-        // mirror and no snapshot yet, but an official read still in flight may
-        // carry a pre-idle snapshot. Treat the idle as an observed end so that
-        // read's stale snapshot is invalidated and a fresh read is scheduled.
-        // An in-flight end refresh already owns that fresh read, so its own
-        // read must not count as another end.
-        || (runtime.officialThemePromise && !runtime.officialThemeEndRefresh)
-      );
-    if (operationEnded) {
-      runtime.officialThemeEndCount += 1;
-      if (!runtime.officialThemePendingThemeId) refreshThemesAfterOfficialOperation();
-    }
-    if (state.activeTab !== "theme") return;
-    // Progress events arrive many times per download. A full content render
-    // would tear down and rebuild every theme card each time, which drops the
-    // CSS hover highlight on whatever card the cursor is over (and the
-    // scroll-into-place flicker that comes with it). Let the tab update just
-    // its progress rows when it can; fall back to the full render otherwise.
-    const activeTab = tabs[state.activeTab];
-    if (activeTab
-      && typeof activeTab.patchOfficialThemeProgress === "function"
-      && activeTab.patchOfficialThemeProgress()) {
-      return;
-    }
-    requestRender({ content: true, preserveScroll: true });
-  }
 
   function clearTransientStateForChanges(changes) {
     if (!changes || typeof changes !== "object") return;
@@ -3079,12 +2820,6 @@
     agentSwitchStateId,
     readAgentFlagValue,
     readAgentIntegrationInstalled,
-    readAgentPermissionMode,
-    readAgentCustomPermissionUrl,
-    readAgentCustomDiscoveryPaths,
-    readCustomToolDetectionResults,
-    readCustomAgentDetectionResults,
-    readCustomApplications,
     getShortcutValue,
     getLang,
     readThemeOverrideMap,
@@ -3315,12 +3050,8 @@
     finishShortcutRecording,
     handleShortcutRecordKey,
     applyShortcutFailures,
-    applyOfficialThemeProgress,
-    officialProgressSnapshotsTrusted,
-    refreshThemesAfterOfficialOperation,
     fetchAgentInstallationHints,
     fetchThemes,
-    fetchOfficialThemes,
     fetchAnimationOverridesData,
     applyAnimationPreviewPoster,
     stopAssetPickerPolling,

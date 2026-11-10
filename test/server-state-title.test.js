@@ -9,12 +9,6 @@ const { EventEmitter } = require("node:events");
 
 const initServer = require("../src/server");
 const { MAX_STATE_BODY_BYTES } = require("../src/server-route-state");
-const { makeSessionKey } = require("../src/session-key");
-
-const localSessionKey = (rawSessionId) => makeSessionKey({
-  profileId: "local",
-  rawSessionId,
-});
 
 function makeFakeHttp() {
   let capturedHandler = null;
@@ -204,60 +198,6 @@ describe("/state session_title handling", () => {
     assert.strictEqual(res.statusCode, 200);
     assert.strictEqual(updateSessionCalls[0][3].sessionTitle, null);
   });
-
-  it("passes sessionTitleFromPrompt for a marked non-empty title (#1125)", async () => {
-    const { handler, updateSessionCalls } = startServer();
-    const req = makeReq("POST", "/state", JSON.stringify({
-      state: "thinking",
-      session_id: "sid-1",
-      event: "UserPromptSubmit",
-      session_title: "Prompt first line",
-      session_title_from_prompt: true,
-    }));
-    const res = await callHandler(handler, req);
-    assert.strictEqual(res.statusCode, 200);
-    assert.strictEqual(updateSessionCalls[0][3].sessionTitle, "Prompt first line");
-    assert.strictEqual(updateSessionCalls[0][3].sessionTitleFromPrompt, true);
-  });
-
-  it("does not treat a string marker as prompt-derived (#1125)", async () => {
-    const { handler, updateSessionCalls } = startServer();
-    const req = makeReq("POST", "/state", JSON.stringify({
-      state: "thinking",
-      session_id: "sid-1",
-      event: "UserPromptSubmit",
-      session_title: "Prompt first line",
-      session_title_from_prompt: "true",
-    }));
-    await callHandler(handler, req);
-    assert.strictEqual(updateSessionCalls[0][3].sessionTitleFromPrompt, false);
-  });
-
-  it("does not treat a numeric marker as prompt-derived (#1125)", async () => {
-    const { handler, updateSessionCalls } = startServer();
-    const req = makeReq("POST", "/state", JSON.stringify({
-      state: "thinking",
-      session_id: "sid-1",
-      event: "UserPromptSubmit",
-      session_title: "Prompt first line",
-      session_title_from_prompt: 1,
-    }));
-    await callHandler(handler, req);
-    assert.strictEqual(updateSessionCalls[0][3].sessionTitleFromPrompt, false);
-  });
-
-  it("does not mark a request with no title as prompt-derived (#1125)", async () => {
-    const { handler, updateSessionCalls } = startServer();
-    const req = makeReq("POST", "/state", JSON.stringify({
-      state: "thinking",
-      session_id: "sid-1",
-      event: "UserPromptSubmit",
-      session_title_from_prompt: true,
-    }));
-    await callHandler(handler, req);
-    assert.strictEqual(updateSessionCalls[0][3].sessionTitle, null);
-    assert.strictEqual(updateSessionCalls[0][3].sessionTitleFromPrompt, false);
-  });
 });
 
 describe("/state MAX_STATE_BODY_BYTES cap", () => {
@@ -306,68 +246,3 @@ describe("/state MAX_STATE_BODY_BYTES cap", () => {
   });
 });
 
-describe("/state Codex subagent role handling", () => {
-  it("passes headless for official subagent state signals", async () => {
-    const { handler, updateSessionCalls } = startServer({
-      codexSubagentClassifier: {
-        registerSession: () => "subagent",
-      },
-    });
-
-    await callHandler(handler, makeReq("POST", "/state", JSON.stringify({
-      state: "working",
-      agent_id: "codex",
-      hook_source: "codex-official",
-      session_id: "codex:sub",
-      event: "PreToolUse",
-      turn_id: "turn-1",
-      codex_session_role: "subagent",
-    })));
-    const res = await callHandler(handler, makeReq("POST", "/state", JSON.stringify({
-      state: "idle",
-      agent_id: "codex",
-      hook_source: "codex-official",
-      session_id: "codex:sub",
-      event: "Stop",
-      turn_id: "turn-1",
-      codex_session_role: "subagent",
-    })));
-
-    assert.strictEqual(res.statusCode, 200);
-    const last = updateSessionCalls[updateSessionCalls.length - 1];
-    assert.strictEqual(last[0], localSessionKey("codex:sub"));
-    assert.strictEqual(last[1], "idle");
-    assert.strictEqual(last[2], "Stop");
-    assert.strictEqual(last[3].headless, true);
-  });
-});
-
-describe("/state claude_config_dir handling (#1250)", () => {
-  async function post(payload) {
-    const { handler, updateSessionCalls } = startServer();
-    const res = await callHandler(handler, makeReq("POST", "/state", JSON.stringify({
-      state: "working",
-      session_id: "sid-profile",
-      event: "PreToolUse",
-      ...payload,
-    })));
-    assert.strictEqual(res.statusCode, 200);
-    return updateSessionCalls[0][3];
-  }
-
-  it("passes a normalized Claude profile folder to updateSession", async () => {
-    const opts = await post({ agent_id: "claude-code", claude_config_dir: "/home/u/.claude-work/" });
-    assert.strictEqual(opts.claudeConfigDir, "/home/u/.claude-work");
-  });
-
-  it("accepts Windows folders reported by a Windows hook", async () => {
-    const opts = await post({ agent_id: "claude-code", claude_config_dir: "C:\\Users\\u\\.claude-work" });
-    assert.strictEqual(opts.claudeConfigDir, "C:\\Users\\u\\.claude-work");
-  });
-
-  it("ignores the field for other agents and for unusable values", async () => {
-    assert.strictEqual((await post({ agent_id: "codex", claude_config_dir: "/home/u/.claude-work" })).claudeConfigDir, undefined);
-    assert.strictEqual((await post({ agent_id: "claude-code", claude_config_dir: "relative" })).claudeConfigDir, undefined);
-    assert.strictEqual((await post({ agent_id: "claude-code", claude_config_dir: 7 })).claudeConfigDir, undefined);
-  });
-});

@@ -1,26 +1,20 @@
 "use strict";
 
+// Shared by the Dashboard and the Session HUD renderers (loaded as a plain
+// script) and by main-side tests (CommonJS).
 (function exposeSessionFocusUnavailable(root, factory) {
   const api = factory();
   if (typeof module === "object" && module.exports) module.exports = api;
   if (root) root.ClawdSessionFocusUnavailable = api;
 })(typeof globalThis !== "undefined" ? globalThis : this, function buildSessionFocusUnavailable() {
-  function focusUnavailableReasonKey(session) {
-    if (session && session.platform === "webui") return "sessionFocusUnavailableWebui";
-    if (session && (
-      (session.sourceType && session.sourceType !== "local")
-      || (session.host && session.host !== "local")
-    )) {
-      return "sessionFocusUnavailableRemote";
-    }
+  // Every session is local; the only reason a session cannot be focused is a
+  // missing terminal PID.
+  function focusUnavailableReasonKey() {
     return "sessionFocusUnavailableMissingTerminalInfo";
   }
 
   function canOfferLocalFolder(session) {
     return !!session
-      && session.sourceType === "local"
-      && (!session.host || session.host === "local")
-      && session.platform !== "webui"
       && typeof session.cwd === "string"
       && session.cwd.length > 0;
   }

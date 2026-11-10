@@ -76,41 +76,6 @@ function makeServer({
 }
 
 describe("#681 — startHttpServer always settles, however the runtime write goes", () => {
-  it("advertises legacy by default and preserves explicit cutover overrides", async () => {
-    const resolver = () => ({ status: "unavailable" });
-    resolver.available = true;
-    const h = makeServer({
-      windowsProcessChainModes: { codex: "b1a-authoritative" },
-      windowsProcessMetadataResolver: resolver,
-    });
-    try {
-      await h.api.startHttpServer();
-      const capability = h.runtimeWrites[0][1].windowsProcessChain;
-      assert.strictEqual(capability.version, 1);
-      assert.match(capability.instanceGeneration, /^[A-Za-z0-9_-]+$/);
-      assert.strictEqual(capability.agents.codex, "b1a-authoritative");
-      for (const agentId of ["cursor-agent", "kiro-cli", "codebuddy", "reasonix"]) {
-        assert.strictEqual(capability.agents[agentId], "legacy");
-      }
-    } finally { h.restore(); }
-  });
-
-  it("downgrades requested shadow/authoritative modes when the server resolver cannot initialize", async () => {
-    const unavailableResolver = () => ({ status: "unavailable", reason: "ffi-unavailable" });
-    unavailableResolver.available = false;
-    const h = makeServer({
-      windowsProcessChainModes: { codex: "b1a-authoritative", reasonix: "shadow" },
-      windowsProcessMetadataResolver: unavailableResolver,
-    });
-    try {
-      await h.api.startHttpServer();
-      const modes = h.runtimeWrites[0][1].windowsProcessChain.agents;
-      assert.strictEqual(modes.codex, "legacy");
-      assert.strictEqual(modes.reasonix, "legacy");
-      assert.strictEqual(modes["cursor-agent"], "legacy");
-    } finally { h.restore(); }
-  });
-
   it("settles with the bound port on a successful write", async () => {
     const h = makeServer();
     try {
@@ -143,30 +108,6 @@ describe("#681 — startHttpServer always settles, however the runtime write goe
       ]);
       assert.strictEqual(port, 23533,
         "a throwing writeRuntimeConfig must not strand startHttpServer's promise — settle() is below it");
-    } finally { h.restore(); }
-  });
-
-  it("a throw is reported, not swallowed silently", async () => {
-    const h = makeServer({
-      writeRuntimeConfig: () => { throw new Error("EACCES: permission denied"); },
-    });
-    try {
-      await h.api.startHttpServer();
-      const joined = h.warnings.join("\n");
-      assert.match(joined, /EACCES: permission denied/, "the underlying cause must reach the log");
-      assert.match(joined, /runtime file was not written/i);
-      assert.match(joined, /process metadata will be omitted/i,
-        "the log must say what the user actually loses, not just that a write failed");
-    } finally { h.restore(); }
-  });
-
-  it("a false return warns exactly once, and explains the consequence", async () => {
-    const h = makeServer({ writeRuntimeConfig: () => false });
-    try {
-      await h.api.startHttpServer();
-      const hits = h.warnings.filter((w) => /runtime file was not written/i.test(w));
-      assert.strictEqual(hits.length, 1, "one warning per start — not per event, not zero");
-      assert.match(hits[0], /Doctor/, "point the user at where the repair lives");
     } finally { h.restore(); }
   });
 

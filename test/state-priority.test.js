@@ -10,7 +10,6 @@ const {
   createStatePriorityConstants,
   getStatePriority,
   resolveDominantSessionState,
-  resolveDisplayStateFromSessions,
 } = require("../src/state-priority");
 
 function session(state, overrides = {}) {
@@ -73,34 +72,6 @@ describe("state-priority display selection", () => {
       ["s1", session("carrying")],
       ["s2", session("juggling")],
     ])), "carrying");
-  });
-
-  it("ignores superseded local Codex sessions that share one agent process", () => {
-    assert.strictEqual(resolveDominantSessionState(new Map([
-      ["codex:old", session("working", {
-        agentId: "codex",
-        agentPid: 4242,
-        updatedAt: 1000,
-      })],
-      ["codex:new", session("idle", {
-        agentId: "codex",
-        agentPid: 4242,
-        updatedAt: 2000,
-      })],
-    ])), "idle");
-
-    assert.strictEqual(resolveDominantSessionState(new Map([
-      ["codex:a", session("working", {
-        agentId: "codex",
-        agentPid: 1111,
-        updatedAt: 1000,
-      })],
-      ["codex:b", session("idle", {
-        agentId: "codex",
-        agentPid: 2222,
-        updatedAt: 2000,
-      })],
-    ])), "working");
   });
 
   it("keeps concurrent Codex Desktop sessions separate when they share one agent process", () => {
@@ -169,13 +140,4 @@ describe("state-priority display selection", () => {
       })],
     ])), "working");
   });
-
-  it("applies permission locks over the session display state", () => {
-    const sessions = new Map([["s1", session("working")]]);
-    assert.strictEqual(resolveDisplayStateFromSessions(sessions), "working");
-    assert.strictEqual(resolveDisplayStateFromSessions(sessions, {
-      permissionLocked: true,
-    }), "notification");
-  });
-
 });

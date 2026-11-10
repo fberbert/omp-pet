@@ -442,8 +442,7 @@ function getMiniEnterDurationMs(state) {
 }
 
 function getMiniRestState() {
-  if (ctx.doNotDisturb) return "mini-sleep";
-  return ctx.hasPendingReminderAttention?.() ? "mini-alert" : "mini-idle";
+  return ctx.doNotDisturb ? "mini-sleep" : "mini-idle";
 }
 
 // §4.5 point 4.5-4 default topology consumption: mini mode is still active,
@@ -523,7 +522,7 @@ function finishMiniEntry(delayMs) {
     miniTransitionTimer = null;
     finalizeMiniProtectionExit(consumeTopologyForMiniRest);
     const rest = getMiniRestState();
-    ctx.applyState(rest, undefined, ctx.getReminderReselectionOptions?.(rest));
+    ctx.applyState(rest);
   }, settleMs);
 }
 
@@ -763,7 +762,7 @@ function exitMiniMode() {
       ctx.applyState("waking");
     } else {
       const resolved = ctx.resolveDisplayState();
-      ctx.applyState(resolved, ctx.getSvgOverride(resolved), ctx.getReminderReselectionOptions?.(resolved));
+      ctx.applyState(resolved, ctx.getSvgOverride(resolved));
     }
   }, animCtx);
 }

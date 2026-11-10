@@ -13,12 +13,10 @@ const {
   computeHudOuterWidth,
   evaluateBaseEligible,
   evaluateShouldShow,
-  countQuotaCoins,
   pointInExpandedRect,
   computeAutoHideHotZone,
   pointInHotZone,
   constants,
-  layoutHasTaggedFallback,
 } = sessionHud.__test;
 
 function mkSession(id, overrides = {}) {
@@ -43,10 +41,6 @@ describe("session HUD geometry", () => {
     );
     assert.strictEqual(getHudWidth(true, false), constants.HUD_WIDTH);
     assert.strictEqual(getHudWidth(false, false), constants.HUD_WIDTH_COMPACT);
-    assert.strictEqual(
-      getHudWidth(true, true, true),
-      constants.HUD_WIDTH_LABELS + constants.HUD_CONTEXT_USAGE_WIDTH_BUMP
-    );
 
     const result = computeSessionHudBounds({
       hitRect: { left: 10, top: 80, right: 90, bottom: 160 },
@@ -65,100 +59,19 @@ describe("session HUD geometry", () => {
   // its intrinsic width while the folder label ellipsizes. Without extra window
   // width the label-only widths (notably hudShowElapsed=false) could not fit
   // tag + status label + pin, and the status label was pushed under the pin.
-  it("widens the HUD for tagged fallback rows across every show-toggle combination", () => {
-    for (const showElapsed of [true, false]) {
-      for (const showStateLabels of [true, false]) {
-        for (const showContextUsage of [true, false]) {
-          const plain = getHudWidth(showElapsed, showStateLabels, showContextUsage, false);
-          const tagged = getHudWidth(showElapsed, showStateLabels, showContextUsage, true);
-          assert.strictEqual(
-            tagged,
-            plain + constants.HUD_TAGGED_FALLBACK_WIDTH_BUMP,
-            `tagged rows must be wider for elapsed=${showElapsed} labels=${showStateLabels} context=${showContextUsage}`
-          );
-          assert.ok(tagged > plain, "a tagged row never gets less room than a plain one");
-        }
-      }
-    }
-  });
 
   // The narrowest labeled configuration is the one that regressed: state labels
   // on, elapsed and context usage off.
-  it("gives the tightest labeled configuration room for a tag, a status label and the pin", () => {
-    const narrowest = getHudWidth(false, true, false, true);
-    assert.ok(
-      narrowest >= constants.HUD_WIDTH_LABELS_COMPACT,
-      "the tightest tagged width must reach the full label width"
-    );
-  });
 
   it("leaves untagged HUD widths unchanged", () => {
     assert.strictEqual(getHudWidth(true, true, false, false), getHudWidth(true, true, false));
     assert.strictEqual(getHudWidth(false, true, false, false), getHudWidth(false, true, false));
   });
 
-  it("preserves the tagged row's CSS viewport when text grows", () => {
-    const width = getHudWidth(false, true, true, true);
-    for (const scale of [0.8, 1, 1.6]) {
-      const outer = computeHudOuterWidth(width, scale, getHudWidthScale(scale, true));
-      const shell = Math.round(constants.HUD_WINDOW_SHELL.left * scale)
-        + Math.round(constants.HUD_WINDOW_SHELL.right * scale);
-      assert.ok(Math.abs((outer - shell) / scale - width) <= 1,
-        "large text must not squeeze the fixed tag/chip/action columns");
-    }
-    assert.strictEqual(getHudWidthScale(1.6), 1.24, "ordinary rows retain compact width growth");
-  });
-
   // Every session carries a displaySessionTag (the Telegram/Slack-style #tag),
   // so the width predicate must use the same untitled-local-Codex rule the
   // renderer renders the fallback row with — not bare tag presence. Otherwise
   // every HUD of every user is 56 px wider as soon as any session is visible.
-  it("does not widen the HUD for titled or non-Codex sessions even though they all carry a tag", () => {
-    const taggedTitledCodex = {
-      agentId: "codex",
-      sessionTitle: "Fix login bug",
-      displayTitle: "Fix login bug",
-      displayFolder: "repo",
-      displaySessionTag: "2ce06946ef",
-    };
-    const taggedNonCodex = {
-      agentId: "claude-code",
-      displayTitle: "Refactor auth",
-      displayFolder: "repo",
-      displaySessionTag: "2ce06946ef",
-    };
-    const noTagAtAll = {
-      agentId: "codex",
-      displayTitle: "repo",
-      displayFolder: "repo",
-      displaySessionTag: "",
-    };
-    const layout = { expanded: [taggedTitledCodex, taggedNonCodex, noTagAtAll], folded: [] };
-    assert.strictEqual(layoutHasTaggedFallback(layout), false);
-  });
-
-  it("widens the HUD only for an untitled local Codex Desktop chat", () => {
-    const untitledDesktopChat = {
-      agentId: "codex",
-      hasAlias: false,
-      sessionTitle: "",
-      displayTitle: "repo · 2ce06946ef",
-      displayFolder: "repo",
-      displaySessionTag: "2ce06946ef",
-    };
-    const layout = { expanded: [untitledDesktopChat], folded: [] };
-    assert.strictEqual(layoutHasTaggedFallback(layout), true);
-
-    // An alias or a formal title on the same Codex session disables the
-    // fallback row, so it must disable the width bump too.
-    const aliased = { ...untitledDesktopChat, hasAlias: true, displayTitle: "My alias" };
-    const titled = { ...untitledDesktopChat, sessionTitle: "Real title", displayTitle: "Real title · 2ce06946ef" };
-    assert.strictEqual(layoutHasTaggedFallback({ expanded: [aliased], folded: [] }), false);
-    assert.strictEqual(layoutHasTaggedFallback({ expanded: [titled], folded: [] }), false);
-
-    // Folded rows count the same as expanded ones.
-    assert.strictEqual(layoutHasTaggedFallback({ expanded: [], folded: [untitledDesktopChat] }), true);
-  });
 
   it("positions the visible HUD card below the pet hitbox with a fixed gap", () => {
     const result = computeSessionHudBounds({
@@ -265,7 +178,7 @@ describe("session HUD geometry", () => {
   it("dampens large-text HUD width while keeping height and gaps at full scale", () => {
     const scale = 1.5;
     const widthScale = getHudWidthScale(scale);
-    const width = constants.HUD_WIDTH_LABELS + constants.HUD_CONTEXT_USAGE_WIDTH_BUMP;
+    const width = constants.HUD_WIDTH_LABELS;
     const result = computeSessionHudBounds({
       hitRect: { left: 10, top: 80, right: 90, bottom: 160 },
       workArea: { x: 0, y: 0, width: 1200, height: 900 },
@@ -313,7 +226,7 @@ describe("session HUD geometry", () => {
     const widthScale = getHudWidthScale(scale);
     const hitRect = { left: 100, top: 80, right: 260, bottom: 240 };
     const workArea = { x: 0, y: 0, width: 2000, height: 1200 };
-    const width = constants.HUD_WIDTH_LABELS + constants.HUD_CONTEXT_USAGE_WIDTH_BUMP; // 356
+    const width = constants.HUD_WIDTH_LABELS;
 
     const scaled = computeSessionHudBounds({ hitRect, workArea, width, scale, widthScale });
     const pad = Math.round(constants.HOT_ZONE_PAD * scale);
@@ -440,13 +353,6 @@ describe("session HUD layout", () => {
     assert.strictEqual(rowCount, 2);
   });
 
-  it("excludes preference-suppressed rows from native HUD geometry and folded counts", () => {
-    const sessions = [mkSession("visible"), mkSession("completed-temporary", { hudHiddenByPreference: true })];
-    const layout = computeHudLayout({ sessions, orderedIds: ["completed-temporary", "visible"] });
-    assert.deepStrictEqual(layout.expanded.map(row => row.id), ["visible"]);
-    assert.strictEqual(layout.folded.length, 0); assert.strictEqual(layout.rowCount, 1);
-  });
-
   it("returns 0 rows for empty snapshot", () => {
     const { expanded, folded, rowCount } = computeHudLayout({ sessions: [] });
     assert.strictEqual(expanded.length, 0);
@@ -462,78 +368,6 @@ describe("session HUD layout", () => {
     );
     assert.strictEqual(computeHudHeight(0), constants.HUD_ROW_HEIGHT);
     assert.strictEqual(computeHudHeight(-1), constants.HUD_ROW_HEIGHT);
-  });
-
-  it("counts one quota coin per (source, provider) with drawable buckets", () => {
-    // The HUD no longer carries a quota strip; quota lives in the pet-attached
-    // ring window. countQuotaCoins drives HUD eligibility and ring sizing.
-    const future = Date.now() + 3600000;
-    const past = Date.now() - 60000;
-    const snapshot = {
-      sessions: [],
-      accountQuota: [
-        { host: "pi", claudeQuota: { group: { claudeWeekly: { usedPercent: 41, resetAt: future } }, updatedAt: 1 } },
-        { host: "expired", codexQuota: { group: { codexFiveHour: { usedPercent: 9, resetAt: past, expired: true } }, updatedAt: 1 } },
-      ],
-    };
-    // Expired buckets still draw a dimmed reset coin, so they count.
-    assert.strictEqual(countQuotaCoins(snapshot, true), 2);
-    assert.strictEqual(countQuotaCoins(snapshot, false), 0, "hudShowQuota off hides the ring");
-  });
-
-  it("counts Antigravity third-party-only buckets for ring eligibility", () => {
-    const snapshot = {
-      sessions: [],
-      accountQuota: [{
-        host: "remote",
-        antigravityQuota: {
-          group: { thirdPartyWeekly: { usedPercent: 52, resetAt: Date.now() + 3600000 } },
-          updatedAt: 1,
-        },
-      }],
-    };
-    assert.strictEqual(countQuotaCoins(snapshot, true), 1);
-    assert.strictEqual(evaluateBaseEligible({ snapshot, showQuota: true }), true);
-  });
-
-  it("does not make the Orbit eligible for Dashboard-only Spark quota", () => {
-    const snapshot = {
-      sessions: [],
-      accountQuota: [{
-        codexSparkQuota: {
-          group: {
-            codexWeekly: {
-              usedPercent: 7,
-              resetAt: Date.now() + 3600000,
-            },
-          },
-          updatedAt: 1,
-        },
-      }],
-    };
-    assert.strictEqual(countQuotaCoins(snapshot, true), 0);
-    assert.strictEqual(evaluateBaseEligible({ snapshot, showQuota: true }), false);
-  });
-
-  it("the quota ring is base-eligible independently of the Session HUD master", () => {
-    const quotaOnly = {
-      sessions: [],
-      accountQuota: [
-        { host: "pi", claudeQuota: { group: { claudeWeekly: { usedPercent: 41, resetAt: Date.now() + 3600000 } }, updatedAt: 1 } },
-      ],
-    };
-    // Quota alone reveals the ring — even with the Session HUD turned OFF
-    // (check a remote's quota before starting any work there).
-    assert.strictEqual(evaluateBaseEligible({ snapshot: quotaOnly, sessionHudEnabled: true, showQuota: true }), true);
-    assert.strictEqual(evaluateBaseEligible({ snapshot: quotaOnly, sessionHudEnabled: false, showQuota: true }), true);
-    // Quota switch off → no ring.
-    assert.strictEqual(evaluateBaseEligible({ snapshot: quotaOnly, sessionHudEnabled: true, showQuota: false }), false);
-    // Sessions with the HUD master off and no quota → nothing to show; the HUD
-    // still respects its own master.
-    const sessionsOnly = { sessions: [mkSession("a")], accountQuota: [] };
-    assert.strictEqual(evaluateBaseEligible({ snapshot: sessionsOnly, sessionHudEnabled: false, showQuota: true }), false);
-    assert.strictEqual(evaluateBaseEligible({ snapshot: sessionsOnly, sessionHudEnabled: true, showQuota: true }), true);
-    assert.strictEqual(evaluateBaseEligible({ snapshot: { sessions: [], accountQuota: [] }, sessionHudEnabled: true, showQuota: true }), false);
   });
 });
 
@@ -746,66 +580,12 @@ describe("session HUD v5 three-state runtime contracts (source-level)", () => {
       "module return must expose revealFromPet/handlePinnedChanged/clearReveal");
   });
 
-  it("exposes a ring-only reposition path for post-bubble avoidance", () => {
-    assert.match(src, /function repositionQuotaRing\(\)/);
-    assert.match(src, /repositionSessionHud,\s*\n\s*repositionQuotaRing,/);
-  });
-
   it("snapshot to renderer no longer includes hudAutoHide", () => {
     assert.ok(!/hudAutoHide:/.test(src),
       "session-hud must not send hudAutoHide in snapshot");
   });
 
-  it("sends only the supported quota display modes to the ring renderer", () => {
-    assert.match(
-      src,
-      /displayMode:\s*ctx\.quotaRingDisplayMode === "remaining" \? "remaining" : "used"/
-    );
-  });
-
-  it("wires the persisted quota display mode through main's runtime mirror", () => {
-    const mainSrc = fs.readFileSync(path.join(__dirname, "..", "src", "main.js"), "utf8");
-    assert.match(mainSrc, /let quotaRingDisplayMode = _settingsController\.get\("quotaRingDisplayMode"\)/);
-    assert.match(mainSrc, /get quotaRingDisplayMode\(\) \{ return quotaRingDisplayMode; \}/);
-    assert.match(mainSrc, /quotaRingDisplayMode: \(v\) => \{ quotaRingDisplayMode = v; \}/);
-  });
-
   it("does not create or manage a quota hover-card window", () => {
     assert.doesNotMatch(src, /quotaTooltip|quota-tooltip|preload-quota-tooltip/);
-  });
-
-  it("destroys hidden HUD and quota-ring windows independently in low power idle mode", () => {
-    assert.ok(
-      /const\s+HIDDEN_WINDOW_DESTROY_MS\s*=\s*30000/.test(src),
-      "session-hud should define a hidden-window destroy delay"
-    );
-    assert.ok(
-      /function scheduleHiddenDestroy\(kind\)\s*\{[\s\S]*?if\s*\(!ctx\.lowPowerIdleMode\)\s*return;/.test(src),
-      "hidden-window destroy must be gated behind low power idle mode"
-    );
-    assert.ok(
-      /const hiddenDestroyTimers = \{ hud: null, ring: null \}/.test(src),
-      "HUD and ring must not cancel each other's hidden cleanup"
-    );
-    assert.ok(
-      /function scheduleHiddenDestroy\(kind\)\s*\{[\s\S]*?current\.destroy\(\)/.test(src),
-      "hidden cleanup must eventually destroy the selected BrowserWindow"
-    );
-    assert.ok(
-      /function hideSessionHud\(\)\s*\{[\s\S]*?scheduleHiddenDestroy\("hud"\)/.test(src),
-      "hiding the HUD should schedule hidden-window cleanup"
-    );
-    assert.ok(
-      /function hideQuotaRing\(\)\s*\{[\s\S]*?scheduleHiddenDestroy\("ring"\)/.test(src),
-      "hiding a ring-only UI should schedule its own renderer cleanup"
-    );
-    assert.ok(
-      /function showSessionHud\(win\)\s*\{[\s\S]*?cancelHiddenDestroy\("hud"\)/.test(src),
-      "showing the HUD should cancel hidden-window cleanup"
-    );
-    assert.ok(
-      /function showQuotaRing\(win\)\s*\{[\s\S]*?cancelHiddenDestroy\("ring"\)/.test(src),
-      "showing the ring should cancel only the ring cleanup"
-    );
   });
 });

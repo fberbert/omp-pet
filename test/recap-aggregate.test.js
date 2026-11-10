@@ -36,45 +36,19 @@ function record(journal, agentId, metrics, hour, identity = {}) {
 
 test("aggregate preserves unsupported null separately from supported zero", (t) => {
   const { aggregate, journal } = fixture(t);
-  aggregate.apply(record(journal, "codex", ["activity", "tool-call"], 4));
-  aggregate.apply(record(journal, "antigravity-cli", ["activity", "turn-complete"], 4));
+  aggregate.apply(record(journal, "omp", ["activity", "tool-call"], 4));
   const day = aggregate.query("2026-08-29", "2026-08-29")[0];
-  const rows = day.rows;
   assert.equal(day.hourCapacities[4], 60);
-  const codex = rows.find((row) => row.agentId === "codex");
-  const agy = rows.find((row) => row.agentId === "antigravity-cli");
-  assert.equal(codex.metrics.toolCalls, 1);
-  assert.equal(codex.metrics.turnsCompleted, 0);
-  assert.equal(codex.metrics.sessionsStarted, null);
-  assert.equal(agy.metrics.toolCalls, null);
-  assert.equal(agy.metrics.turnsCompleted, 1);
-  assert.equal(agy.hours[4], 1);
-});
-
-test("aggregate keeps same agent scopes separate and marks reusable session starts partial", (t) => {
-  const { aggregate, journal } = fixture(t);
-  aggregate.apply(record(journal, "claude-code", ["activity"], 1, {
-    sessionId: "default",
-    sessionStartPartial: true,
-  }));
-  aggregate.apply(record(journal, "claude-code", ["activity", "session-start"], 2, {
-    scope: "remote",
-    scopeId: "server-one",
-    sessionId: "fresh",
-  }));
-  const rows = aggregate.query("2026-08-29", "2026-08-29")[0].rows;
-  assert.equal(rows.length, 2);
-  const local = rows.find((row) => row.scope === "local");
-  const remote = rows.find((row) => row.scope === "remote");
-  assert.equal(local.sessionsStartedPartial, true);
-  assert.equal(local.metrics.sessionsStarted, 0);
-  assert.equal(remote.sessionsStartedPartial, false);
-  assert.equal(remote.metrics.sessionsStarted, 1);
+  const row = day.rows.find((item) => item.agentId === "omp");
+  assert.equal(row.metrics.toolCalls, 1);
+  assert.equal(row.metrics.turnsCompleted, 0);
+  assert.equal(row.metrics.sessionsStarted, null);
+  assert.equal(row.hours[4], 1);
 });
 
 test("retained journal dates rebuild monthly cache after an interrupted flush", (t) => {
   const { aggregate, journal, store } = fixture(t);
-  const item = record(journal, "codex", ["activity", "tool-call"], 8, {
+  const item = record(journal, "omp", ["activity", "tool-call"], 8, {
     sessionId: "s",
     dedupeId: "tool",
   });
@@ -98,7 +72,7 @@ test("daily rows freeze their historical metric support instead of following cur
   const day = normalizeDay("2026-08-29", {
     rows: {
       old: {
-        agentId: "antigravity-cli",
+        agentId: "omp",
         scope: "local",
         scopeKeyHash: hash,
         support: { sessionsStarted: false, turnsCompleted: true, toolCalls: true },
@@ -119,7 +93,7 @@ test("daily rows freeze their historical metric support instead of following cur
 
 test("duplicate serialized row keys merge into the broad agent scope", () => {
   const makeRow = (hash, count) => ({
-    agentId: "codex",
+    agentId: "omp",
     scope: "remote",
     scopeKeyHash: hash,
     support: { sessionsStarted: false, turnsCompleted: true, toolCalls: true },
@@ -164,10 +138,10 @@ test("unreleased daily aggregate schemas are quarantined without migration", (t)
 
 test("a day with mixed supported and unsupported policy segments stays honestly null", (t) => {
   const { aggregate, journal } = fixture(t);
-  const historical = record(journal, "antigravity-cli", ["activity", "tool-call"], 8);
-  historical.support.toolCalls = true;
+  const historical = record(journal, "omp", ["activity", "tool-call"], 8);
+  historical.support.toolCalls = false;
   aggregate.apply(historical);
-  aggregate.apply(record(journal, "antigravity-cli", ["activity"], 9));
+  aggregate.apply(record(journal, "omp", ["activity"], 9));
   const row = aggregate.query("2026-08-29", "2026-08-29")[0].rows[0];
   assert.equal(row.metrics.toolCalls, null);
   assert.equal(row.metrics.activityEvents, 2);
@@ -221,17 +195,17 @@ test("issue #1141: projection plus replaceDays matches a direct record replay", 
   const dates = ["2026-08-29", "2026-08-30", "2026-08-31"];
 
   const records = [
-    onDate(first.journal, "2026-08-30", 8, "codex", ["activity", "tool-call"]),
-    onDate(first.journal, "2026-08-30", 9, "codex", ["activity", "turn-complete", "session-start"], {
+    onDate(first.journal, "2026-08-30", 8, "omp", ["activity", "tool-call"]),
+    onDate(first.journal, "2026-08-30", 9, "omp", ["activity", "turn-complete", "session-start"], {
       scope: "remote",
       scopeId: "server-one",
     }),
-    onDate(first.journal, "2026-08-30", 10, "claude-code", ["activity"], {
+    onDate(first.journal, "2026-08-30", 10, "omp", ["activity"], {
       sessionId: "default",
       sessionStartPartial: true,
     }),
-    onDate(first.journal, "2026-08-30", 11, "antigravity-cli", ["activity", "tool-call"]),
-    onDate(first.journal, "2026-08-31", 0, "codex", ["activity"]),
+    onDate(first.journal, "2026-08-30", 11, "omp", ["activity", "tool-call"]),
+    onDate(first.journal, "2026-08-31", 0, "omp", ["activity"]),
   ];
   // A historical ticket can freeze tool support that current policy rejects.
   records[3].support.toolCalls = true;
@@ -240,11 +214,11 @@ test("issue #1141: projection plus replaceDays matches a direct record replay", 
   // no input record and must end up deleted; 09-01 is outside dates and stays.
   for (const f of [first, second]) {
     f.aggregate.replaceDates(["2026-08-29"], [
-      onDate(f.journal, "2026-08-29", 2, "codex", ["activity", "tool-call"]),
-      onDate(f.journal, "2026-08-29", 5, "claude-code", ["activity"], { sessionId: "seeded" }),
+      onDate(f.journal, "2026-08-29", 2, "omp", ["activity", "tool-call"]),
+      onDate(f.journal, "2026-08-29", 5, "omp", ["activity"], { sessionId: "seeded" }),
     ]);
     f.aggregate.replaceDates(["2026-09-01"], [
-      onDate(f.journal, "2026-09-01", 7, "codex", ["activity", "turn-complete"]),
+      onDate(f.journal, "2026-09-01", 7, "omp", ["activity", "turn-complete"]),
     ]);
   }
 

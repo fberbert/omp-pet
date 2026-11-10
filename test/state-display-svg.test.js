@@ -83,42 +83,6 @@ describe("display_svg session hints (updateSession path)", () => {
     api.updateSession("c1", "thinking", "AfterAgentThought", baseOpts({ displayHint: "clawd-working-thinking.svg" }));
     assert.strictEqual(api.getSvgOverride("thinking"), "clawd-working-thinking.svg");
   });
-
-  it("shows painting for /design and heart eyes at its Claude Stop", async () => {
-    const previousDebounce = process.env.CLAWD_COMPLETION_DEBOUNCE_MS;
-    process.env.CLAWD_COMPLETION_DEBOUNCE_MS = "0";
-    try {
-      const claude = baseOpts({ agentId: "claude-code" });
-      api.updateSession("design", "thinking", "UserPromptExpansion", { ...claude, displayHint: "claude-design" });
-      assert.strictEqual(api.getSvgOverride("thinking"), "clawd-designing.svg");
-      api.updateSession("design", "working", "PreToolUse", claude);
-      assert.strictEqual(api.getSvgOverride("working"), "clawd-designing.svg");
-      api.updateSession("design", "attention", "Stop", claude);
-      await new Promise((resolve) => setTimeout(resolve, 1050));
-      assert.strictEqual(api.getCurrentSvg(), "clawd-heart-eyes.svg");
-    } finally {
-      if (previousDebounce === undefined) delete process.env.CLAWD_COMPLETION_DEBOUNCE_MS;
-      else process.env.CLAWD_COMPLETION_DEBOUNCE_MS = previousDebounce;
-    }
-  });
-
-  it("keeps painting during the completion hold, then shows heart eyes", async () => {
-    const previousDebounce = process.env.CLAWD_COMPLETION_DEBOUNCE_MS;
-    process.env.CLAWD_COMPLETION_DEBOUNCE_MS = "1000";
-    try {
-      const claude = baseOpts({ agentId: "claude-code" });
-      api.updateSession("design-held", "thinking", "UserPromptExpansion", {
-        ...claude, displayHint: "claude-design",
-      });
-      api.updateSession("design-held", "attention", "Stop", claude);
-      assert.strictEqual(api.getCurrentSvg(), "clawd-designing.svg");
-      await new Promise((resolve) => setTimeout(resolve, 2150));
-      assert.strictEqual(api.getCurrentSvg(), "clawd-heart-eyes.svg");
-    } finally {
-      if (previousDebounce === undefined) delete process.env.CLAWD_COMPLETION_DEBOUNCE_MS;
-      else process.env.CLAWD_COMPLETION_DEBOUNCE_MS = previousDebounce;
-    }
-  });
 });
 
 // #509: user-selected default idle visual flows through state.js
@@ -163,7 +127,6 @@ describe("default idle visual (getIdleVisualChoice ctx hook)", () => {
   });
 });
 
-
 describe("Claude design turn continuity", () => {
   let api;
   let savedDebounce;
@@ -195,53 +158,6 @@ describe("Claude design turn continuity", () => {
     });
     api.updateSession("design", "working", "PreToolUse", opts);
   }
-
-  function finishDesign() {
-    api.updateSession("design", "working", "PreToolUse", claude);
-    assert.strictEqual(api.getCurrentSvg(), "clawd-designing.svg");
-    api.updateSession("design", "attention", "Stop", claude);
-    assert.strictEqual(api.getCurrentSvg(), "clawd-heart-eyes.svg");
-    assert.strictEqual(api.sessions.get("design").displayHint, null);
-  }
-
-  for (const [event, state] of [
-    ["PostToolUseFailure", "error"],
-    ["Notification", "notification"],
-    ["Elicitation", "notification"],
-    ["PreCompact", "sweeping"],
-    ["WorktreeCreate", "carrying"],
-  ]) {
-    it(`retains the turn hint through ${event}, while showing its normal cue`, () => {
-      startDesign();
-      api.updateSession("design", state, event, claude);
-      assert.strictEqual(api.getCurrentState(), state);
-      assert.strictEqual(api.sessions.get("design").state, "idle");
-      assert.strictEqual(api.sessions.get("design").displayHint, "claude-design");
-      assert.notStrictEqual(api.getSvgOverride("idle"), "clawd-designing.svg");
-      finishDesign();
-    });
-  }
-
-  it("preserves the hint across a complete automatic compaction lifecycle", () => {
-    startDesign();
-    api.updateSession("design", "sweeping", "PreCompact", claude);
-    api.updateSession("design", "idle", "SessionStart", { ...claude, sessionStartSource: "compact" });
-    assert.strictEqual(api.sessions.get("design").displayHint, "claude-design");
-    api.updateSession("design", "thinking", "PostCompact", claude);
-    assert.strictEqual(api.getCurrentSvg(), "clawd-designing.svg");
-    finishDesign();
-  });
-
-  it("keeps the completion hint when a notification arrives in the Stop debounce window", () => {
-    process.env.CLAWD_COMPLETION_DEBOUNCE_MS = "1000";
-    startDesign();
-    api.updateSession("design", "attention", "Stop", claude);
-    api.updateSession("design", "notification", "Notification", claude);
-    assert.strictEqual(api.getCurrentState(), "notification");
-    mock.timers.tick(1000);
-    assert.strictEqual(api.getCurrentSvg(), "clawd-heart-eyes.svg");
-    assert.strictEqual(api.sessions.get("design").displayHint, null);
-  });
 
   for (const [event, state, extra] of [
     ["StopFailure", "error", {}],
@@ -280,13 +196,6 @@ describe("Claude design turn continuity", () => {
     api.updateSession("design", "working", "PreToolUse", opts);
     api.updateSession("design", "attention", "Stop", opts);
     assert.notStrictEqual(api.getCurrentSvg(), "clawd-heart-eyes.svg");
-  });
-
-  it("does not let a child Stop consume the parent's design completion", () => {
-    startDesign();
-    api.updateSession("design", "attention", "Stop", { ...claude, subagentId: "child-design" });
-    assert.notStrictEqual(api.getCurrentSvg(), "clawd-heart-eyes.svg");
-    assert.strictEqual(api.sessions.get("design").displayHint, "claude-design");
   });
 
   it("does not retain an ordinary per-tool visual hint across a notification", () => {

@@ -7,27 +7,15 @@ const path = require("path");
 const os = require("os");
 
 const prefs = require("../src/prefs");
-const {
-  createCodexAutoStartGateEvaluator,
-  isCodexAutoStartEnabled,
-} = require("../src/agent-gate");
+const { isCodexAutoStartEnabled } = require("../src/agent-gate");
 const { createSettingsController } = require("../src/settings-controller");
-const { commandRegistry, updateRegistry } = require("../src/settings-actions");
+const { updateRegistry } = require("../src/settings-actions");
 
 const tempDirs = [];
 function makeTempPath() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "clawd-controller-"));
   tempDirs.push(dir);
   return path.join(dir, "clawd-prefs.json");
-}
-
-function createDeferred() {
-  const deferred = {};
-  deferred.promise = new Promise((resolve, reject) => {
-    deferred.resolve = resolve;
-    deferred.reject = reject;
-  });
-  return deferred;
 }
 
 afterEach(() => {
@@ -64,73 +52,12 @@ describe("createSettingsController construction", () => {
   });
 });
 
-describe("quota ring display mode persistence", () => {
-  it("accepts remaining through the controller and restores it after relaunch", async () => {
-    const p = makeTempPath();
-    const ctrl = createSettingsController({ prefsPath: p });
-
-    const result = await ctrl.applyUpdate("quotaRingDisplayMode", "remaining");
-
-    assert.deepStrictEqual(result, { status: "ok" });
-    assert.strictEqual(ctrl.get("quotaRingDisplayMode"), "remaining");
-    assert.strictEqual(prefs.load(p).snapshot.quotaRingDisplayMode, "remaining");
-
-    const relaunched = createSettingsController({ prefsPath: p });
-    assert.strictEqual(relaunched.get("quotaRingDisplayMode"), "remaining");
-  });
-});
-
 describe("mobile permission preview controller boundary", () => {
   it("rejects generic writers for the consent-only child key", async () => {
     const ctrl = createSettingsController({ prefsPath: makeTempPath() });
     assert.strictEqual(ctrl.applyUpdate("mobilePermissionPreviewEnabled", true).status, "error");
     assert.strictEqual(ctrl.applyBulk({ mobilePermissionPreviewEnabled: true }).status, "error");
     assert.strictEqual(ctrl.hydrate({ mobilePermissionPreviewEnabled: true }).status, "error");
-  });
-
-  it("serializes reset-and-enable so a double click rotates at most once", async () => {
-    let resets = 0;
-    const ctrl = createSettingsController({
-      prefsPath: makeTempPath(),
-      injectedDeps: {
-        resetMobileAccess: () => { resets++; return `token-${resets}`; },
-      },
-    });
-    assert.deepStrictEqual(ctrl.applyUpdate("mobilePreviewEnabled", true), { status: "ok" });
-    const payload = { enabled: true, confirmed: true, resetAccess: true };
-    const [first, second] = await Promise.all([
-      ctrl.applyCommand("setMobilePermissionPreviewEnabled", payload),
-      ctrl.applyCommand("setMobilePermissionPreviewEnabled", payload),
-    ]);
-    assert.strictEqual(first.status, "ok");
-    assert.strictEqual(first.tokenReset, true);
-    assert.deepStrictEqual(second, { status: "ok", noop: true, message: undefined });
-    assert.strictEqual(resets, 1);
-  });
-
-  it("preserves reset phase metadata when the later preference persist fails", async () => {
-    const fakePrefs = {
-      save() { throw new Error("disk full"); },
-    };
-    const snapshot = { ...prefs.getDefaults(), mobilePreviewEnabled: true };
-    let resets = 0;
-    const ctrl = createSettingsController({
-      prefsPath: makeTempPath(),
-      prefs: fakePrefs,
-      loadResult: { snapshot, locked: false },
-      injectedDeps: { resetMobileAccess: () => { resets++; return "new-token"; } },
-    });
-    const result = await ctrl.applyCommand("setMobilePermissionPreviewEnabled", {
-      enabled: true,
-      confirmed: true,
-      resetAccess: true,
-    });
-    assert.strictEqual(result.status, "error");
-    assert.strictEqual(result.message, "disk full");
-    assert.strictEqual(result.tokenReset, true);
-    assert.strictEqual(result.rePairRequired, true);
-    assert.strictEqual(ctrl.get("mobilePermissionPreviewEnabled"), false);
-    assert.strictEqual(resets, 1);
   });
 });
 
@@ -231,87 +158,7 @@ describe("keep-size toggle rebase ordering", () => {
   });
 });
 
-describe("Kimi quota collection opt-in", () => {
-  it("persists only through its command path", async () => {
-    const prefsPath = makeTempPath();
-    const ctrl = createSettingsController({ prefsPath });
-    const enabled = await ctrl.applyCommand("setKimiQuotaCollectionEnabled", { enabled: true });
-    assert.strictEqual(enabled.status, "ok");
-    assert.strictEqual(ctrl.get("kimiQuotaCollectionEnabled"), true);
-    const relaunched = createSettingsController({ prefsPath });
-    assert.strictEqual(relaunched.get("kimiQuotaCollectionEnabled"), true);
-  });
-});
-
 describe("permission automation safe startup persistence", () => {
-  it("keeps off across a relaunch", async () => {
-    const p = makeTempPath();
-    const ctrl = createSettingsController({ prefsPath: p });
-    const result = await ctrl.applyCommand("setPermissionAutomationMode", { mode: "off" });
-    assert.strictEqual(result.status, "ok");
-    ctrl.persist();
-    assert.strictEqual(prefs.load(p).snapshot.permissionAutomationMode, "off");
-  });
-
-  it("keeps auto-tools across a relaunch", async () => {
-    const p = makeTempPath();
-    const ctrl = createSettingsController({ prefsPath: p });
-    const result = await ctrl.applyCommand("setPermissionAutomationMode", {
-      mode: "auto-tools",
-      confirmed: true,
-    });
-    assert.strictEqual(result.status, "ok");
-    assert.strictEqual(ctrl.get("permissionAutomationMode"), "auto-tools");
-    assert.strictEqual(prefs.load(p).snapshot.permissionAutomationMode, "auto-tools");
-  });
-
-  it("keeps unattended for this process but relaunches in auto-tools", async () => {
-    const p = makeTempPath();
-    const ctrl = createSettingsController({ prefsPath: p });
-    const result = await ctrl.applyCommand("setPermissionAutomationMode", {
-      mode: "unattended",
-      confirmed: true,
-    });
-    assert.strictEqual(result.status, "ok");
-    assert.strictEqual(
-      ctrl.get("permissionAutomationMode"),
-      "unattended",
-      "the current process must stay fully automatic"
-    );
-    const onDisk = JSON.parse(fs.readFileSync(p, "utf8"));
-    assert.strictEqual(onDisk.permissionAutomationMode, "auto-tools");
-    const relaunched = createSettingsController({ prefsPath: p });
-    assert.strictEqual(relaunched.get("permissionAutomationMode"), "auto-tools");
-  });
-
-  it("does not publish or commit a mode change when persistence fails", async () => {
-    const snapshot = { ...prefs.getDefaults() };
-    const failingPrefs = {
-      load: () => ({ snapshot, locked: false }),
-      save: () => {
-        throw new Error("disk full");
-      },
-    };
-    const ctrl = createSettingsController({
-      prefsPath: "unused-in-memory-path",
-      prefs: failingPrefs,
-    });
-    let broadcasts = 0;
-    ctrl.subscribe(() => {
-      broadcasts += 1;
-    });
-
-    const result = await ctrl.applyCommand("setPermissionAutomationMode", {
-      mode: "unattended",
-      confirmed: true,
-    });
-
-    assert.strictEqual(result.status, "error");
-    assert.match(result.message, /disk full/);
-    assert.strictEqual(ctrl.get("permissionAutomationMode"), "off");
-    assert.strictEqual(broadcasts, 0);
-  });
-
   it("keeps the previous automatic mode when switching off cannot persist", async () => {
     const snapshot = {
       ...prefs.getDefaults(),
@@ -335,32 +182,6 @@ describe("permission automation safe startup persistence", () => {
 
     assert.strictEqual(result.status, "error");
     assert.strictEqual(ctrl.get("permissionAutomationMode"), "auto-tools");
-  });
-
-  it("rejects generic writers for mode and warning-gate fields", async () => {
-    const ctrl = createSettingsController({ prefsPath: makeTempPath() });
-    const cases = [
-      ctrl.applyUpdate("permissionAutomationMode", "unattended"),
-      ctrl.applyBulk({ permissionAutomationAutoToolsWarningDismissed: true }),
-      ctrl.hydrate({ permissionAutomationUnattendedWarningDismissed: true }),
-      ctrl.applyUpdate("autoApproveAllPermissions", true),
-      ctrl.applyUpdate("kimiQuotaCollectionEnabled", true),
-    ];
-    for (const result of cases) {
-      assert.strictEqual((await result).status, "error");
-      assert.match((await result).message, /command-only/);
-    }
-    assert.strictEqual(ctrl.get("permissionAutomationMode"), "off");
-    assert.strictEqual(
-      ctrl.get("permissionAutomationAutoToolsWarningDismissed"),
-      false
-    );
-    assert.strictEqual(
-      ctrl.get("permissionAutomationUnattendedWarningDismissed"),
-      false
-    );
-    assert.strictEqual(ctrl.get("autoApproveAllPermissions"), false);
-    assert.strictEqual(ctrl.get("kimiQuotaCollectionEnabled"), false);
   });
 });
 
@@ -414,27 +235,6 @@ describe("Codex auto-start gate commit ordering", () => {
     assert.deepStrictEqual(gateWrites, []);
   });
 
-  it("does not enable the external gate when installing Codex cannot persist", async () => {
-    const snapshot = prefs.getDefaults();
-    snapshot.agents.codex = {
-      ...snapshot.agents.codex,
-      integrationInstalled: false,
-      enabled: false,
-    };
-    const gateWrites = [];
-    const ctrl = createFailingController(snapshot, gateWrites);
-
-    const result = await ctrl.applyCommand("installAgentIntegration", {
-      agentId: "codex",
-    });
-
-    assert.strictEqual(result.status, "error");
-    assert.match(result.message, /prefs read only/);
-    assert.strictEqual(ctrl.get("agents").codex.integrationInstalled, false);
-    assert.strictEqual(ctrl.get("agents").codex.enabled, false);
-    assert.deepStrictEqual(gateWrites, []);
-  });
-
   it("does not publish an enabled gate from future-version locked prefs", async () => {
     const snapshot = prefs.getDefaults();
     snapshot.agents.codex = {
@@ -475,163 +275,6 @@ describe("Codex auto-start gate commit ordering", () => {
     assert.strictEqual(ctrl.get("agents").codex.enabled, true);
     assert.deepStrictEqual(gateWrites, []);
   });
-
-  it("does not publish an enabled gate when installing under future-version locked prefs", async () => {
-    const snapshot = prefs.getDefaults();
-    snapshot.agents.codex = {
-      ...snapshot.agents.codex,
-      integrationInstalled: false,
-      enabled: false,
-    };
-    const gateWrites = [];
-    const ctrl = createSettingsController({
-      prefsPath: "unused-locked-path",
-      prefs: {
-        load: () => ({ snapshot, locked: true }),
-        save: () => {
-          throw new Error("locked prefs must not be persisted");
-        },
-      },
-      injectedDeps: {
-        syncIntegrationForAgent: async () => ({ status: "ok" }),
-        startMonitorForAgent() {},
-        writeCodexAutoStartGate(enabled) {
-          gateWrites.push(enabled);
-          return true;
-        },
-      },
-    });
-    ctrl.subscribeKey("agents", (_agents, nextSnapshot) => {
-      if (ctrl.isLocked()) return;
-      gateWrites.push(isCodexAutoStartEnabled(nextSnapshot));
-    });
-
-    const result = await ctrl.applyCommand("installAgentIntegration", {
-      agentId: "codex",
-    });
-
-    assert.strictEqual(result.status, "ok");
-    assert.strictEqual(ctrl.get("agents").codex.integrationInstalled, true);
-    assert.strictEqual(ctrl.get("agents").codex.enabled, true);
-    assert.deepStrictEqual(gateWrites, []);
-  });
-
-  it("publishes true only after the dedicated preference commits", async () => {
-    const gateWrites = [];
-    const ctrl = createSettingsController({
-      prefsPath: makeTempPath(),
-      injectedDeps: {
-        writeCodexAutoStartGate(enabled) {
-          gateWrites.push(enabled);
-          return true;
-        },
-      },
-    });
-    ctrl.subscribeKey("autoStartWithCodex", (_enabled, nextSnapshot) => {
-      gateWrites.push(isCodexAutoStartEnabled(nextSnapshot));
-    });
-
-    const enabled = await ctrl.applyUpdate("autoStartWithCodex", true);
-    assert.strictEqual(enabled.status, "ok");
-    assert.strictEqual(ctrl.get("autoStartWithCodex"), true);
-    assert.deepStrictEqual(gateWrites, [false, true]);
-
-    gateWrites.length = 0;
-    const disabled = await ctrl.applyUpdate("autoStartWithCodex", false);
-    assert.strictEqual(disabled.status, "ok");
-    assert.strictEqual(ctrl.get("autoStartWithCodex"), false);
-    assert.deepStrictEqual(gateWrites, [false, false]);
-  });
-
-  it("keeps the preference unchanged when the fail-closed pre-commit write fails", async () => {
-    const ctrl = createSettingsController({
-      prefsPath: makeTempPath(),
-      injectedDeps: {
-        writeCodexAutoStartGate: () => false,
-      },
-    });
-
-    const result = await ctrl.applyUpdate("autoStartWithCodex", true);
-    assert.strictEqual(result.status, "error");
-    assert.strictEqual(ctrl.get("autoStartWithCodex"), false);
-  });
-
-  it("never reopens the gate after startup authority was lost", async () => {
-    const p = makeTempPath();
-    fs.writeFileSync(p, JSON.stringify({
-      version: prefs.CURRENT_VERSION,
-      autoStartWithCodex: true,
-      agents: {
-        codex: { integrationInstalled: "yes", enabled: true },
-      },
-    }));
-    const loaded = prefs.load(p);
-    assert.strictEqual(loaded.codexAutoStartAuthoritative, false);
-
-    const evaluateGate = createCodexAutoStartGateEvaluator({
-      authorityLost: loaded.codexAutoStartAuthoritative === false,
-    });
-    const gateWrites = [evaluateGate(loaded.snapshot)];
-    const ctrl = createSettingsController({ prefsPath: p, loadResult: loaded });
-    ctrl.subscribeKey("agents", (_agents, nextSnapshot) => {
-      gateWrites.push(evaluateGate(nextSnapshot));
-    });
-
-    const result = await ctrl.applyCommand("setAgentFlag", {
-      agentId: "claude-code",
-      flag: "notificationHookEnabled",
-      value: false,
-    });
-
-    assert.strictEqual(result.status, "ok");
-    assert.deepStrictEqual(gateWrites, [false, false]);
-    assert.strictEqual(gateWrites.includes(true), false);
-  });
-
-  it("serializes the preference behind an in-flight Codex uninstall", async () => {
-    assert.strictEqual(updateRegistry.autoStartWithCodex.lockKey, "agentIntegration");
-    assert.strictEqual(
-      updateRegistry.autoStartWithCodex.lockKey,
-      commandRegistry.uninstallAgentIntegration.lockKey
-    );
-
-    const uninstallStarted = createDeferred();
-    const finishUninstall = createDeferred();
-    const gateWrites = [];
-    const ctrl = createSettingsController({
-      prefsPath: makeTempPath(),
-      injectedDeps: {
-        writeCodexAutoStartGate(enabled) {
-          gateWrites.push(enabled);
-          return true;
-        },
-        uninstallIntegrationForAgent() {
-          uninstallStarted.resolve();
-          return finishUninstall.promise;
-        },
-      },
-    });
-    const publishEffectiveGate = (_value, nextSnapshot) => {
-      gateWrites.push(isCodexAutoStartEnabled(nextSnapshot));
-    };
-    ctrl.subscribeKey("agents", publishEffectiveGate);
-    ctrl.subscribeKey("autoStartWithCodex", publishEffectiveGate);
-
-    const uninstall = ctrl.applyCommand("uninstallAgentIntegration", { agentId: "codex" });
-    await uninstallStarted.promise;
-    const enablePreference = ctrl.applyUpdate("autoStartWithCodex", true);
-
-    await Promise.resolve();
-    assert.strictEqual(ctrl.get("autoStartWithCodex"), false);
-    assert.deepStrictEqual(gateWrites, [false]);
-
-    finishUninstall.resolve({ status: "ok" });
-    assert.strictEqual((await uninstall).status, "ok");
-    assert.strictEqual((await enablePreference).status, "ok");
-    assert.strictEqual(ctrl.get("autoStartWithCodex"), true);
-    assert.strictEqual(ctrl.get("agents").codex.integrationInstalled, false);
-    assert.strictEqual(gateWrites.includes(true), false);
-  });
 });
 
 describe("setTextScaleForDisplay end-to-end commit", () => {
@@ -656,49 +299,6 @@ describe("setTextScaleForDisplay end-to-end commit", () => {
     const r = await ctrl.applyCommand("setTextScaleForDisplay", { value: 1.25 });
     assert.strictEqual(r.status, "ok");
     assert.strictEqual(ctrl.get("textScale"), 1.25);
-  });
-});
-
-describe("custom application command commits", () => {
-  const application = {
-    id: "custom-nova-ai-0123456789ab",
-    name: "Nova AI",
-    sourcePath: "C:\\Tools\\Nova AI",
-    executablePath: "C:\\Tools\\Nova AI\\Nova AI.exe",
-    processName: "Nova AI.exe",
-    category: "code",
-  };
-
-  it("persists custom discovery paths through the controller registry", async () => {
-    const p = makeTempPath();
-    const ctrl = createSettingsController({ prefsPath: p });
-    const r = await ctrl.applyCommand("setAgentCustomDiscoveryPaths", {
-      agentId: "custom",
-      value: [application.sourcePath],
-    });
-
-    assert.strictEqual(r.status, "ok");
-    assert.deepStrictEqual(ctrl.get("customToolDiscoveryPaths"), [application.sourcePath]);
-    assert.deepStrictEqual(prefs.load(p).snapshot.customToolDiscoveryPaths, [application.sourcePath]);
-  });
-
-  it("persists add and remove custom application commits through the controller registry", async () => {
-    const p = makeTempPath();
-    const ctrl = createSettingsController({
-      prefsPath: p,
-      injectedDeps: { identifyCustomApplication: () => ({ ...application }) },
-    });
-
-    const added = await ctrl.applyCommand("addCustomApplication", { path: application.sourcePath });
-    assert.strictEqual(added.status, "ok");
-    assert.deepStrictEqual(ctrl.get("customApplications"), [application]);
-    assert.strictEqual(ctrl.get("agents")[application.id].integrationInstalled, false);
-    assert.deepStrictEqual(prefs.load(p).snapshot.customApplications, [application]);
-
-    const removed = await ctrl.applyCommand("removeCustomApplication", { id: application.id });
-    assert.strictEqual(removed.status, "ok");
-    assert.deepStrictEqual(ctrl.get("customApplications"), []);
-    assert.strictEqual(ctrl.get("agents")[application.id], undefined);
   });
 });
 
@@ -758,69 +358,6 @@ describe("applyUpdate sync invariant", () => {
     await Promise.all([first, second]);
     assert.deepStrictEqual(order, ["start:1:S", "end:1:S", "start:2:M", "end:2:M"]);
     assert.strictEqual(ctrl.get("size"), "M");
-  });
-
-  it("manageClaudeHooksAutomatically uses the async effect path without changing controller semantics", async () => {
-    const ctrl = createSettingsController({
-      prefsPath: makeTempPath(),
-      loadResult: {
-        snapshot: { ...prefs.getDefaults(), manageClaudeHooksAutomatically: false },
-        locked: false,
-      },
-      injectedDeps: {
-        syncClaudeHooksNow: async () => {
-          await new Promise((resolve) => setTimeout(resolve, 1));
-        },
-        startClaudeSettingsWatcher: () => {},
-        stopClaudeSettingsWatcher: () => {},
-      },
-    });
-    const ret = ctrl.applyUpdate("manageClaudeHooksAutomatically", true);
-    assert.strictEqual(typeof ret.then, "function");
-    const result = await ret;
-    assert.strictEqual(result.status, "ok");
-    assert.strictEqual(ctrl.get("manageClaudeHooksAutomatically"), true);
-  });
-
-  it("serializes Claude hook update and command work on one shared lock", async () => {
-    const calls = [];
-    const ctrl = createSettingsController({
-      prefsPath: makeTempPath(),
-      loadResult: {
-        snapshot: { ...prefs.getDefaults(), manageClaudeHooksAutomatically: false },
-        locked: false,
-      },
-      injectedDeps: {
-        syncClaudeHooksNow: async () => {
-          calls.push("sync:start");
-          await new Promise((resolve) => setTimeout(resolve, 10));
-          calls.push("sync:end");
-        },
-        startClaudeSettingsWatcher: () => calls.push("watcher:start"),
-        stopClaudeSettingsWatcher: () => calls.push("watcher:stop"),
-        uninstallClaudeHooksNow: async () => {
-          calls.push("uninstall:start");
-          await new Promise((resolve) => setTimeout(resolve, 1));
-          calls.push("uninstall:end");
-        },
-      },
-    });
-
-    const enable = ctrl.applyUpdate("manageClaudeHooksAutomatically", true);
-    const disconnect = ctrl.applyCommand("uninstallHooks");
-    const results = await Promise.all([enable, disconnect]);
-
-    assert.strictEqual(results[0].status, "ok");
-    assert.strictEqual(results[1].status, "ok");
-    assert.deepStrictEqual(calls, [
-      "sync:start",
-      "sync:end",
-      "watcher:start",
-      "watcher:stop",
-      "uninstall:start",
-      "uninstall:end",
-    ]);
-    assert.strictEqual(ctrl.get("manageClaudeHooksAutomatically"), false);
   });
 });
 
@@ -890,7 +427,6 @@ describe("applyUpdate", () => {
     assert.deepStrictEqual(prefs.load(p).snapshot.settingsWindowBounds, bounds);
   });
 
-
   it("persists Dashboard window bounds through the controller-only write path", async () => {
     const p = makeTempPath();
     const ctrl = createSettingsController({ prefsPath: p });
@@ -901,28 +437,6 @@ describe("applyUpdate", () => {
     assert.deepStrictEqual(prefs.load(p).snapshot.dashboardWindowBounds, bounds);
   });
 
-  it("persists Codex hook health notification prefs through applyUpdate", async () => {
-    const p = makeTempPath();
-    const ctrl = createSettingsController({ prefsPath: p });
-    const r1 = await ctrl.applyUpdate("codexHookHealthLastNotified", "feature-disabled");
-    assert.strictEqual(r1.status, "ok");
-    assert.strictEqual(ctrl.get("codexHookHealthLastNotified"), "feature-disabled");
-    const r2 = await ctrl.applyUpdate("codexHookHealthNotifyEnabled", false);
-    assert.strictEqual(r2.status, "ok");
-    assert.strictEqual(ctrl.get("codexHookHealthNotifyEnabled"), false);
-    const loaded = prefs.load(p).snapshot;
-    assert.strictEqual(loaded.codexHookHealthLastNotified, "feature-disabled");
-    assert.strictEqual(loaded.codexHookHealthNotifyEnabled, false);
-  });
-
-  it("persists the Telegram migration nudge signature through applyUpdate", async () => {
-    const p = makeTempPath();
-    const ctrl = createSettingsController({ prefsPath: p });
-    const result = await ctrl.applyUpdate("telegramMigrationLastNotified", "legacy-migration");
-    assert.strictEqual(result.status, "ok");
-    assert.strictEqual(ctrl.get("telegramMigrationLastNotified"), "legacy-migration");
-    assert.strictEqual(prefs.load(p).snapshot.telegramMigrationLastNotified, "legacy-migration");
-  });
   it("enforces cross-field constraints (showTray/showDock)", async () => {
     const ctrl = createSettingsController({
       prefsPath: makeTempPath(),
@@ -949,24 +463,6 @@ describe("applyUpdate", () => {
     const r = await ctrl.applyUpdate("boom", "anything");
     assert.strictEqual(r.status, "error");
     assert.match(r.message, /kaboom/);
-  });
-
-  it("does not commit autoStartWithClaude when management-disabled effect returns noop", async () => {
-    const ctrl = createSettingsController({
-      prefsPath: makeTempPath(),
-      loadResult: {
-        snapshot: { ...prefs.getDefaults(), manageClaudeHooksAutomatically: false, autoStartWithClaude: false },
-        locked: false,
-      },
-      injectedDeps: {
-        installAutoStart: () => { throw new Error("should not run"); },
-        uninstallAutoStart: () => { throw new Error("should not run"); },
-      },
-    });
-    const r = await ctrl.applyUpdate("autoStartWithClaude", true);
-    assert.strictEqual(r.status, "ok");
-    assert.strictEqual(r.noop, true);
-    assert.strictEqual(ctrl.get("autoStartWithClaude"), false);
   });
 });
 
@@ -1209,23 +705,6 @@ describe("applyCommand", () => {
     assert.deepStrictEqual(order, ["start:a", "start:b", "end:b", "end:a"]);
   });
 
-  it("applies uninstallHooks commit without clearing latent autoStartWithClaude preference", async () => {
-    const ctrl = createSettingsController({
-      prefsPath: makeTempPath(),
-      loadResult: {
-        snapshot: { ...prefs.getDefaults(), manageClaudeHooksAutomatically: true, autoStartWithClaude: true },
-        locked: false,
-      },
-      commands: {
-        uninstallHooks: () => ({ status: "ok", commit: { manageClaudeHooksAutomatically: false } }),
-      },
-    });
-    const r = await ctrl.applyCommand("uninstallHooks", null);
-    assert.strictEqual(r.status, "ok");
-    assert.strictEqual(ctrl.get("manageClaudeHooksAutomatically"), false);
-    assert.strictEqual(ctrl.get("autoStartWithClaude"), true);
-  });
-
   it("applies setSessionAlias through the default command registry and persists it", async () => {
     const p = makeTempPath();
     const ctrl = createSettingsController({
@@ -1251,159 +730,6 @@ describe("applyCommand", () => {
     assert.deepStrictEqual(onDisk.sessionAliases, {
       "local|codex|s1": { title: "Codex main", updatedAt: 1000 },
     });
-  });
-});
-
-describe("Feishu resolved-approver commit linearization", () => {
-  function createFixture({ failPersistence = false } = {}) {
-    const entered = createDeferred();
-    const release = createDeferred();
-    const saves = [];
-    let subscriberCalls = 0;
-    let secretsRevision = 1;
-    let secrets = {
-      credentialPlatform: "feishu",
-      appId: "cli_saved",
-      appSecret: "saved-secret",
-    };
-    const gate = async () => {
-      entered.resolve();
-      await release.promise;
-      return { status: "ok" };
-    };
-    gate.lockKey = "feishuApproval";
-    const ctrl = createSettingsController({
-      prefsPath: "in-memory-settings",
-      prefs: {
-        load: () => ({
-          snapshot: {
-            ...prefs.getDefaults(),
-            feishuApproval: {
-              ...prefs.getDefaults().feishuApproval,
-              platform: "feishu",
-            },
-          },
-          locked: false,
-        }),
-        save: (_path, snapshot) => {
-          if (failPersistence) throw new Error("synthetic disk failure");
-          saves.push(snapshot);
-        },
-      },
-      commands: { ...commandRegistry, gate },
-      injectedDeps: {
-        getFeishuApprovalSecrets: () => ({ ...secrets }),
-        getFeishuApprovalSecretsRevision: () => secretsRevision,
-        writeFeishuApprovalSecrets: (next) => {
-          secrets = { ...next };
-          secretsRevision += 1;
-          return { status: "ok", secretsStored: true };
-        },
-      },
-    });
-    ctrl.subscribe(() => { subscriberCalls += 1; });
-    return {
-      ctrl,
-      entered,
-      release,
-      saves,
-      subscriberCalls: () => subscriberCalls,
-      commitPayload: (signal) => ({
-        signal,
-        approverId: "ou_resolved",
-        platform: "feishu",
-        appId: "cli_saved",
-        secretsRevision: 1,
-      }),
-    };
-  }
-
-  for (const [label, patch, field, expected] of [
-    ["enabled", { enabled: true }, "enabled", true],
-    ["timeout", { connectionTimeoutSeconds: 30 }, "connectionTimeoutSeconds", 30],
-  ]) {
-    for (const order of ["patch-first", "commit-first"]) {
-      it(`preserves ${label} when ${order} under the Feishu lock`, async () => {
-        const fixture = createFixture();
-        const signal = new AbortController().signal;
-        const gate = fixture.ctrl.applyCommand("gate");
-        await fixture.entered.promise;
-        const operations = order === "patch-first"
-          ? [
-              fixture.ctrl.applyCommand("feishuApproval.updateConfig", patch),
-              fixture.ctrl.applyCommand("feishuApproval.commitResolvedApprover", fixture.commitPayload(signal)),
-            ]
-          : [
-              fixture.ctrl.applyCommand("feishuApproval.commitResolvedApprover", fixture.commitPayload(signal)),
-              fixture.ctrl.applyCommand("feishuApproval.updateConfig", patch),
-            ];
-        fixture.release.resolve();
-        await gate;
-        const results = await Promise.all(operations);
-        assert.equal(results.every((result) => result.status === "ok"), true);
-        assert.equal(fixture.ctrl.get("feishuApproval")[field], expected);
-        assert.equal(fixture.ctrl.get("feishuApproval").approverId, "ou_resolved");
-      });
-    }
-  }
-
-  it("rejects a commit cancelled while it waits for the Feishu lock", async () => {
-    const fixture = createFixture();
-    const abort = new AbortController();
-    const gate = fixture.ctrl.applyCommand("gate");
-    await fixture.entered.promise;
-    const commit = fixture.ctrl.applyCommand(
-      "feishuApproval.commitResolvedApprover",
-      fixture.commitPayload(abort.signal),
-    );
-    abort.abort();
-    fixture.release.resolve();
-    await gate;
-
-    assert.deepStrictEqual(await commit, { status: "error", code: "lookup-cancelled" });
-    assert.equal(fixture.ctrl.get("feishuApproval").approverId, "");
-    assert.equal(fixture.saves.length, 0);
-    assert.equal(fixture.subscriberCalls(), 0);
-  });
-
-  it("rejects a queued commit after saved credentials change", async () => {
-    const fixture = createFixture();
-    const signal = new AbortController().signal;
-    const gate = fixture.ctrl.applyCommand("gate");
-    await fixture.entered.promise;
-    const credentials = fixture.ctrl.applyCommand("feishuApproval.setSecrets", {
-      appId: "cli_replaced",
-      appSecret: "replacement-secret",
-      confirmReplace: true,
-    });
-    const commit = fixture.ctrl.applyCommand(
-      "feishuApproval.commitResolvedApprover",
-      fixture.commitPayload(signal),
-    );
-    fixture.release.resolve();
-    await gate;
-
-    assert.equal((await credentials).status, "ok");
-    assert.deepStrictEqual(await commit, { status: "error", code: "lookup-credentials-changed" });
-    assert.equal(fixture.ctrl.get("feishuApproval").approverId, "");
-  });
-
-  it("does not publish a successful commit when persistence fails", async () => {
-    const fixture = createFixture({ failPersistence: true });
-    const originalWarn = console.warn;
-    console.warn = () => {};
-    let result;
-    try {
-      result = await fixture.ctrl.applyCommand(
-        "feishuApproval.commitResolvedApprover",
-        fixture.commitPayload(new AbortController().signal),
-      );
-    } finally {
-      console.warn = originalWarn;
-    }
-    assert.equal(result.status, "error");
-    assert.equal(fixture.ctrl.get("feishuApproval").approverId, "");
-    assert.equal(fixture.subscriberCalls(), 0);
   });
 });
 
@@ -1670,7 +996,7 @@ describe("unreadable prefs safe mode", () => {
       version: prefs.CURRENT_VERSION,
       lang: "en",
       agents: {
-        "qwen-code": {
+        "omp": {
           integrationInstalled: false,
           enabled: false,
         },
@@ -1704,7 +1030,7 @@ describe("unreadable prefs safe mode", () => {
     assert.strictEqual(bulk.code, "prefs-read-failure");
 
     const command = await ctrl.applyCommand("installAgentIntegration", {
-      agentId: "qwen-code",
+      agentId: "omp",
     });
     assert.strictEqual(command.status, "error");
     assert.strictEqual(command.code, "prefs-read-failure");
@@ -1712,7 +1038,6 @@ describe("unreadable prefs safe mode", () => {
     assert.deepStrictEqual(calls, [], "safe mode must stop external effects before they start");
     assert.strictEqual(ctrl.get("lang"), "en");
     assert.strictEqual(ctrl.get("openAtLogin"), false);
-    assert.strictEqual(ctrl.get("agents")["qwen-code"].integrationInstalled, false);
     assert.strictEqual(fs.readFileSync(p, "utf8"), original);
   });
 

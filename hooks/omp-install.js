@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 "use strict";
 
-// Installs the Clawd <-> OMP (oh-my-pi) extension into
-// ~/.omp/agent/extensions/clawd-on-desk/. Derived from hooks/pi-install.js;
-// OMP is a fork of the same agent and the install contract is identical.
+// Installs the omp-pet <-> OMP (oh-my-pi) extension into
+// ~/.omp/agent/extensions/omp-pet/. A directory is only updated or removed when
+// it carries the omp-pet managed marker.
 
 const fs = require("fs");
 const os = require("os");
@@ -15,12 +15,7 @@ const { resolveNodeBin } = require("./server-config");
 const EXTENSION_DIR_NAME = "omp-pet";
 const EXTENSION_FILE = "index.ts";
 const CORE_FILE = "omp-extension-core.js";
-const MARKER_FILE = ".clawd-managed.json";
-// The community bridge (github.com/Crosery/clawd-on-desk-omp) installs as a
-// single sibling file in the same extensions directory and reports the same
-// lifecycle events through Clawd's custom-application channel. OMP would load
-// both and POST twice per event, so its presence blocks this installer.
-const STANDALONE_BRIDGE_FILE = "clawd-on-desk-omp.ts";
+const MARKER_FILE = ".omp-pet-managed.json";
 const OMP_CONFIG_DIR_NAME = ".omp";
 const PROFILES_DIR_NAME = "profiles";
 const AGENT_DIR_NAME = "agent";
@@ -98,7 +93,6 @@ function commandExists(command, args, options = {}) {
     const raw = execFileSync(command, args, {
       encoding: "utf8",
       timeout,
-      windowsHide: true,
     });
     return String(raw || "").trim().length > 0;
   } catch {
@@ -106,9 +100,9 @@ function commandExists(command, args, options = {}) {
   }
 }
 
-function executableExists(filePath, platform, accessSync = fs.accessSync) {
+function executableExists(filePath, accessSync = fs.accessSync) {
   try {
-    accessSync(filePath, platform === "win32" ? fs.constants.F_OK : fs.constants.X_OK);
+    accessSync(filePath, fs.constants.X_OK);
     return true;
   } catch {
     return false;
@@ -119,25 +113,16 @@ function hasOmpCommand(options = {}) {
   if (typeof options.ompCommandAvailable === "boolean") return options.ompCommandAvailable;
   if (typeof options.ompCommandAvailable === "function") return !!options.ompCommandAvailable();
 
-  const platform = options.platform || process.platform;
   const accessSync = options.accessSync || fs.accessSync;
   const execFileSync = options.execFileSync || childProcess.execFileSync;
   const nodeBin = Object.prototype.hasOwnProperty.call(options, "nodeBin")
     ? options.nodeBin
-    : resolveNodeBin({ platform, execFileSync, accessSync });
+    : resolveNodeBin({ execFileSync, accessSync });
 
-  if (nodeBin && nodeBin !== "node") {
-    const nodeDir = path.dirname(nodeBin);
-    const candidates = platform === "win32"
-      ? ["omp.cmd", "omp.exe", "omp.ps1"]
-      : ["omp"];
-    if (candidates.some((name) => executableExists(path.join(nodeDir, name), platform, accessSync))) {
-      return true;
-    }
-  }
-
-  if (platform === "win32") {
-    return commandExists("where", ["omp"], { execFileSync });
+  // OMP installs its launcher next to the node binary for npm/bun global
+  // installs; a login shell lookup covers everything else.
+  if (nodeBin && nodeBin !== "node" && executableExists(path.join(path.dirname(nodeBin), "omp"), accessSync)) {
+    return true;
   }
 
   for (const shell of ["/bin/zsh", "/bin/bash"]) {
@@ -160,6 +145,7 @@ function hasOmpCommand(options = {}) {
 // invalid value and uses the default profile, so this non-CLI installer does the
 // same rather than throwing before Settings can report a result.
 const PROFILE_NAME_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+// OMP rejects these device names on every platform, so the installer does too.
 const WINDOWS_RESERVED_NAME_PATTERN = /^(?:CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9])(?:\..*)?$/i;
 
 function normalizeOmpProfileName(value) {
@@ -216,7 +202,7 @@ function resolveOmpAgentDir(options = {}) {
 }
 
 // Every OTHER loadable profile on this machine, i.e. the agent directories
-// this installation does NOT manage. Clawd resolves exactly one, so a machine
+// this installation does NOT manage. omp-pet resolves exactly one, so a machine
 // that runs OMP under a profile loads nothing from it; Doctor says so rather
 // than reporting bare "verified".
 function listOtherOmpProfileAgentDirs(options = {}) {
@@ -260,13 +246,6 @@ function resolveExtensionsDir(options = {}) {
   return path.join(resolveOmpAgentDir(options), EXTENSIONS_DIR_NAME);
 }
 
-// Path of the standalone bridge if the user already runs it, else null.
-function findStandaloneBridge(options = {}) {
-  const fsImpl = options.fs || fs;
-  const candidate = path.join(resolveExtensionsDir(options), STANDALONE_BRIDGE_FILE);
-  return fileExists(candidate, fsImpl) ? candidate : null;
-}
-
 function resolveExtensionDir(options = {}) {
   return options.extensionDir || path.join(resolveExtensionsDir(options), EXTENSION_DIR_NAME);
 }
@@ -294,46 +273,15 @@ function registerOmpExtension(options = {}) {
   const parentExists = dirExists(parentDir, fsImpl);
   if (!parentExists && !hasOmpCommand(options)) {
     if (!options.silent) {
-      console.log("Clawd: OMP not found - skipping OMP extension registration");
+      console.log("omp-pet: OMP not found - skipping OMP extension registration");
     }
     return { installed: false, skipped: true, updated: false, reason: "omp-not-found", extensionDir };
-  }
-
-  const standaloneBridge = findStandaloneBridge({ ...options, extensionDir });
-  if (standaloneBridge) {
-    // Clawd may have installed first, with the bridge added afterwards. The
-    // bridge owns the same lifecycle events, so leaving Clawd's copy in place
-    // makes OMP load BOTH and report every event twice. Retire only the copy
-    // this installer verifiably wrote; a foreign directory stays untouched.
-    const oursHere = dirExists(extensionDir, fsImpl)
-      && isManagedMarker(readJsonIfPresent(markerPath, fsImpl));
-    let removedOwnCopy = false;
-    if (oursHere) {
-      fsImpl.rmSync(extensionDir, { recursive: true, force: true });
-      removedOwnCopy = true;
-    }
-    if (!options.silent) {
-      console.log(`Clawd: ${standaloneBridge} already bridges OMP - skipping`);
-      if (removedOwnCopy) {
-        console.log(`  Removed Clawd's own copy at ${extensionDir} so OMP does not report every event twice`);
-      }
-      console.log("  Remove it first if you want Clawd to manage the integration instead.");
-    }
-    return {
-      installed: false,
-      skipped: true,
-      updated: false,
-      reason: "standalone-bridge-present",
-      extensionDir,
-      standaloneBridge,
-      removedOwnCopy,
-    };
   }
 
   const extensionExists = dirExists(extensionDir, fsImpl);
   if (extensionExists && !isManagedMarker(readJsonIfPresent(markerPath, fsImpl))) {
     if (!options.silent) {
-      console.log(`Clawd: ${extensionDir} exists but is not Clawd-managed - skipping`);
+      console.log(`omp-pet: ${extensionDir} exists but is not managed by omp-pet - skipping`);
     }
     return { installed: false, skipped: true, updated: false, reason: "unmanaged-existing-extension", extensionDir };
   }
@@ -349,7 +297,7 @@ function registerOmpExtension(options = {}) {
   writeJsonAtomic(markerPath, buildMarker());
 
   if (!options.silent) {
-    console.log(`Clawd OMP extension -> ${extensionDir}`);
+    console.log(`omp-pet OMP extension -> ${extensionDir}`);
     console.log(updated ? "  Installed or updated" : "  Already up to date");
   }
 
@@ -362,22 +310,20 @@ function unregisterOmpExtension(options = {}) {
   const markerPath = path.join(extensionDir, MARKER_FILE);
   const marker = readJsonIfPresent(markerPath, fsImpl);
   if (!dirExists(extensionDir, fsImpl)) {
-    if (!options.silent) console.log("Clawd: OMP extension is not installed");
+    if (!options.silent) console.log("omp-pet: OMP extension is not installed");
     return { removed: false, skipped: true, reason: "missing", extensionDir };
   }
   if (!isManagedMarker(marker)) {
-    if (!options.silent) console.log(`Clawd: ${extensionDir} is not Clawd-managed - skipping uninstall`);
+    if (!options.silent) console.log(`omp-pet: ${extensionDir} is not managed by omp-pet - skipping uninstall`);
     return { removed: false, skipped: true, reason: "unmanaged-existing-extension", extensionDir };
   }
   fsImpl.rmSync(extensionDir, { recursive: true, force: true });
-  if (!options.silent) console.log(`Clawd: removed OMP extension from ${extensionDir}`);
+  if (!options.silent) console.log(`omp-pet: removed OMP extension from ${extensionDir}`);
   return { removed: true, skipped: false, extensionDir };
 }
 
 module.exports = {
   CORE_FILE,
-  STANDALONE_BRIDGE_FILE,
-  findStandaloneBridge,
   resolveExtensionsDir,
   DEFAULT_EXTENSION_DIR,
   DEFAULT_EXTENSIONS_DIR,

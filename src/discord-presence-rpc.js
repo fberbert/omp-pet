@@ -4,7 +4,6 @@ const net = require("node:net");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const { getAgent } = require("../agents/registry");
-const { isCustomApplicationNamespace } = require("./custom-applications");
 const { STATE_PRIORITY, getStatePriority } = require("./state-priority");
 const { normalizeDiscordPresence, DEFAULT_CLAWD_DISCORD_APP_ID } = require("./discord-presence-settings");
 
@@ -174,9 +173,7 @@ function buildPresencePayload(session, cfg = {}, visual = null, runtime = {}) {
       : presenceImageUrl(presenceState, gifBaseUrl));
   const agentId = session && session.agentId;
   const activity = {
-    details: isCustomApplicationNamespace(agentId)
-      ? "Custom agent"
-      : ((session && session.agentName) || agentLabel(agentId)),
+    details: (session && session.agentName) || agentLabel(agentId),
     state: label,
     assets: { large_image: imageUrl, large_text: "Clawd on Desk" },
   };

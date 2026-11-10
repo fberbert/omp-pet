@@ -21,61 +21,9 @@
     "audit:assets": "node scripts/audit-repository-assets.js",
     "audit:pr-history-assets": "node scripts/audit-pr-history-assets.js",
     "audit:native-package": "node scripts/audit-packaged-native.js",
-    "update:official-theme-snapshot": "node scripts/update-official-theme-catalog-snapshot.js",
-    "verify:winget-arch": "node scripts/verify-winget-arch-contract.js",
-    "verify:winget-manifest": "node scripts/verify-winget-generated-manifest.js",
     "create-theme": "node scripts/create-theme.js",
-    "export-agent-icons": "node scripts/export-agent-icons.js",
-    "install:claude-hooks": "node hooks/install.js",
-    "uninstall:claude-hooks": "node hooks/uninstall.js",
-    "install:gemini-hooks": "node hooks/gemini-install.js",
-    "install:antigravity-hooks": "node hooks/antigravity-install.js",
-    "install:cursor-hooks": "node hooks/cursor-install.js",
-    "install:kiro-hooks": "node hooks/kiro-install.js",
-    "install:kiro-desktop-hooks": "node hooks/kiro-desktop-install.js",
-    "uninstall:kiro-desktop-hooks": "node hooks/kiro-desktop-install.js --uninstall",
-    "install:kirocrew-hooks": "node hooks/kirocrew-install.js",
-    "uninstall:kirocrew-hooks": "node hooks/kirocrew-install.js --uninstall",
-    "install:kimi-hooks": "node hooks/kimi-install.js",
-    "install:qwen-hooks": "node hooks/qwen-code-install.js",
-    "install:zcode-hooks": "node hooks/zcode-install.js",
-    "uninstall:zcode-hooks": "node hooks/zcode-install.js --uninstall",
-    "install:codewhale-hooks": "node hooks/codewhale-install.js",
-    "uninstall:codewhale-hooks": "node hooks/codewhale-install.js --uninstall",
-    "install:pi-extension": "node hooks/pi-install.js",
-    "uninstall:pi-extension": "node hooks/pi-install.js --uninstall",
     "install:omp-extension": "node hooks/omp-install.js",
-    "uninstall:omp-extension": "node hooks/omp-install.js --uninstall",
-    "install:openclaw-plugin": "node hooks/openclaw-install.js",
-    "uninstall:openclaw-plugin": "node hooks/openclaw-install.js --uninstall",
-    "install:mimocode-plugin": "node hooks/mimocode-install.js",
-    "uninstall:mimocode-plugin": "node hooks/mimocode-install.js --uninstall",
-    "install:codex-hooks": "node hooks/codex-install.js",
-    "uninstall:codex-hooks": "node hooks/codex-install.js --uninstall",
-    "install:codex-debug-hooks": "node hooks/codex-debug-install.js",
-    "uninstall:codex-debug-hooks": "node hooks/codex-debug-install.js --uninstall",
-    "install:hermes-plugin": "node hooks/hermes-install.js",
-    "uninstall:hermes-plugin": "node hooks/hermes-install.js --uninstall",
-    "install:qoder-hooks": "node hooks/qoder-install.js",
-    "uninstall:qoder-hooks": "node hooks/qoder-install.js --uninstall",
-    "install:reasonix-hooks": "node hooks/reasonix-install.js",
-    "uninstall:reasonix-hooks": "node hooks/reasonix-install.js --uninstall",
-    "install:qoderwork-hooks": "node hooks/qoderwork-install.js",
-    "uninstall:qoderwork-hooks": "node hooks/qoderwork-install.js --uninstall",
-    "install:qwenwork-hooks": "node hooks/qwenwork-install.js",
-    "uninstall:qwenwork-hooks": "node hooks/qwenwork-install.js --uninstall",
-    "install:traecode-hooks": "node hooks/traecode-install.js",
-    "uninstall:traecode-hooks": "node hooks/traecode-install.js --uninstall",
-    "install:workbuddy-hooks": "node hooks/workbuddy-install.js",
-    "uninstall:workbuddy-hooks": "node hooks/workbuddy-install.js --uninstall",
-    "install:grok-hooks": "node hooks/grok-install.js",
-    "uninstall:grok-hooks": "node hooks/grok-install.js --uninstall",
-    "install:minimax-hooks": "node hooks/minimax-install.js",
-    "uninstall:minimax-hooks": "node hooks/minimax-install.js --uninstall",
-    "install:dsh": "node hooks/dsh-install.js",
-    "uninstall:dsh": "node hooks/dsh-install.js --uninstall",
-    "cleanup:integrations": "node hooks/cleanup-integrations.js --apply",
-    "register-protocol:dev": "node launch.js --register-protocol"
+    "uninstall:omp-extension": "node hooks/omp-install.js --uninstall"
   },
   "keywords": [
     "omp",
@@ -91,14 +39,6 @@
     "appId": "com.fberbert.omp-pet",
     "productName": "OMP Pet",
     "afterPack": "scripts/after-pack-koffi.js",
-    "protocols": [
-      {
-        "name": "Clawd Import Protocol",
-        "schemes": [
-          "clawd"
-        ]
-      }
-    ],
     "mac": {
       "icon": "assets/icon.png",
       "identity": "-",
@@ -179,19 +119,15 @@
       "assets/dock-icon.png",
       "assets/tray-icon*.png",
       "hooks/**/*",
-      "extensions/**/*",
       "agents/**/*",
-      "themes/**/*",
-      "pwa/**/*"
+      "themes/**/*"
     ],
     "asarUnpack": [
       "assets/svg/**/*",
       "assets/accessories/**/*",
       "hooks/**/*",
-      "extensions/**/*",
       "agents/**/*",
-      "themes/**/*",
-      "node_modules/jsonc-parser/**/*"
+      "themes/**/*"
     ],
     "extraResources": [
       {
@@ -210,14 +146,8 @@
     "js-yaml": "^4.1.0"
   },
   "dependencies": {
-    "@larksuiteoapi/node-sdk": "^1.71.1",
     "htmlparser2": "^12.0.0",
-    "jsonc-parser": "^3.3.1",
-    "koffi": "2.16.3",
-    "markdown-it": "15.0.0",
-    "qrcode-generator": "^2.0.4",
-    "ws": "^8.21.0",
-    "yauzl": "^2.10.0"
+    "koffi": "2.16.3"
   },
   "repository": {
     "type": "git",

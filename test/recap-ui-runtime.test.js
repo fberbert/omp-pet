@@ -29,7 +29,7 @@ for (const withActivity of [false, true]) {
     vm.runInNewContext(SOURCE, context);
     const model = context.ClawdSettingsTabRecap.__test.buildTimelineModel;
     runtime.start(); await runtime.whenReady();
-    if (withActivity) assert.equal(runtime.record({ occurredAt: clock, agentId: "codex",
+    if (withActivity) assert.equal(runtime.record({ occurredAt: clock, agentId: "omp",
       scope: "local", metrics: ["activity", "tool-call"] },
     { sessionId: "synthetic", dedupeId: "synthetic-tool" }), true);
     clock += 10 * 60000;
@@ -101,7 +101,7 @@ for (const mode of ["malformed", "locked", "future", "normal", "off", "unavailab
     if (paused) {
       assert.equal(data.recordingEnabled, false);
       assert.equal(desc.attrs.role, "status");
-      assert.equal(runtime.record({ occurredAt: Date.now(), agentId: "codex", scope: "local", metrics: ["activity"] }), false);
+      assert.equal(runtime.record({ occurredAt: Date.now(), agentId: "omp", scope: "local", metrics: ["activity"] }), false);
       const off = await controller.applyUpdate("recapEnabled", false);
       const on = await controller.applyUpdate("recapEnabled", true);
       const resumed = runtime.query("today");

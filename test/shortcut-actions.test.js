@@ -3,49 +3,7 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert");
 
-const {
-  SHORTCUT_ACTIONS,
-  SHORTCUT_ACTION_IDS,
-  DANGEROUS_ACCELERATORS,
-  getDefaultShortcuts,
-  parseAccelerator,
-  normalizeKey,
-  buildAcceleratorFromEvent,
-  formatAcceleratorLabel,
-  normalizeShortcuts,
-  isDangerousAccelerator,
-  acceleratorsConflict,
-  validateShortcutMapShape,
-} = require("../src/shortcut-actions");
-
-describe("shortcut-actions metadata", () => {
-  it("exposes all known shortcut action ids", () => {
-    assert.deepStrictEqual(SHORTCUT_ACTION_IDS, [
-      "togglePet",
-      "quickSelectSession",
-      "permissionAllow",
-      "permissionDeny",
-    ]);
-    assert.strictEqual(SHORTCUT_ACTIONS.togglePet.persistent, true);
-    assert.strictEqual(SHORTCUT_ACTIONS.quickSelectSession.persistent, true);
-    assert.strictEqual(SHORTCUT_ACTIONS.quickSelectSession.defaultAccelerator, null);
-    assert.strictEqual(SHORTCUT_ACTIONS.quickSelectSession.showInTutorial, false);
-    assert.strictEqual(SHORTCUT_ACTIONS.permissionAllow.persistent, false);
-    assert.strictEqual(SHORTCUT_ACTIONS.permissionDeny.persistent, false);
-  });
-
-  it("builds fresh default shortcut maps", () => {
-    const a = getDefaultShortcuts();
-    const b = getDefaultShortcuts();
-    assert.notStrictEqual(a, b);
-    assert.deepStrictEqual(a, {
-      togglePet: "CommandOrControl+Shift+Alt+C",
-      quickSelectSession: null,
-      permissionAllow: "CommandOrControl+Shift+Y",
-      permissionDeny: "CommandOrControl+Shift+N",
-    });
-  });
-});
+const { DANGEROUS_ACCELERATORS, getDefaultShortcuts, parseAccelerator, normalizeKey, buildAcceleratorFromEvent, formatAcceleratorLabel, normalizeShortcuts, isDangerousAccelerator, acceleratorsConflict, validateShortcutMapShape } = require("../src/shortcut-actions");
 
 describe("parseAccelerator", () => {
   it("normalizes accepted accelerators into canonical order", () => {
@@ -321,34 +279,6 @@ describe("normalizeShortcuts", () => {
     );
   });
 
-  it("fills missing keys from defaults and drops unknown keys", () => {
-    assert.deepStrictEqual(
-      normalizeShortcuts({ togglePet: "Ctrl+K", bogus: "Ctrl+J" }, getDefaultShortcuts()),
-      {
-        togglePet: "CommandOrControl+K",
-        quickSelectSession: null,
-        permissionAllow: "CommandOrControl+Shift+Y",
-        permissionDeny: "CommandOrControl+Shift+N",
-      }
-    );
-  });
-
-  it("treats empty or null values as unassigned", () => {
-    assert.deepStrictEqual(
-      normalizeShortcuts({
-        togglePet: "",
-        permissionAllow: null,
-        permissionDeny: undefined,
-      }, getDefaultShortcuts()),
-      {
-        togglePet: null,
-        quickSelectSession: null,
-        permissionAllow: null,
-        permissionDeny: null,
-      }
-    );
-  });
-
   it("falls back to defaults on invalid or dangerous values", () => {
     assert.deepStrictEqual(
       normalizeShortcuts({
@@ -368,66 +298,9 @@ describe("normalizeShortcuts", () => {
       getDefaultShortcuts()
     );
   });
-
-  it("uses default-priority de-duplication on load", () => {
-    assert.deepStrictEqual(
-      normalizeShortcuts({
-        togglePet: "Ctrl+K",
-        permissionAllow: "Ctrl+K",
-        permissionDeny: "Ctrl+Shift+Y",
-      }, getDefaultShortcuts()),
-      {
-        togglePet: "CommandOrControl+K",
-        quickSelectSession: null,
-        permissionAllow: "CommandOrControl+Shift+Y",
-        permissionDeny: "CommandOrControl+Shift+N",
-      }
-    );
-  });
-
-  it("de-duplicates physically equivalent Control bindings off macOS", () => {
-    assert.deepStrictEqual(
-      normalizeShortcuts({
-        togglePet: "Control+Shift+K",
-        permissionAllow: "CommandOrControl+Shift+K",
-      }, getDefaultShortcuts(), { isMac: false }),
-      {
-        togglePet: "Control+Shift+K",
-        quickSelectSession: null,
-        permissionAllow: "CommandOrControl+Shift+Y",
-        permissionDeny: "CommandOrControl+Shift+N",
-      }
-    );
-  });
-
-  it("keeps the same Control bindings distinct on macOS", () => {
-    assert.deepStrictEqual(
-      normalizeShortcuts({
-        togglePet: "Control+Shift+K",
-        quickSelectSession: null,
-        permissionAllow: "CommandOrControl+Shift+K",
-      }, getDefaultShortcuts(), { isMac: true }),
-      {
-        togglePet: "Control+Shift+K",
-        quickSelectSession: null,
-        permissionAllow: "CommandOrControl+Shift+K",
-        permissionDeny: "CommandOrControl+Shift+N",
-      }
-    );
-  });
 });
 
 describe("validateShortcutMapShape", () => {
-  it("accepts plain objects with known keys and string/null values", () => {
-    assert.deepStrictEqual(
-      validateShortcutMapShape({
-        togglePet: "CommandOrControl+Shift+Alt+C",
-        permissionAllow: null,
-      }),
-      { status: "ok" }
-    );
-  });
-
   it("rejects unknown keys and non-string values", () => {
     assert.strictEqual(validateShortcutMapShape(null).status, "error");
     assert.strictEqual(

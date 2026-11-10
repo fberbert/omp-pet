@@ -96,40 +96,6 @@ test("settings shortcut actions register an explicit macOS Control accelerator",
   assert.deepStrictEqual([...registered].sort(), ["Control+Shift+1"]);
 });
 
-test("settings shortcut actions reject contextual conflicts before touching globalShortcut", () => {
-  const snapshot = prefs.getDefaults();
-  const { deps, calls } = makeDeps({ snapshot });
-
-  const result = shortcutCommands.registerShortcut({
-    actionId: "permissionAllow",
-    accelerator: snapshot.shortcuts.permissionDeny,
-  }, deps);
-
-  assert.strictEqual(result.status, "error");
-  assert.match(result.message, /already bound to permissionDeny/);
-  assert.deepStrictEqual(calls.register, []);
-  assert.deepStrictEqual(calls.unregister, []);
-});
-
-test("settings shortcut actions treat Control and CommandOrControl as equivalent off macOS", () => {
-  const snapshot = prefs.validate({
-    shortcuts: {
-      permissionDeny: "Control+Shift+K",
-    },
-  });
-  const { deps, calls } = makeDeps({ snapshot, platform: "win32" });
-
-  const result = shortcutCommands.registerShortcut({
-    actionId: "permissionAllow",
-    accelerator: "CommandOrControl+Shift+K",
-  }, deps);
-
-  assert.strictEqual(result.status, "error");
-  assert.match(result.message, /already bound to permissionDeny/);
-  assert.deepStrictEqual(calls.register, []);
-  assert.deepStrictEqual(calls.unregister, []);
-});
-
 test("settings shortcut actions reject dangerous accelerators after non-macOS folding", () => {
   const { deps, calls } = makeDeps({ platform: "linux" });
 
@@ -142,26 +108,6 @@ test("settings shortcut actions reject dangerous accelerators after non-macOS fo
   assert.match(result.message, /reserved accelerator/);
   assert.deepStrictEqual(calls.register, []);
   assert.deepStrictEqual(calls.unregister, []);
-});
-
-test("settings shortcut actions preserve combined Command and Control on macOS", () => {
-  const snapshot = prefs.validate({
-    shortcuts: {
-      permissionAllow: null,
-    },
-  });
-  const { deps } = makeDeps({ snapshot, platform: "darwin" });
-
-  const result = shortcutCommands.registerShortcut({
-    actionId: "permissionAllow",
-    accelerator: "CommandOrControl+Control+C",
-  }, deps);
-
-  assert.strictEqual(result.status, "ok");
-  assert.strictEqual(
-    result.commit.shortcuts.permissionAllow,
-    "CommandOrControl+Control+C"
-  );
 });
 
 test("settings shortcut actions treat an alias-only non-macOS rebind as a no-op", () => {

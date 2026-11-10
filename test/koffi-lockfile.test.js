@@ -21,5 +21,4 @@ test("Koffi native code is pinned exactly in package and lock metadata", () => {
 test("electron-builder runs the reviewed safe afterPack hook", () => {
   assert.equal(pkg.build.afterPack, "scripts/after-pack-koffi.js");
   assert.equal(pkg.scripts["audit:native-package"], "node scripts/audit-packaged-native.js");
-  assert.equal(pkg.scripts["verify:updater-metadata"], "node scripts/verify-updater-metadata.js");
 });

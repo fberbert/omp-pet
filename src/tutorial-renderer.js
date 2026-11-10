@@ -413,7 +413,7 @@
   }
 
   function defaultEditableShortcuts() {
-    const ids = ["togglePet", "permissionAllow", "permissionDeny"];
+    const ids = ["togglePet"];
     return ids.map((id) => {
       const meta = shortcutMeta(id);
       return {
@@ -643,10 +643,6 @@
 
   function fixedShortcuts() {
     return [
-      { key: "shortcutLabelBubbleNextOption", fallback: "Next approval option", keys: "Tab / ↓" },
-      { key: "shortcutLabelBubblePrevOption", fallback: "Previous approval option", keys: "Shift+Tab / ↑" },
-      { key: "shortcutLabelBubbleToggleOption", fallback: "Toggle selected option", keys: "Space" },
-      { key: "shortcutLabelBubbleSubmit", fallback: "Submit approval choice", keys: "Enter" },
       { key: "shortcutLabelPetReveal", fallback: "Bring Clawd forward", keys: i18n("tutorialShortcutClickPet", "Click pet") },
       {
         key: "shortcutLabelOpenDashboard",
@@ -685,8 +681,6 @@
       "tutorialShortcutsFixedTitle", "Built in",
       "tutorialShortcutsFixedDesc", "These keys and gestures work as-is, so there is nothing to configure.",
       fixedShortcuts().map(renderFixedShortcutRow)));
-    wrap.appendChild(el("div", { class: "hint" }, i18n("tutorialShortcutsHint",
-      "You can always click the bubble with the mouse too. Shortcuts are just there when you want to stay in the keyboard.")));
     return wrap;
   }
 
@@ -713,10 +707,6 @@
       platformStarter,
       featureCard("tutorialFeatureThemes", "Themes and mini mode",
         "tutorialFeatureThemesDesc", "Switch character themes, or tuck Clawd against a screen edge."),
-      featureCard("tutorialFeatureMobile", "Phone / Telegram approval",
-        "tutorialFeatureMobileDesc", "Handle permission requests from your phone when you are away."),
-      featureCard("tutorialFeatureAuto", "Auto-approve requests",
-        "tutorialFeatureAutoDesc", "Enable only when you fully trust the agent; every request is allowed automatically.", null, "advanced"),
     );
     wrap.appendChild(grid);
     return wrap;

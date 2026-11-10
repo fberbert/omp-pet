@@ -135,13 +135,9 @@
     parent.appendChild(head);
 
     // Platform-gated actions (Dashboard quick select is macOS/Windows only)
-    // are absent from the list entirely — no disabled row, no placeholder.
+    // are absent from the list entirely: no disabled row, no placeholder.
     const actionIds = i18n.SUPPORTED_SHORTCUT_ACTION_IDS || i18n.SHORTCUT_ACTION_IDS;
     const rows = actionIds.map((actionId) => buildShortcutRow(actionId));
-    rows.push(buildFixedKeyRow("shortcutLabelBubbleNextOption", "Tab / ↓"));
-    rows.push(buildFixedKeyRow("shortcutLabelBubblePrevOption", "Shift+Tab / ↑"));
-    rows.push(buildFixedKeyRow("shortcutLabelBubbleToggleOption", "Space"));
-    rows.push(buildFixedKeyRow("shortcutLabelBubbleSubmit", "Enter"));
     rows.push(buildFixedKeyRow("shortcutLabelPetReveal", "Click pet"));
     rows.push(buildFixedKeyRow(
       "shortcutLabelOpenDashboard",

@@ -7,7 +7,6 @@ const os = require("node:os");
 const path = require("node:path");
 
 const ompInstall = require("../hooks/omp-install");
-const piInstall = require("../hooks/pi-install");
 
 describe("omp-install", () => {
   let parentDir;
@@ -35,8 +34,7 @@ describe("omp-install", () => {
   describe("paths", () => {
     it("installs under ~/.omp, never ~/.pi", () => {
       assert.ok(ompInstall.DEFAULT_PARENT_DIR.endsWith(path.join(".omp", "agent")));
-      assert.notStrictEqual(ompInstall.DEFAULT_PARENT_DIR, piInstall.DEFAULT_PARENT_DIR);
-      assert.notStrictEqual(ompInstall.DEFAULT_EXTENSION_DIR, piInstall.DEFAULT_EXTENSION_DIR);
+      assert.ok(ompInstall.DEFAULT_EXTENSION_DIR.endsWith(path.join(".omp", "agent", "extensions", "omp-pet")));
       assert.strictEqual(ompInstall.CORE_FILE, "omp-extension-core.js");
     });
   });
@@ -94,66 +92,6 @@ describe("omp-install", () => {
   // The community bridge (github.com/Crosery/clawd-on-desk-omp) is a single
   // sibling file reporting the same events through the custom-application
   // channel. Installing alongside it would make OMP load both and POST twice.
-  describe("community bridge", () => {
-    const bridgePath = () => path.join(extensionsDir, ompInstall.STANDALONE_BRIDGE_FILE);
-
-    it("refuses to install next to it", () => {
-      fs.writeFileSync(bridgePath(), "// clawd-on-desk-omp\n");
-      const result = install();
-      assert.strictEqual(result.installed, false);
-      assert.strictEqual(result.reason, "standalone-bridge-present");
-      assert.strictEqual(result.standaloneBridge, bridgePath());
-      assert.ok(!fs.existsSync(extensionDir), "nothing may be written while it is present");
-    });
-
-    it("installs once it is removed", () => {
-      fs.writeFileSync(bridgePath(), "// clawd-on-desk-omp\n");
-      assert.strictEqual(install().installed, false);
-      fs.unlinkSync(bridgePath());
-      assert.strictEqual(install().installed, true);
-    });
-
-    it("finds it only as a direct sibling of the extension directory", () => {
-      assert.strictEqual(ompInstall.findStandaloneBridge({ parentDir }), null);
-      fs.writeFileSync(bridgePath(), "// bridge\n");
-      assert.strictEqual(ompInstall.findStandaloneBridge({ parentDir }), bridgePath());
-    });
-
-    // The other order: Clawd installs first and the bridge arrives later. Both
-    // report the same events, so the copy Clawd wrote has to go.
-    it("retires Clawd's own copy when the bridge appears afterwards", () => {
-      assert.strictEqual(install().installed, true);
-      const installedEntry = fs.readFileSync(path.join(extensionDir, ompInstall.EXTENSION_FILE), "utf8");
-
-      fs.writeFileSync(bridgePath(), "// clawd-on-desk-omp\n");
-      const result = install();
-
-      assert.strictEqual(result.reason, "standalone-bridge-present");
-      assert.strictEqual(result.removedOwnCopy, true);
-      assert.ok(!fs.existsSync(extensionDir),
-        "OMP would load both copies and POST twice for every event");
-      assert.ok(fs.existsSync(bridgePath()), "the user's bridge must be left alone");
-      assert.ok(installedEntry.length > 0);
-    });
-
-    it("leaves a foreign directory in place when the bridge is present", () => {
-      // Not ours: Clawd must not delete files it did not write, even though the
-      // duplicate-reporting hazard is the same.
-      fs.mkdirSync(extensionDir, { recursive: true });
-      fs.writeFileSync(path.join(extensionDir, "index.ts"), "// someone else's\n");
-      fs.writeFileSync(bridgePath(), "// clawd-on-desk-omp\n");
-
-      const result = install();
-
-      assert.strictEqual(result.reason, "standalone-bridge-present");
-      assert.strictEqual(result.removedOwnCopy, false);
-      assert.strictEqual(
-        fs.readFileSync(path.join(extensionDir, "index.ts"), "utf8"),
-        "// someone else's\n"
-      );
-    });
-  });
-
   describe("ownership", () => {
     it("never clobbers an extension directory Clawd does not own", () => {
       fs.mkdirSync(extensionDir, { recursive: true });
@@ -168,14 +106,13 @@ describe("omp-install", () => {
       );
     });
 
-    it("does not accept Pi's marker as its own", () => {
+    it("does not accept a foreign marker as its own", () => {
       assert.strictEqual(ompInstall.isManagedMarker(ompInstall.buildMarker()), true);
       assert.strictEqual(
-        ompInstall.isManagedMarker(piInstall.buildMarker()),
+        ompInstall.isManagedMarker({ app: "clawd-on-desk", integration: "pi", managed: true, version: 1 }),
         false,
         "a Pi-managed directory must not be treated as OMP's"
       );
-      assert.strictEqual(piInstall.isManagedMarker(ompInstall.buildMarker()), false);
     });
   });
 

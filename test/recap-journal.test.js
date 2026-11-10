@@ -27,7 +27,7 @@ test("journal stores only frozen allowlisted data and irreversible identity keys
   const occurredAt = Date.UTC(2026, 7, 29, 18, 30);
   const record = journal.buildRecord({
     occurredAt,
-    agentId: "codex",
+    agentId: "omp",
     scope: "remote",
     metrics: ["activity", "tool-call"],
   }, {
@@ -51,7 +51,7 @@ test("journal dedupes stable upstream identities and survives a corrupt tail", (
   const { journal, store, warnings } = fixture(t);
   const event = {
     occurredAt: Date.UTC(2026, 7, 30, 1),
-    agentId: "claude-code",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity", "turn-complete"],
   };
@@ -89,13 +89,13 @@ test("journal prunes in-memory dedupe keys with the same fourteen-day window", (
   const identity = { sessionId: "stable-session", dedupeId: "reused-upstream-id" };
   const old = journal.buildRecord({
     occurredAt: Date.UTC(2026, 7, 1, 0),
-    agentId: "codex",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity", "tool-call"],
   }, identity);
   const retained = journal.buildRecord({
     occurredAt: Date.UTC(2026, 7, 3, 0),
-    agentId: "codex",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity", "tool-call"],
   }, { sessionId: "other-session", dedupeId: "still-retained" });
@@ -106,7 +106,7 @@ test("journal prunes in-memory dedupe keys with the same fourteen-day window", (
   journal.prune("2026-08-15");
   const reused = journal.buildRecord({
     occurredAt: Date.UTC(2026, 7, 15, 0),
-    agentId: "codex",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity", "tool-call"],
   }, identity);
@@ -119,7 +119,7 @@ test("async retained restore snapshots files and yields between bounded record b
   const localDate = "2026-08-30";
   const record = journal.buildRecord({
     occurredAt: Date.UTC(2026, 7, 29, 18),
-    agentId: "codex",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity"],
   });
@@ -144,7 +144,7 @@ test("issue #1141: retained restore streams each record before it yields and kee
   const localDate = "2026-08-30";
   const record = journal.buildRecord({
     occurredAt: Date.UTC(2026, 7, 29, 18),
-    agentId: "codex",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity"],
   });
@@ -173,7 +173,7 @@ test("issue #1141: retained restore keeps one valid record under a blank-line fl
   const { journal, store } = fixture(t);
   const record = journal.buildRecord({
     occurredAt: Date.UTC(2026, 7, 29, 18),
-    agentId: "codex",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity", "tool-call"],
   });
@@ -196,7 +196,7 @@ test("issue #1141: retained restore rejects a missing callback and a callback fa
   await assert.rejects(() => journal.forEachRetainedAsync("2026-08-30"), TypeError);
   const record = journal.buildRecord({
     occurredAt: Date.UTC(2026, 7, 29, 18),
-    agentId: "codex",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity"],
   });
@@ -212,13 +212,13 @@ test("issue #1141: retained restore reports the first date of each accepted dedu
   const identity = { sessionId: "s1", dedupeId: "tool-1" };
   const first = journal.buildRecord({
     occurredAt: Date.UTC(2026, 7, 1, 0),
-    agentId: "codex",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity", "tool-call"],
   }, identity);
   const other = journal.buildRecord({
     occurredAt: Date.UTC(2026, 7, 10, 0),
-    agentId: "codex",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity"],
   }, { sessionId: "s2", dedupeId: "tool-2" });
@@ -242,7 +242,7 @@ test("hydration never ages a newer live dedupe key back to an older disk date", 
   const identity = { sessionId: "stable-session", dedupeId: "stable-tool" };
   const old = journal.buildRecord({
     occurredAt: Date.UTC(2026, 7, 1, 0),
-    agentId: "codex",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity", "tool-call"],
   }, identity);
@@ -265,7 +265,7 @@ test("hydration never ages a newer live dedupe key back to an older disk date", 
   await yielded;
   const live = journal.buildRecord({
     occurredAt: Date.UTC(2026, 7, 14, 0),
-    agentId: "codex",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity", "tool-call"],
   }, identity);
@@ -276,7 +276,7 @@ test("hydration never ages a newer live dedupe key back to an older disk date", 
   journal.prune("2026-08-15");
   const replay = journal.buildRecord({
     occurredAt: Date.UTC(2026, 7, 15, 0),
-    agentId: "codex",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity", "tool-call"],
   }, identity);
@@ -300,7 +300,7 @@ test("retained restore dedupes a replayed stable identity on disk", async (t) =>
   const { journal, store } = fixture(t);
   const record = journal.buildRecord({
     occurredAt: Date.UTC(2026, 7, 29, 18),
-    agentId: "codex",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity", "tool-call"],
   }, { sessionId: "s", dedupeId: "tool-1" });
@@ -355,7 +355,7 @@ test("retained restore holds no file handle across a yield and aborts after rese
   const localDate = "2026-08-30";
   const record = journal.buildRecord({
     occurredAt: Date.UTC(2026, 7, 29, 18),
-    agentId: "codex",
+    agentId: "omp",
     scope: "local",
     metrics: ["activity"],
   });

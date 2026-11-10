@@ -1,24 +1,9 @@
 "use strict";
 
 const { canOfferLocalFolder, focusUnavailableReasonKey } = globalThis.ClawdSessionFocusUnavailable;
-const { createLanguagePicker } = globalThis.ClawdLanguagePicker;
 
 const AGENT_LABELS = {
-  "claude-code": "Claude Code",
-  codex: "Codex",
-  "copilot-cli": "Copilot",
-  "cursor-agent": "Cursor Agent",
-  "gemini-cli": "Gemini",
-  "antigravity-cli": "Antigravity",
-  "kiro-cli": "Kiro",
-  "kimi-cli": "Kimi",
-  opencode: "opencode",
-  mimocode: "MiMo Code",
-  codebuddy: "CodeBuddy",
-  workbuddy: "WorkBuddy",
-  "grok-build": "Grok Build",
-  pi: "Pi",
-  openclaw: "OpenClaw",
+  omp: "OMP",
 };
 
 let snapshot = { sessions: [], groups: [], orderedIds: [] };
@@ -27,14 +12,10 @@ let activeEdit = null;
 
 const SESSION_FOLDER_FEEDBACK_MS = 4000;
 const sessionFolderActionState = new Map();
-const sessionTerminalActionState = new Map();
-const sessionAutomationActionState = new Map();
-let sessionAutomationPickers = [];
 
 const titleEl = document.getElementById("title");
 const countEl = document.getElementById("count");
 const contentEl = document.getElementById("content");
-const quotaSummaryEl = document.getElementById("quotaSummary");
 // Fixed node in the header. Keeping the mode banner outside the card tree
 // means entering the mode never reflows or rebuilds the user's content.
 const quickBannerEl = document.getElementById("quickBanner");
@@ -490,11 +471,6 @@ function handleQuickKeydown(event) {
     && (macInputHome || (!isEditingBusy() && !isEditableElement(event.target)))) {
     noteScrollIntent();
   }
-  // The open listbox owns its keys before the page's numeric/cancel mode.
-  if (hasOpenSessionAutomationPicker(event.target)) {
-    cancelPendingActivation();
-    return;
-  }
   if (!quick.active) {
     // A refused replacement leaves the borrowed editor intact. Once editing
     // is over Esc/Tab may close that shell, but digits never auto-arm again.
@@ -571,14 +547,6 @@ function handleQuickKeyup(event) {
   // Quiet period starts only once every digit key is up.
   armQuickHandoff();
 }
-// The manual Kimi quota refresh lives inside the Kimi quota section header
-// (built by renderQuotaSummary), so these refs are re-pointed on every quota
-// summary rebuild and stay null whenever the section is not rendered.
-let kimiQuotaRefreshButtonEl = null;
-let kimiQuotaRefreshFeedbackEl = null;
-
-let kimiQuotaStatus = null;
-let kimiQuotaRefreshBusy = false;
 
 function t(key) {
   const dict = i18nPayload && i18nPayload.translations ? i18nPayload.translations : {};
@@ -595,512 +563,6 @@ function formatElapsed(ms) {
   return t("sessionHrAgo").replace("{n}", hr);
 }
 
-function formatTokenCount(value) {
-  const n = Number(value);
-  if (!Number.isFinite(n) || n < 0) return "";
-  try {
-    return new Intl.NumberFormat(i18nPayload.lang || "en").format(Math.round(n));
-  } catch (_err) {
-    return String(Math.round(n));
-  }
-}
-
-function contextUsageText(session) {
-  const usage = session && session.contextUsage;
-  if (!usage || !Number.isFinite(Number(usage.used))) return "";
-  const used = formatTokenCount(usage.used);
-  if (Number.isFinite(Number(usage.limit))) {
-    const limit = formatTokenCount(usage.limit);
-    const percent = Number.isFinite(Number(usage.percent))
-      ? ` (${Math.max(0, Math.min(100, Math.round(Number(usage.percent))))}%)`
-      : "";
-    return `${t("dashboardContextUsage")}: ${used} / ${limit}${percent}`;
-  }
-  return t("dashboardContextUsageUnknownLimit").replace("{used}", used);
-}
-
-// Account-wide rate-limit quota, shown once at the top of the dashboard -
-// grouped per reporting source (this machine + one group per remote host;
-// snapshot.accountQuota, fed by src/state-account-quota.js), because local
-// and remote can be different subscriptions. Freshest-wins applies within
-// a source only. Provider sections cover Antigravity's own /usage (Gemini +
-// Claude/GPT-via-agy), Claude Code's rate_limits, Codex's generic rollout
-// rate_limits, and Dashboard-only Codex Spark quota.
-// Severity thresholds mirror the Orbit coins (quota-ring-renderer.js): a bar
-// and a ring must agree on what counts as warn (60) and hot (85), otherwise
-// the same bucket reads as alarming in one surface and fine in the other.
-// test/quota-palette.test.js pins the mirror.
-const QUOTA_WARN_AT = 60;
-const QUOTA_HOT_AT = 85;
-
-function quotaSeverityClass(usedPercent) {
-  const p = Number(usedPercent);
-  if (!Number.isFinite(p)) return "sev-ok";
-  if (p > QUOTA_HOT_AT) return "sev-hot";
-  if (p >= QUOTA_WARN_AT) return "sev-warn";
-  return "sev-ok";
-}
-// A source that has not confirmed its numbers recently gets an explicit
-// "as of N ago" label instead of presenting old numbers as live.
-const DEFAULT_QUOTA_STALE_AFTER_MS = 5 * 60 * 1000;
-const PROVIDER_STALE_AFTER_MS = Object.freeze({
-  kimiQuota: 7 * 60 * 1000,
-});
-
-function quotaStaleAfterMs(providerKey) {
-  return PROVIDER_STALE_AFTER_MS[providerKey] || DEFAULT_QUOTA_STALE_AFTER_MS;
-}
-
-function isKimiQuotaConnected() {
-  return !!(
-    kimiQuotaStatus
-    && kimiQuotaStatus.status === "ok"
-    && kimiQuotaStatus.configured === true
-    && kimiQuotaStatus.collectionEnabled === true
-  );
-}
-
-// Feedback is kept as data (not just written into the span) so it survives
-// the quota summary rebuild that a fresh snapshot triggers right after a
-// refresh completes.
-let kimiQuotaRefreshFeedbackState = { text: "", isError: false };
-
-function applyKimiQuotaRefreshFeedback() {
-  const el = kimiQuotaRefreshFeedbackEl;
-  if (!el) return;
-  const { text, isError } = kimiQuotaRefreshFeedbackState;
-  el.textContent = text;
-  el.title = text;
-  el.className = isError
-    ? "quota-refresh-feedback error"
-    : "quota-refresh-feedback";
-  el.hidden = !text;
-}
-
-function setKimiQuotaRefreshFeedback(message, isError = false) {
-  kimiQuotaRefreshFeedbackState = { text: message || "", isError: !!isError };
-  applyKimiQuotaRefreshFeedback();
-}
-
-function syncKimiQuotaRefreshControl() {
-  const button = kimiQuotaRefreshButtonEl;
-  if (!button) return;
-  button.disabled = kimiQuotaRefreshBusy
-    || !kimiQuotaStatus
-    || kimiQuotaStatus.decryptable !== true
-    || kimiQuotaStatus.agentEnabled === false;
-  button.className = kimiQuotaRefreshBusy
-    ? "quota-refresh-button is-refreshing"
-    : "quota-refresh-button";
-  const label = t(
-    kimiQuotaRefreshBusy ? "dashboardKimiQuotaRefreshing" : "dashboardKimiQuotaRefresh"
-  );
-  button.title = label;
-  button.setAttribute("aria-label", label);
-  applyKimiQuotaRefreshFeedback();
-}
-
-// Icon-only refresh action for the Kimi quota section header; repoints the
-// module-level refs on every quota summary rebuild.
-function buildKimiQuotaRefreshControl() {
-  const feedback = document.createElement("span");
-  feedback.className = "quota-refresh-feedback";
-  feedback.setAttribute("role", "status");
-  feedback.setAttribute("aria-live", "polite");
-  feedback.hidden = true;
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "quota-refresh-button";
-  const icon = document.createElement("span");
-  icon.className = "quota-refresh-icon";
-  icon.setAttribute("aria-hidden", "true");
-  icon.textContent = "↻";
-  button.appendChild(icon);
-  const label = document.createElement("span");
-  label.className = "quota-refresh-label";
-  label.textContent = t("dashboardKimiQuotaRefreshShort");
-  button.appendChild(label);
-  button.addEventListener("click", refreshKimiQuotaFromDashboard);
-  kimiQuotaRefreshFeedbackEl = feedback;
-  kimiQuotaRefreshButtonEl = button;
-  syncKimiQuotaRefreshControl();
-  return [feedback, button];
-}
-
-async function reloadKimiQuotaStatus() {
-  if (!window.dashboardAPI || typeof window.dashboardAPI.getKimiQuotaStatus !== "function") {
-    kimiQuotaStatus = null;
-  } else {
-    try { kimiQuotaStatus = await window.dashboardAPI.getKimiQuotaStatus(); }
-    catch { kimiQuotaStatus = null; }
-  }
-  // The connected flag feeds the quota summary signature, so this rebuilds
-  // (showing/hiding the section-header refresh) only when it flipped.
-  renderQuotaSummary(snapshot);
-  syncKimiQuotaRefreshControl();
-  return kimiQuotaStatus;
-}
-
-// Identity of the live session set. Only a change here can add or remove a
-// resumable row, so it gates the disk read.
-function liveSessionKey(value) {
-  const sessions = value && Array.isArray(value.sessions) ? value.sessions : [];
-  return sessions.map((session) => (session && session.id) || "").sort().join("\u0000");
-}
-
-function snapshotHasKimiQuota(value) {
-  const accountQuota = Array.isArray(value && value.accountQuota) ? value.accountQuota : [];
-  return accountQuota.some((entry) => entry && entry.kimiQuota && entry.kimiQuota.group);
-}
-
-async function refreshKimiQuotaFromDashboard() {
-  if (kimiQuotaRefreshBusy || !window.dashboardAPI
-      || typeof window.dashboardAPI.refreshKimiQuota !== "function") return;
-  kimiQuotaRefreshBusy = true;
-  setKimiQuotaRefreshFeedback("");
-  syncKimiQuotaRefreshControl();
-  let result;
-  try { result = await window.dashboardAPI.refreshKimiQuota(); }
-  catch { result = { status: "error", reason: "runtime-unavailable" }; }
-  kimiQuotaRefreshBusy = false;
-  await reloadKimiQuotaStatus();
-  if (result && result.status === "ok") {
-    setKimiQuotaRefreshFeedback(t("dashboardKimiQuotaUpdated"));
-  } else {
-    const reason = (result && (result.reason || result.message)) || "unknown-error";
-    setKimiQuotaRefreshFeedback(
-      t("dashboardKimiQuotaRefreshFailed").replace("{reason}", String(reason)),
-      true
-    );
-  }
-  syncKimiQuotaRefreshControl();
-}
-
-function formatDurationHM(totalMinutes) {
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  return hours > 0
-    ? t("dashboardQuotaResetHoursMinutes").replace("{h}", hours).replace("{m}", minutes)
-    : t("dashboardQuotaResetMinutes").replace("{m}", minutes);
-}
-
-function formatResetIn(resetAt) {
-  const n = Number(resetAt);
-  if (!Number.isFinite(n)) return "";
-  const secondsLeft = Math.round((n - Date.now()) / 1000);
-  if (secondsLeft < 0) return "";
-  return formatDurationHM(Math.round(secondsLeft / 60));
-}
-
-function formatAsOf(updatedAt) {
-  const n = Number(updatedAt);
-  if (!Number.isFinite(n)) return "";
-  const agoMinutes = Math.round((Date.now() - n) / 60000);
-  if (agoMinutes < 1) return "";
-  return t("dashboardQuotaAsOf").replace("{time}", formatDurationHM(agoMinutes));
-}
-
-// The rate-limit windows reset on wall clock regardless of CLI activity, so
-// a bucket whose resetAt has passed would show the pre-reset high - worse
-// than showing nothing. The store already drops expired buckets at snapshot
-// time; this guard covers buckets that expire between snapshots (the
-// dashboard rerenders on its own tick).
-function isExpiredBucket(bucket) {
-  return Number.isFinite(bucket.resetAt) && bucket.resetAt <= Date.now();
-}
-
-function liveBucket(group, field) {
-  const bucket = group && group[field];
-  if (!bucket || typeof bucket !== "object") return null;
-  // Window reset on wall clock: render as 0% (nothing reported since the
-  // reset) rather than the pre-reset high or a vanished bar.
-  if (bucket.expired === true || isExpiredBucket(bucket)) {
-    return { ...bucket, usedPercent: 0, expired: true };
-  }
-  return bucket;
-}
-
-function formatQuotaWindowLabel(bucket, fallbackLabel) {
-  const minutes = Number(bucket && bucket.windowMinutes);
-  if (!Number.isFinite(minutes) || minutes <= 0) return fallbackLabel;
-  if (minutes % (24 * 60) === 0) return `${minutes / (24 * 60)}d`;
-  if (minutes % 60 === 0) return `${minutes / 60}h`;
-  return `${Math.round(minutes)}m`;
-}
-
-function quotaResetStyle(bucket, fallbackStyle) {
-  const minutes = Number(bucket && bucket.windowMinutes);
-  if (!Number.isFinite(minutes) || minutes <= 0) return fallbackStyle;
-  return minutes >= 24 * 60 ? "date" : "countdown";
-}
-
-// renderQuotaSummary can run once a second (see the setInterval(render, 1000)
-// tick below) - cache the formatter per lang instead of constructing a new
-// Intl.DateTimeFormat on every call.
-let resetDateFormatterLang = null;
-let resetDateFormatter = null;
-
-function formatResetDate(resetAt) {
-  const n = Number(resetAt);
-  if (!Number.isFinite(n)) return "";
-  const lang = (i18nPayload && i18nPayload.lang) || "en";
-  try {
-    if (!resetDateFormatter || resetDateFormatterLang !== lang) {
-      resetDateFormatter = new Intl.DateTimeFormat(lang, { month: "short", day: "numeric" });
-      resetDateFormatterLang = lang;
-    }
-    return resetDateFormatter.format(n);
-  } catch (_err) {
-    return "";
-  }
-}
-
-// One row (or two for Antigravity) per source that has live data for the
-// provider. Source labels appear only when they carry information: a single
-// local-only source renders exactly the compact pre-grouping layout, and a
-// fresh source shows no "as of" suffix.
-function buildQuotaSourceHeader(sourceEntry, providerEntry, baseLabel, providerKey) {
-  const parts = [];
-  const multiSource = sourceEntry.multiSource === true;
-  if (multiSource) {
-    parts.push(sourceEntry.host || t("dashboardQuotaSourceLocal"));
-  }
-  if (baseLabel) parts.push(baseLabel);
-  // lastSeenAt (last confirmation), not updatedAt (last value change): a
-  // reporter confirming the same numbers every minute is alive, not stale.
-  // Fallback covers snapshots that predate lastSeenAt.
-  const seenAt = Number(providerEntry.lastSeenAt ?? providerEntry.updatedAt ?? 0);
-  const age = Date.now() - seenAt;
-  if (Number.isFinite(age) && age > quotaStaleAfterMs(providerKey)) {
-    const asOf = formatAsOf(seenAt);
-    if (asOf) parts.push(asOf);
-  }
-  return parts.length ? parts.join(" · ") : null;
-}
-
-function buildQuotaHalfBar(labelText, bucket, resetStyle, providerKey, ringSlot) {
-  const half = document.createElement("div");
-  half.className = "quota-half";
-
-  const labelRow = document.createElement("div");
-  labelRow.className = "quota-label-row";
-  labelRow.appendChild(createText("span", "quota-label", labelText));
-  const percentText = `${bucket.usedPercent}%`;
-  let resetText = "";
-  if (Number.isFinite(bucket.resetAt)) {
-    resetText = resetStyle === "date"
-      ? t("dashboardQuotaResetOn").replace("{date}", formatResetDate(bucket.resetAt))
-      : t("dashboardQuotaResetIn").replace("{time}", formatResetIn(bucket.resetAt));
-  }
-  const bucketSeenAt = Number(bucket.lastSeenAt);
-  const asOf = Number.isFinite(bucketSeenAt)
-    && Date.now() - bucketSeenAt > quotaStaleAfterMs(providerKey)
-    ? formatAsOf(bucketSeenAt)
-    : "";
-  const details = [percentText, resetText, asOf].filter(Boolean).join(" · ");
-  labelRow.appendChild(createText("span", "quota-percent", details));
-  half.appendChild(labelRow);
-
-  const track = document.createElement("div");
-  track.className = "quota-bar-track";
-  const fill = document.createElement("div");
-  // Identity classes (pv-/rg-) paint the bar in the provider+window hue the
-  // Orbit coin uses for the same logical window; the sev- class overrides it
-  // on warning/hot, again exactly like the coin's fill.
-  fill.className = `quota-bar-fill pv-${providerKey} rg-${ringSlot} ${quotaSeverityClass(bucket.usedPercent)}`;
-  fill.style.width = `${Math.max(0, Math.min(100, bucket.usedPercent))}%`;
-  track.appendChild(fill);
-  half.appendChild(track);
-
-  return half;
-}
-
-function buildQuotaGroupRow(headerText, fiveHourBucket, weeklyBucket, providerKey) {
-  if (!fiveHourBucket && !weeklyBucket) return null;
-  const row = document.createElement("div");
-  row.className = "quota-group-row";
-  if (headerText) row.appendChild(createText("div", "quota-group-header", headerText));
-  const halves = document.createElement("div");
-  halves.className = "quota-halves";
-  if (fiveHourBucket) {
-    halves.appendChild(buildQuotaHalfBar(
-      formatQuotaWindowLabel(fiveHourBucket, t("dashboardQuotaFiveHour")),
-      fiveHourBucket,
-      quotaResetStyle(fiveHourBucket, "countdown"),
-      providerKey,
-      "outer"
-    ));
-  }
-  if (weeklyBucket) {
-    halves.appendChild(buildQuotaHalfBar(
-      formatQuotaWindowLabel(weeklyBucket, t("dashboardQuotaWeekly")),
-      weeklyBucket,
-      quotaResetStyle(weeklyBucket, "date"),
-      providerKey,
-      "inner"
-    ));
-  }
-  row.appendChild(halves);
-  return row;
-}
-
-function buildQuotaSection(headerKey, rows, headerExtras = []) {
-  const usableRows = rows.filter(Boolean);
-  if (!usableRows.length && !headerExtras.length) return null;
-  const section = document.createElement("div");
-  section.className = "quota-section";
-  if (headerExtras.length) {
-    const titlebar = document.createElement("div");
-    titlebar.className = "quota-section-titlebar";
-    titlebar.appendChild(createText("div", "quota-section-header", t(headerKey)));
-    for (const el of headerExtras) titlebar.appendChild(el);
-    section.appendChild(titlebar);
-  } else {
-    section.appendChild(createText("div", "quota-section-header", t(headerKey)));
-  }
-  for (const row of usableRows) section.appendChild(row);
-  return section;
-}
-
-// render() re-invokes renderQuotaSummary every second so the "resets in Xh
-// Ym" countdowns stay live even between real quota updates, but that only
-// needs to touch the DOM once a minute (formatResetIn's granularity) or when
-// the underlying quota/lang actually changes - not on every tick. Skipping
-// the rebuild otherwise avoids rebuilding the whole subtree (and re-running
-// every Intl.DateTimeFormat/formatResetIn call inside it) 59 times a minute
-// for nothing.
-let lastQuotaSummarySignature = null;
-
-function computeQuotaSummarySignature(accountQuota) {
-  return JSON.stringify({
-    lang: (i18nPayload && i18nPayload.lang) || "en",
-    minute: accountQuota.length ? Math.floor(Date.now() / 60000) : null,
-    accountQuota,
-    // The Kimi section header hosts the manual refresh while connected, so a
-    // connection flip must force a rebuild even when the data is unchanged.
-    kimiRefresh: isKimiQuotaConnected(),
-  });
-}
-
-function renderQuotaSummary(snapshot) {
-  if (!quotaSummaryEl) return;
-  const accountQuota = Array.isArray(snapshot && snapshot.accountQuota) ? snapshot.accountQuota : [];
-
-  const signature = computeQuotaSummarySignature(accountQuota);
-  if (signature === lastQuotaSummarySignature) return;
-  lastQuotaSummarySignature = signature;
-  // Stale until the Kimi section (re)creates them below.
-  kimiQuotaRefreshButtonEl = null;
-  kimiQuotaRefreshFeedbackEl = null;
-
-  const multiSource = accountQuota.length > 1;
-  const sources = accountQuota.map((entry) => ({ ...entry, multiSource }));
-
-  const sections = [];
-
-  const antigravityRows = [];
-  for (const source of sources) {
-    const provider = source.antigravityQuota;
-    const group = provider && provider.group;
-    if (!group) continue;
-    antigravityRows.push(
-      buildQuotaGroupRow(
-        buildQuotaSourceHeader(source, provider, t("dashboardQuotaGroupGemini"), "antigravityQuota"),
-        liveBucket(group, "geminiFiveHour"),
-        liveBucket(group, "geminiWeekly"),
-        "antigravityQuota"
-      ),
-      buildQuotaGroupRow(
-        buildQuotaSourceHeader(source, provider, t("dashboardQuotaGroupThirdParty"), "antigravityQuota"),
-        liveBucket(group, "thirdPartyFiveHour"),
-        liveBucket(group, "thirdPartyWeekly"),
-        "antigravityQuota"
-      )
-    );
-  }
-  const antigravitySection = buildQuotaSection("dashboardQuotaSectionAntigravity", antigravityRows);
-  if (antigravitySection) sections.push(antigravitySection);
-
-  const claudeRows = sources.map((source) => {
-    const provider = source.claudeQuota;
-    const group = provider && provider.group;
-    if (!group) return null;
-    return buildQuotaGroupRow(
-      buildQuotaSourceHeader(source, provider, null, "claudeQuota"),
-      liveBucket(group, "claudeFiveHour"),
-      liveBucket(group, "claudeWeekly"),
-      "claudeQuota"
-    );
-  });
-  const claudeSection = buildQuotaSection("dashboardQuotaSectionClaudeCode", claudeRows);
-  if (claudeSection) sections.push(claudeSection);
-
-  const codexRows = sources.map((source) => {
-    const provider = source.codexQuota;
-    const group = provider && provider.group;
-    if (!group) return null;
-    return buildQuotaGroupRow(
-      buildQuotaSourceHeader(source, provider, null, "codexQuota"),
-      liveBucket(group, "codexFiveHour"),
-      liveBucket(group, "codexWeekly"),
-      "codexQuota"
-    );
-  });
-  const codexSection = buildQuotaSection("dashboardQuotaSectionCodex", codexRows);
-  if (codexSection) sections.push(codexSection);
-
-  const codexSparkRows = sources.map((source) => {
-    const provider = source.codexSparkQuota;
-    const group = provider && provider.group;
-    if (!group) return null;
-    return buildQuotaGroupRow(
-      buildQuotaSourceHeader(source, provider, null, "codexSparkQuota"),
-      liveBucket(group, "codexFiveHour"),
-      liveBucket(group, "codexWeekly"),
-      "codexSparkQuota"
-    );
-  });
-  const codexSparkSection = buildQuotaSection(
-    "dashboardQuotaSectionCodexSpark",
-    codexSparkRows
-  );
-  if (codexSparkSection) sections.push(codexSparkSection);
-
-  const kimiRows = sources.map((source) => {
-    const provider = source.kimiQuota;
-    const group = provider && provider.group;
-    if (!group) return null;
-    return buildQuotaGroupRow(
-      buildQuotaSourceHeader(source, provider, null, "kimiQuota"),
-      liveBucket(group, "kimiFiveHour"),
-      liveBucket(group, "kimiWeekly"),
-      "kimiQuota"
-    );
-  });
-  const kimiConnected = isKimiQuotaConnected();
-  if (kimiConnected && !kimiRows.some(Boolean)) {
-    // Connected but nothing reported yet: keep the section visible so the
-    // manual refresh that fetches the first numbers has a home.
-    kimiRows.push(createText("div", "quota-empty-hint", t("dashboardKimiQuotaEmpty")));
-  }
-  const kimiSection = buildQuotaSection(
-    "dashboardQuotaSectionKimiCode",
-    kimiRows,
-    kimiConnected ? buildKimiQuotaRefreshControl() : []
-  );
-  if (kimiSection) sections.push(kimiSection);
-
-  if (!sections.length) {
-    quotaSummaryEl.hidden = true;
-    quotaSummaryEl.replaceChildren();
-    return;
-  }
-
-  const fragment = document.createDocumentFragment();
-  for (const section of sections) fragment.appendChild(section);
-  quotaSummaryEl.replaceChildren(fragment);
-  quotaSummaryEl.hidden = false;
-}
 
 function badgeLabel(badge) {
   const key = {
@@ -1316,22 +778,6 @@ function appendModel(main, session) {
   main.appendChild(row);
 }
 
-function appendPlanProgress(main, session) {
-  if (!session.planProgress) return;
-  const plan = session.planProgress;
-  const text = t("codexPlanProgress")
-    .replace("{completed}", plan.completed)
-    .replace("{total}", plan.total)
-    .replace("{percent}", plan.percent);
-  main.appendChild(createText("div", "plan-progress-row", text));
-}
-
-function appendContextUsage(main, session) {
-  const text = contextUsageText(session);
-  if (!text) return;
-  main.appendChild(createText("div", "context-usage-row", text));
-}
-
 function createIcon(session) {
   if (session.iconUrl) {
     const img = document.createElement("img");
@@ -1443,12 +889,9 @@ function createCard(session, now) {
   main.className = "main";
   main.appendChild(createTitle(session));
   appendMeta(main, session, now);
-  appendPlanProgress(main, session);
   appendPath(main, session);
   appendModel(main, session);
   appendEvent(main, session, now);
-  appendContextUsage(main, session);
-  appendSessionAutomation(main, session);
   card.appendChild(main);
 
   const actions = document.createElement("div");
@@ -1458,28 +901,13 @@ function createCard(session, now) {
   if (!hideRemoteFocusButton) {
     const button = document.createElement("button");
     button.type = "button";
-    const focusTargetType = session.focusTarget && session.focusTarget.type;
-    button.textContent = focusTargetType === "codex-app"
-      ? t("dashboardOpenCodexApp")
-      : focusTargetType === "codex-thread"
-      ? t("dashboardOpenCodexSession")
-      : focusTargetType === "dsh-desktop"
-        ? t("dashboardOpenDshDesktop")
-        : t("dashboardJumpTerminal");
+    button.textContent = t("dashboardJumpTerminal");
     button.disabled = session.canFocus !== true;
     if (button.disabled) {
       button.title = focusUnavailableText(session);
     }
-    button.addEventListener("click", async () => {
+    button.addEventListener("click", () => {
       window.dashboardAPI.focusSession(session.id);
-      // Best-effort ack alongside focus. Most remote-Codex sessions have
-      // canFocus=false (no terminal-jump target) and reach ack through the
-      // Mark-read button instead, but local Codex Stop sessions can land
-      // here so we ack on focus too.
-      if (window.dashboardAPI && typeof window.dashboardAPI.ackCompletion === "function") {
-        try { await window.dashboardAPI.ackCompletion(session.id); }
-        catch (err) { console.warn("ack completion threw:", err); }
-      }
     });
     actions.appendChild(button);
   }
@@ -1530,214 +958,9 @@ function createCard(session, now) {
     }
   }
 
-  if (session.canOpenInTerminal === true && typeof window.dashboardAPI.openSessionInTerminal === "function") {
-    const terminalState = sessionTerminalActionState.get(session.id) || {};
-    const openTerminal = document.createElement("button");
-    openTerminal.type = "button";
-    openTerminal.className = "open-terminal-button";
-    openTerminal.textContent = t("dashboardOpenInTerminal");
-    openTerminal.disabled = terminalState.pending === true;
-    const feedback = createText("span", "session-action-feedback", terminalState.feedback || "");
-    feedback.setAttribute("aria-live", "polite");
-    openTerminal.addEventListener("click", async () => {
-      if (sessionTerminalActionState.get(session.id)?.pending) return;
-      sessionTerminalActionState.set(session.id, { pending: true });
-      render();
-      let feedbackText = "";
-      try {
-        const result = await window.dashboardAPI.openSessionInTerminal(session.id);
-        if (!result || result.status !== "ok") {
-          const key = result?.reason === "directory" ? "dashboardOpenTerminalDirectory"
-            : result?.reason === "opencode" ? "dashboardOpenTerminalOpencode"
-            : result?.status === "unavailable" ? "dashboardOpenTerminalUnavailable"
-            : "dashboardOpenTerminalFailed";
-          feedbackText = t(key);
-        }
-      } catch { feedbackText = t("dashboardOpenTerminalFailed"); }
-      sessionTerminalActionState.set(session.id, { pending: false, feedback: feedbackText });
-      render();
-    });
-    actions.appendChild(openTerminal);
-    actions.appendChild(feedback);
-  }
-
-  if (session.requiresCompletionAck === true) {
-    actions.appendChild(createMarkReadButton(session));
-  }
-
   card.appendChild(actions);
 
   return card;
-}
-
-function automationActionKey(session) {
-  return session && session.id ? `session:${session.id}` : "";
-}
-
-function automationActionState(key) {
-  const state = key ? sessionAutomationActionState.get(key) : null;
-  return state && typeof state === "object"
-    ? state
-    : { pending: false, feedbackText: "" };
-}
-
-function sessionAutomationUnavailableText(session) {
-  // Display-only identity check, matching hooks/codex-originator.js. An
-  // unsupported source/originator reason alone does not identify Desktop.
-  const originator = String(session && session.codexOriginator || "").trim().toLowerCase();
-  if (session && session.agentId === "codex"
-    && (originator === "codex desktop" || originator === "codex_work_desktop")) {
-    return t("sessionAutomationUnavailableCodexDesktop");
-  }
-  return t("sessionAutomationUnavailable");
-}
-
-function appendSessionAutomation(container, session) {
-  if (!container || !session) return;
-  // Explain Codex's unavailable per-session settings, but do not imply that
-  // state-only/manual-only agents inherit Clawd permission automation.
-  if (session.canConfigureSessionAutomation !== true
-    && !session.sessionAutomationGrantId && session.agentId !== "codex") return;
-  const row = document.createElement("div");
-  row.className = "session-automation-row";
-  const label = createText("span", "session-automation-label", t("sessionAutomationLabel"));
-  const canConfigure = session.canConfigureSessionAutomation === true;
-  const hasGrant = !!session.sessionAutomationGrantId;
-  const unavailableText = canConfigure ? "" : sessionAutomationUnavailableText(session);
-
-  if (!canConfigure && !hasGrant) {
-    const readonlyValue = createText(
-      "span",
-      "session-automation-readonly",
-      t("sessionAutomationUnavailableValue")
-    );
-    readonlyValue.setAttribute(
-      "aria-label",
-      `${t("sessionAutomationLabel")}: ${t("sessionAutomationUnavailableValue")}`
-    );
-    const unavailable = createText(
-      "span",
-      "session-automation-unavailable",
-      unavailableText
-    );
-    unavailable.setAttribute("role", "note");
-    row.appendChild(label);
-    row.appendChild(readonlyValue);
-    row.appendChild(unavailable);
-    container.appendChild(row);
-    return;
-  }
-
-  const values = [
-    ["inherit", t("sessionAutomationFollowGlobal")],
-    ["off", t("sessionAutomationAsk")],
-    ["auto-tools", t("sessionAutomationAutoTools")],
-  ];
-  const key = automationActionKey(session);
-  const actionState = automationActionState(key);
-  const feedback = createText(
-    "span",
-    "session-automation-feedback",
-    actionState.feedbackText
-  );
-  const currentMode = session.sessionAutomationMode || "inherit";
-  const pickerValues = canConfigure
-    ? values
-    : values.filter(([value]) => value === "inherit" || value === currentMode);
-  const picker = createLanguagePicker({
-    className: "session-automation-picker",
-    ariaLabel: t("sessionAutomationLabel"),
-    value: currentMode,
-    options: pickerValues.map(([value, labelText]) => ({ value, label: labelText })),
-    lockWhilePending: true,
-    pending: actionState.pending === true,
-    revealWhenClosed: false,
-    onChange: async (nextValue) => {
-      if (!window.dashboardAPI) return false;
-      sessionAutomationActionState.set(key, {
-        pending: true,
-        feedbackText: "",
-      });
-      feedback.textContent = "";
-      let result;
-      try {
-        if (nextValue === "inherit") {
-          result = session.sessionAutomationGrantId
-            ? await window.dashboardAPI.clearSessionAutomationGrant({
-              grantId: session.sessionAutomationGrantId,
-            })
-            : { status: "equivalent" };
-        } else {
-          result = await window.dashboardAPI.setSessionAutomationOverride({
-            sessionId: session.id,
-            mode: nextValue,
-          });
-        }
-      } catch (err) {
-        result = { status: "error", message: err && err.message };
-      }
-      if (!result || !["applied", "equivalent"].includes(result.status)) {
-        if (result && result.status === "cancelled") {
-          sessionAutomationActionState.delete(key);
-        } else {
-          const feedbackText = t("sessionAutomationChangeFailed");
-          sessionAutomationActionState.set(key, {
-            pending: false,
-            feedbackText,
-          });
-          feedback.textContent = feedbackText;
-        }
-        return false;
-      }
-      sessionAutomationActionState.delete(key);
-      return true;
-    },
-  });
-  picker.element.setAttribute("data-session-automation-key", key);
-  sessionAutomationPickers.push(picker);
-  if (!canConfigure) picker.element.title = unavailableText;
-  row.appendChild(label);
-  row.appendChild(picker.element);
-  if (!canConfigure) {
-    const unavailable = createText(
-      "span",
-      "session-automation-unavailable",
-      unavailableText
-    );
-    unavailable.setAttribute("role", "note");
-    row.appendChild(unavailable);
-  }
-  row.appendChild(feedback);
-  container.appendChild(row);
-}
-
-function createMarkReadButton(session) {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "mark-read-button";
-  button.textContent = t("dashboardMarkRead");
-  button.title = t("dashboardMarkReadTitle");
-  button.setAttribute("aria-label", t("dashboardMarkReadTitle"));
-  button.addEventListener("click", async (event) => {
-    event.stopPropagation();
-    if (!session || !session.id || !window.dashboardAPI || typeof window.dashboardAPI.ackCompletion !== "function") return;
-    button.disabled = true;
-    try {
-      const result = await window.dashboardAPI.ackCompletion(session.id);
-      if (!result || (result.status !== "ok" && result.status !== "noop")) {
-        // Failure path: re-enable so the user can try again. Successful
-        // ack keeps the button disabled — the next forced snapshot will
-        // strip requiresCompletionAck and the button disappears on
-        // re-render.
-        button.disabled = false;
-        console.warn("ack completion failed:", result && result.message);
-      }
-    } catch (err) {
-      button.disabled = false;
-      console.warn("ack completion threw:", err);
-    }
-  });
-  return button;
 }
 
 function deriveGroups(currentSnapshot) {
@@ -1749,336 +972,7 @@ function renderEmpty() {
   empty.className = "empty";
   empty.appendChild(createText("div", "empty-title", t("dashboardEmpty")));
   empty.appendChild(createText("div", "empty-hint", t("dashboardEmptyHint")));
-  // "No sessions running" is exactly when the resume list is most useful —
-  // it is the state a machine comes back up in. With nothing to resume the
-  // node tree stays exactly as it was before this section existed.
-  if (!sessionHistory.length) {
-    contentEl.replaceChildren(empty);
-    return;
-  }
-  empty.classList.add("empty-with-history");
-  const fragment = document.createDocumentFragment();
-  fragment.appendChild(empty);
-  appendSessionHistory(fragment, Date.now());
-  contentEl.replaceChildren(fragment);
-}
-
-function createSessionAutomationOrphan(record) {
-  const card = document.createElement("article");
-  card.className = "automation-orphan-card";
-  const main = document.createElement("div");
-  main.className = "automation-orphan-main";
-  main.appendChild(createText(
-    "div",
-    "automation-orphan-title",
-    record.displayLabel || record.sessionId || record.agentId
-  ));
-  main.appendChild(createText(
-    "div",
-    "automation-orphan-meta",
-    `${AGENT_LABELS[record.agentId] || record.agentId} · ${
-      record.mode === "auto-tools"
-        ? t("sessionAutomationAutoTools")
-        : t("sessionAutomationAsk")
-    }`
-  ));
-  card.appendChild(main);
-  const button = document.createElement("button");
-  button.type = "button";
-  button.textContent = t("sessionAutomationRevoke");
-  const key = `grant:${record.sessionAutomationGrantId}`;
-  const actionState = automationActionState(key);
-  button.disabled = actionState.pending === true;
-  main.appendChild(createText(
-    "div",
-    "session-automation-feedback",
-    actionState.feedbackText
-  ));
-  button.addEventListener("click", async () => {
-    if (!record.sessionAutomationGrantId) return;
-    sessionAutomationActionState.set(key, {
-      pending: true,
-      feedbackText: "",
-    });
-    button.disabled = true;
-    let result;
-    try {
-      result = await window.dashboardAPI.clearSessionAutomationGrant({
-        grantId: record.sessionAutomationGrantId,
-      });
-    } catch (err) {
-      console.warn("clear orphan session automation grant threw:", err);
-      result = { status: "error" };
-    }
-    if (result && ["applied", "equivalent"].includes(result.status)) {
-      sessionAutomationActionState.delete(key);
-    } else {
-      sessionAutomationActionState.set(key, {
-        pending: false,
-        feedbackText: t("sessionAutomationChangeFailed"),
-      });
-    }
-    render();
-  });
-  card.appendChild(button);
-  return card;
-}
-
-function appendSessionAutomationOrphans(fragment) {
-  const orphans = Array.isArray(snapshot.sessionAutomationOrphans)
-    ? snapshot.sessionAutomationOrphans
-    : [];
-  if (!orphans.length) return;
-  const section = document.createElement("section");
-  section.className = "group automation-orphans";
-  section.appendChild(createText("h2", "group-title", t("sessionAutomationOrphansTitle")));
-  section.appendChild(createText(
-    "p",
-    "automation-orphans-hint",
-    t("sessionAutomationOrphansHint")
-  ));
-  const cards = document.createElement("div");
-  cards.className = "cards";
-  for (const record of orphans) cards.appendChild(createSessionAutomationOrphan(record));
-  section.appendChild(cards);
-  fragment.appendChild(section);
-}
-
-function hasOpenSessionAutomationPicker(target = document.activeElement) {
-  return sessionAutomationPickers.some((picker) => {
-    const element = picker && picker.element;
-    return !!(
-      element
-      && element.classList
-      && element.classList.contains("open")
-      && contentEl.contains(element)
-      && element.contains(target)
-    );
-  });
-}
-
-function sessionAutomationFocusKey() {
-  const focused = sessionAutomationPickers.find((picker) =>
-    picker.element.contains(document.activeElement));
-  return focused ? focused.element.getAttribute("data-session-automation-key") : null;
-}
-
-function restoreSessionAutomationFocus(key) {
-  if (!key) return;
-  const picker = sessionAutomationPickers.find((candidate) =>
-    candidate.element.getAttribute("data-session-automation-key") === key);
-  const trigger = picker && picker.element.querySelector(".language-picker-trigger");
-  if (trigger) trigger.focus({ preventScroll: true });
-}
-
-function disposeSessionAutomationPickers() {
-  for (const picker of sessionAutomationPickers) picker.dispose();
-  sessionAutomationPickers = [];
-}
-
-// ── Session history ──────────────────────────────────────────────────────
-// Rows come from ~/.clawd/session-history-v1 via main. render() runs on a
-// one-second tick and rebuilds the whole tree, so the list is fetched into
-// this cache and re-read only on real changes — never once per frame.
-let sessionHistory = [];
-let sessionHistoryPending = false;
-let sessionHistoryReloadRequested = false;
-// Whether the collapsed "other sessions" group is expanded. Session-local on
-// purpose: the Dashboard reopening starts collapsed so the resumable list
-// leads, and no extra state needs to be persisted or synced.
-let sessionHistoryOtherExpanded = false;
-const sessionHistoryActionState = new Map();
-
-function historyKey(row) {
-  return row.historyKey;
-}
-
-async function reloadSessionHistory(options = {}) {
-  if (!window.dashboardAPI || typeof window.dashboardAPI.getSessionHistory !== "function") return;
-  if (sessionHistoryPending) {
-    sessionHistoryReloadRequested = true;
-    return;
-  }
-  sessionHistoryPending = true;
-  try {
-    do {
-      sessionHistoryReloadRequested = false;
-      const rows = await window.dashboardAPI.getSessionHistory();
-      sessionHistory = Array.isArray(rows) ? rows : [];
-    } while (sessionHistoryReloadRequested);
-  } catch {
-    sessionHistory = [];
-  } finally {
-    sessionHistoryPending = false;
-  }
-  // Drop feedback for rows that are gone so it cannot outlive its card.
-  const live = new Set(sessionHistory.map(historyKey));
-  for (const key of sessionHistoryActionState.keys()) {
-    if (!live.has(key)) sessionHistoryActionState.delete(key);
-  }
-  for (const row of sessionHistory) {
-    if (row.resumePending && !sessionHistoryActionState.has(historyKey(row))) {
-      sessionHistoryActionState.set(historyKey(row), {
-        status: "submitted", retryAt: row.resumeRetryAt,
-      });
-    }
-  }
-  if (options.rerender !== false) render();
-}
-
-function isHistoryResumePending(state, now = Date.now()) {
-  return !!state && (state.status === "pending"
-    || (state.status === "submitted" && now < state.retryAt));
-}
-
-async function resumeHistoryRow(row) {
-  if (row.resumeDisabledReason) return;
-  const key = historyKey(row);
-  if (isHistoryResumePending(sessionHistoryActionState.get(key))) return;
-  sessionHistoryActionState.set(key, { status: "pending" });
-  render({ force: true });
-  let result = null;
-  try {
-    result = await window.dashboardAPI.resumeSession({
-      agentId: row.agentId,
-      historyKey: row.historyKey,
-    });
-  } catch {
-    result = null;
-  }
-  if (result && result.status === "submitted") {
-    sessionHistoryActionState.set(key, { status: "submitted", retryAt: result.retryAt });
-    render({ force: true });
-    return;
-  }
-  if (result && result.status === "already-running") {
-    sessionHistoryActionState.delete(key);
-    sessionHistory = sessionHistory.filter((item) => historyKey(item) !== key);
-    await reloadSessionHistory();
-    return;
-  }
-  sessionHistoryActionState.set(key, { status: "error" });
-  render({ force: true });
-}
-
-function createSessionHistoryCard(row, now) {
-  const card = document.createElement("article");
-  card.className = "session-history-card";
-
-  const main = document.createElement("div");
-  main.className = "session-history-main";
-  main.appendChild(createText(
-    "div",
-    "session-history-title",
-    row.title || row.sessionId
-  ));
-
-  const meta = document.createElement("div");
-  meta.className = "session-history-meta";
-  if (row.interrupted) {
-    meta.appendChild(createText("span", "session-history-flag", t("dashboardHistoryInterrupted")));
-  }
-  // null means the probe could not tell; only a confident false warns.
-  if (row.transcriptPresent === false) {
-    meta.appendChild(createText(
-      "span",
-      "session-history-flag is-missing",
-      t("dashboardHistoryTranscriptMissing")
-    ));
-  }
-  if (row.resumeDisabledReason === "profile-unverified") {
-    meta.appendChild(createText(
-      "span",
-      "session-history-flag is-missing",
-      t("dashboardHistoryProfileUnverified")
-    ));
-  }
-  const folder = sessionHistoryFolderLabel(row.cwd);
-  // The short id sits next to the folder so two similar-looking rows stay
-  // distinguishable and can be matched against `claude --resume` output.
-  const shortId = typeof row.sessionId === "string" ? row.sessionId.slice(0, 8) : "";
-  const elapsed = formatElapsed(Math.max(0, now - row.lastEventAt));
-  const parts = [folder, shortId].filter(Boolean);
-  meta.appendChild(document.createTextNode(parts.length ? `${parts.join(" · ")} · ${elapsed}` : elapsed));
-  main.appendChild(meta);
-  card.appendChild(main);
-
-  const actions = document.createElement("div");
-  actions.className = "session-history-actions";
-  const state = sessionHistoryActionState.get(historyKey(row)) || null;
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "session-history-resume";
-  const pending = isHistoryResumePending(state, now);
-  button.textContent = pending
-    ? t("dashboardHistoryResuming")
-    : t("dashboardHistoryResume");
-  button.disabled = pending || !!row.resumeDisabledReason;
-  button.addEventListener("click", () => { void resumeHistoryRow(row); });
-  actions.appendChild(button);
-  if (state && (state.status === "error" || (state.status === "submitted" && !pending))) {
-    actions.appendChild(createText(
-      "div",
-      "session-history-feedback",
-      t(state.status === "error" ? "dashboardHistoryResumeFailed" : "dashboardHistoryNotConfirmed")
-    ));
-  }
-  card.appendChild(actions);
-  return card;
-}
-
-function sessionHistoryFolderLabel(cwd) {
-  if (typeof cwd !== "string" || !cwd) return "";
-  const parts = cwd.split(/[/\\]/).filter(Boolean);
-  return parts.length ? parts[parts.length - 1] : cwd;
-}
-
-function appendSessionHistory(fragment, now) {
-  // A queued disk read can finish after the hook has already put a session
-  // on screen. Always apply the current live snapshot at render time too.
-  const activeIds = new Set((snapshot.sessions || [])
-    .filter((session) => session.agentId === "claude-code"
-      && (session.profileId || "local") === "local" && !session.host && !session.wslDistro)
-    .map((session) => session.rawSessionId));
-  const rows = sessionHistory.filter((row) => !activeIds.has(row.sessionId));
-  for (const id of activeIds) sessionHistoryActionState.delete(`claude-code\u0000${id}`);
-  if (!rows.length) return;
-  // Rows the loader could not confirm resumable (transcript missing or
-  // unknown, v1 profiles) collapse behind the confirmed list instead of
-  // crowding it — the probe stays a hint on each card, never a gate.
-  const confirmed = rows.filter((row) => row.group !== "other");
-  const other = rows.filter((row) => row.group === "other");
-  const section = document.createElement("section");
-  section.className = "group session-history";
-  section.appendChild(createText("h2", "group-title", t("dashboardHistoryTitle")));
-  section.appendChild(createText("p", "session-history-hint", t("dashboardHistoryHint")));
-  if (confirmed.length) {
-    const cards = document.createElement("div");
-    cards.className = "cards";
-    for (const row of confirmed) cards.appendChild(createSessionHistoryCard(row, now));
-    section.appendChild(cards);
-  }
-  if (other.length) {
-    const toggle = document.createElement("button");
-    toggle.type = "button";
-    toggle.className = "session-history-toggle";
-    toggle.setAttribute("aria-expanded", sessionHistoryOtherExpanded ? "true" : "false");
-    toggle.textContent = sessionHistoryOtherExpanded
-      ? t("dashboardHistoryHideOther")
-      : t("dashboardHistoryShowOther").replace("{n}", other.length);
-    toggle.addEventListener("click", () => {
-      sessionHistoryOtherExpanded = !sessionHistoryOtherExpanded;
-      render();
-    });
-    section.appendChild(toggle);
-    if (sessionHistoryOtherExpanded) {
-      const otherCards = document.createElement("div");
-      otherCards.className = "cards";
-      for (const row of other) otherCards.appendChild(createSessionHistoryCard(row, now));
-      section.appendChild(otherCards);
-    }
-  }
-  fragment.appendChild(section);
+  contentEl.replaceChildren(empty);
 }
 
 function createQuickTombstoneCard(entry, digit) {
@@ -2227,43 +1121,23 @@ function render(options = {}) {
   // A round that ended settles here if no scroll or layout signal closed it
   // first: the guard must never stay armed indefinitely.
   if (scrollGuard.settling) handleScrollSignal();
-  // The one-second elapsed-time tick normally rebuilds the entire card tree.
-  // Replacing an open picker closes its menu, but focus alone must not block an
-  // authoritative snapshot that carries a newly created automation grant.
-  if ((activeEdit || hasOpenSessionAutomationPicker()) && !options.force) return;
-  const automationFocusKey = sessionAutomationFocusKey();
-  disposeSessionAutomationPickers();
+  // The one-second elapsed-time tick rebuilds the entire card tree; an open
+  // title edit blocks it unless the caller forces the render.
+  if (activeEdit && !options.force) return;
   const sessions = Array.isArray(snapshot.sessions) ? snapshot.sessions : [];
   const count = sessions.length;
   const now = Date.now();
-  const liveAutomationActionKeys = new Set(
-    sessions.map((session) => automationActionKey(session)).filter(Boolean)
-  );
-  for (const record of Array.isArray(snapshot.sessionAutomationOrphans)
-    ? snapshot.sessionAutomationOrphans
-    : []) {
-    if (record && record.sessionAutomationGrantId) {
-      liveAutomationActionKeys.add(`grant:${record.sessionAutomationGrantId}`);
-    }
-  }
-  for (const key of sessionAutomationActionState.keys()) {
-    if (!liveAutomationActionKeys.has(key)) sessionAutomationActionState.delete(key);
-  }
   pruneSessionFolderActionState(sessions, now);
   titleEl.textContent = t("dashboardWindowTitle");
   countEl.textContent = t("dashboardCount").replace("{n}", count);
   document.title = t("dashboardWindowTitle");
-  renderQuotaSummary(snapshot);
 
   renderQuickBanner();
 
-  const orphanCount = Array.isArray(snapshot.sessionAutomationOrphans)
-    ? snapshot.sessionAutomationOrphans.length
-    : 0;
   // A round with a frozen presentation keeps rendering its own groups even if
-  // every session in them disappeared — the numbered slots still belong to
+  // every session in them disappeared: the numbered slots still belong to
   // this round and must not collapse into the generic empty state.
-  if (count === 0 && orphanCount === 0 && !(quick.active && quick.skeleton)) {
+  if (count === 0 && !(quick.active && quick.skeleton)) {
     renderEmpty();
     return;
   }
@@ -2274,29 +1148,17 @@ function render(options = {}) {
   // While a round is on, the groups come from its frozen presentation; the
   // ordinary dynamic ordering resumes as soon as it ends.
   appendSessionGroups(fragment, byId, now);
-  appendSessionAutomationOrphans(fragment);
-  appendSessionHistory(fragment, now);
 
   contentEl.replaceChildren(fragment);
-  restoreSessionAutomationFocus(automationFocusKey);
 }
 
 async function init() {
   window.dashboardAPI.onLangChange((payload) => {
     i18nPayload = payload || i18nPayload;
     render();
-    syncKimiQuotaRefreshControl();
   });
   window.dashboardAPI.onSessionSnapshot((nextSnapshot) => {
-    const hadKimiQuota = snapshotHasKimiQuota(snapshot);
-    const previousSessionKey = liveSessionKey(snapshot);
     snapshot = nextSnapshot || snapshot;
-    if (hadKimiQuota !== snapshotHasKimiQuota(snapshot)) {
-      void reloadKimiQuotaStatus();
-    }
-    if (previousSessionKey !== liveSessionKey(snapshot)) {
-      void reloadSessionHistory({ rerender: false });
-    }
     if (activeEdit && !snapshotHasSession(snapshot, activeEdit.sessionId)) {
       activeEdit = null;
       render({ force: true });
@@ -2305,18 +1167,13 @@ async function init() {
     render();
   });
 
-  const [nextI18n, nextSnapshot, nextKimiQuotaStatus] = await Promise.all([
+  const [nextI18n, nextSnapshot] = await Promise.all([
     window.dashboardAPI.getI18n(),
     window.dashboardAPI.getSnapshot(),
-    window.dashboardAPI && typeof window.dashboardAPI.getKimiQuotaStatus === "function"
-      ? window.dashboardAPI.getKimiQuotaStatus()
-      : Promise.resolve(null),
   ]);
   i18nPayload = nextI18n || i18nPayload;
   snapshot = nextSnapshot || snapshot;
-  kimiQuotaStatus = nextKimiQuotaStatus || null;
   render();
-  void reloadSessionHistory();
 
   setInterval(render, 1000);
 

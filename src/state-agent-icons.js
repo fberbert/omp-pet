@@ -9,7 +9,7 @@ try { ({ nativeImage } = require("electron")); } catch { nativeImage = null; }
 
 // Official logos from assets/icons/agents/.
 const AGENT_ICON_DIR = path.join(__dirname, "..", "assets", "icons", "agents");
-const AGENT_ICON_EXTENSIONS = [".png", ".svg"];
+const AGENT_ICON_EXTENSIONS = [".png"];
 const _agentIconCache = new Map();
 const _agentIconUrlCache = new Map();
 
@@ -44,7 +44,6 @@ function getAgentIconUrl(agentId) {
 
 module.exports = {
   AGENT_ICON_DIR,
-  AGENT_ICON_EXTENSIONS,
   getAgentIconPath,
   getAgentIcon,
   getAgentIconUrl,
