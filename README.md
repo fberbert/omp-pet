@@ -42,6 +42,31 @@ npm start
 
 On first launch the pet installs its extension into `~/.omp/agent/extensions/omp-pet/` (or the active OMP profile's extension directory). Start a new OMP session and the pet starts reacting. Settings → AI Coding Tools shows the integration status and lets you reinstall or remove the extension.
 
+If Electron aborts with "The SUID sandbox helper binary was found, but is not configured correctly", your distribution blocks the Chromium sandbox (Ubuntu 23.10+ does this through AppArmor). Run `OMP_PET_DISABLE_SANDBOX=1 npm start`, or see the [setup guide](docs/guides/setup-guide.md) for other options.
+
+### Run as a systemd user service
+
+[`contrib/systemd/omp-pet.service`](contrib/systemd/omp-pet.service) starts the pet from a source checkout when you log in to the graphical session and restarts it if it crashes. It assumes the checkout is at `~/omp-pet` and node is at `/usr/bin/node`; edit `WorkingDirectory` and `ExecStart` if yours differ.
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp contrib/systemd/omp-pet.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now omp-pet
+```
+
+```bash
+systemctl --user restart omp-pet    # after changing the code
+systemctl --user stop omp-pet
+systemctl --user disable omp-pet    # stop starting it at login
+journalctl --user -u omp-pet -f     # logs
+```
+
+- Quitting from the tray stops the service until the next login or `systemctl --user start omp-pet`.
+- Leave "Start on login" off in Settings: it adds an XDG autostart entry that races the service for the single-instance lock.
+- While the service runs, `npm start` exits immediately because the service holds the single-instance lock. Stop the service first.
+- On Ubuntu, uncomment `Environment=OMP_PET_DISABLE_SANDBOX=1` in the unit, for the sandbox reason above.
+
 To build installable packages:
 
 ```bash

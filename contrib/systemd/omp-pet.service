@@ -1,0 +1,31 @@
+# Sample systemd user unit that runs OMP Pet from a source checkout.
+#
+# Install:
+#   mkdir -p ~/.config/systemd/user
+#   cp contrib/systemd/omp-pet.service ~/.config/systemd/user/
+#   # edit WorkingDirectory and ExecStart if the checkout is not ~/omp-pet
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now omp-pet
+#
+# %h expands to your home directory.
+
+[Unit]
+Description=OMP Pet (from source)
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/omp-pet
+# Use an absolute path to node; the user manager does not load nvm or your shell PATH.
+ExecStart=/usr/bin/node %h/omp-pet/launch.js
+# Ubuntu 23.10+ blocks unprivileged user namespaces through AppArmor, and
+# chrome-sandbox in node_modules is not SUID root, so Electron aborts at start.
+# Uncomment to run without the Chromium sandbox (see docs/guides/setup-guide.md).
+#Environment=OMP_PET_DISABLE_SANDBOX=1
+# Quitting from the tray exits 0 and leaves the service stopped.
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target
